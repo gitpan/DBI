@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.37 2001/06/04 17:20:21 timbo Exp $
+# $Id: DBI.pm,v 10.39 2001/07/20 22:28:28 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.18"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.19"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -54,6 +54,8 @@ DBI - Database independent interface for Perl
   $hash_ref = $sth->fetchrow_hashref;
 
   $ary_ref  = $sth->fetchall_arrayref;
+  $ary_ref  = $sth->fetchall_arrayref( { ... } );
+  $ary_ref  = $sth->fetchall_arrayref( [ ... ] );
 
   $rv  = $sth->rows;
 
@@ -97,8 +99,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.17
-(C<$Date: 2001/06/04 17:20:21 $>).
+This is the DBI specification that corresponds to the DBI version 1.19
+(C<$Date: 2001/07/20 22:28:28 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -140,7 +142,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.37 $, 10);
+my $Revision = substr(q$Revision: 10.39 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -171,7 +173,7 @@ BEGIN {
 	neat neat_list dump_results looks_like_number
    ) ],
 );
-Exporter::export_ok_tags('sql_types', 'utils');
+Exporter::export_ok_tags('sql_types', 'utils', 'preparse_flags');
 
 $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 
@@ -287,8 +289,10 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x30 },
 	rows       	=> $keeperr,
 
-	tables          => { U =>[1,2,'[ \%attr ]' ] },
-	table_info      => { U =>[1,2,'[ \%attr ]' ] },
+	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
+	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
+	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
+	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
 	type_info_all	=> { U =>[1,1] },
 	type_info	=> { U =>[1,2] },
 	get_info	=> { U =>[2,2] },
@@ -300,7 +304,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	bind_columns	=> { U =>[2,0,'\\$var1 [, \\$var2, ...]'] },
 	bind_param	=> { U =>[3,4,'$parameter, $var [, \%attr]'] },
 	bind_param_inout=> { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attr]'] },
-	execute		=> { U =>[1,0,'[@args]'] },
+	execute		=> { U =>[1,0,'[@args]'], O=>0x40 },
 
 	fetch    	  => undef, # alias for fetchrow_arrayref
 	fetchrow_arrayref => undef,
@@ -483,7 +487,7 @@ sub install_driver {		# croaks on failure
     return $drh if $drh = $DBI::installed_drh{$driver};
 
     DBI->trace_msg("    -> $class->install_driver($driver"
-			.") for perl=$] pid=$$ ruid=$< euid=$>\n")
+			.") for $^O perl=$] pid=$$ ruid=$< euid=$>\n")
 	if $DBI::dbi_debug;
 
     # --- load the code
@@ -727,6 +731,7 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 	'Err'		=> \$h_err_store,    # Holder for DBI::err
 	'Errstr'	=> \$h_errstr_store, # Holder for DBI::errstr
 	'Debug' 	=> 0,
+	FetchHashKeyName=> 'NAME',
 	%$initial_attr,
     };
     _new_handle('DBI::dr', '', $attr, $imp_data, $class);
@@ -904,23 +909,26 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub quote {
 	my ($dbh, $str, $data_type) = @_;
+
 	return "NULL" unless defined $str;
 	unless ($data_type) {
 	    $str =~ s/'/''/g;		# ISO SQL2
 	    return "'$str'";
 	}
-	# Optimise for standard numerics which need no quotes
-	return $str if $data_type == DBI::SQL_INTEGER
-		    || $data_type == DBI::SQL_SMALLINT
-		    || $data_type == DBI::SQL_DECIMAL
-		    || $data_type == DBI::SQL_FLOAT
-		    || $data_type == DBI::SQL_REAL
-		    || $data_type == DBI::SQL_DOUBLE
-		    || $data_type == DBI::SQL_NUMERIC;
-	my $ti = $dbh->type_info($data_type);
-	# XXX needs checking
-	my $lp = $ti ? $ti->{LITERAL_PREFIX} || "" : "'";
-	my $ls = $ti ? $ti->{LITERAL_SUFFIX} || "" : "'";
+
+	my $dbi_literal_quote_cache = $dbh->{'dbi_literal_quote_cache'} ||= [ {} , {} ];
+	my ($prefixes, $suffixes) = @$dbi_literal_quote_cache;
+
+	my $lp = $prefixes->{$data_type};
+	my $ls = $suffixes->{$data_type};
+
+	if ( ! defined $lp || ! defined $ls ) {
+	    my $ti = $dbh->type_info($data_type);
+	    $lp = $prefixes->{$data_type} = $ti ? $ti->{LITERAL_PREFIX} || "" : "'";
+	    $ls = $suffixes->{$data_type} = $ti ? $ti->{LITERAL_SUFFIX} || "" : "'";
+	}
+	return $str unless $lp || $ls; # no quoting required
+
 	# XXX don't know what the standard says about escaping
 	# in the 'general case' (where $lp != "'").
 	# So we just do this and hope:
@@ -1043,6 +1051,20 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	shift->_not_impl('table_info');
     }
 
+    sub primary_key_info {
+	shift->_not_impl('primary_key_info');
+    }
+
+    sub primary_key {
+	my ($dbh, @args) = @_;
+	my $sth = $dbh->primary_key_info(@args) or return;
+	my ($row, @col);
+	push @col, $row->[3] while ($row = $sth->fetch);
+	croak("primary_key method not called in list context")
+		unless wantarray; # leave us some elbow room
+	return @col;
+    }
+
     sub tables {
 	my ($dbh, @args) = @_;
 	my $sth = $dbh->table_info(@args);
@@ -1070,9 +1092,17 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub type_info {
 	my ($dbh, $data_type) = @_;
-	my $tia = $dbh->type_info_all;
-	return unless @$tia;
-	my $idx_hash = shift @$tia;
+	my $idx_hash;
+	my $tia = $dbh->{dbi_type_info_row_cache};
+	if ($tia) {
+	    $idx_hash = $dbh->{dbi_type_info_idx_cache};
+	}
+	else {
+	    my $temp = $dbh->type_info_all;
+	    return unless $temp && @$temp;
+	    $tia      = $dbh->{dbi_type_info_row_cache} = $temp;
+	    $idx_hash = $dbh->{dbi_type_info_idx_cache} = shift @$tia;
+	}
 
 	my $dt_idx   = $idx_hash->{DATA_TYPE} || $idx_hash->{data_type};
 	Carp::croak("type_info_all returned non-standard DATA_TYPE index value ($dt_idx != 1)")
@@ -1126,23 +1156,22 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		push @rows, [ @{$row}[ @$slice] ] while($row = $sth->fetch);
 	    }
 	    else {
+		# return $sth->_fetchall_arrayref;
 		push @rows, [ @$row ] while($row = $sth->fetch);
 	    }
 	}
 	elsif ($mode eq 'HASH') {
-	    my @o_keys = keys %$slice;
-	    if (@o_keys) {
-		my %i_names = map {  (lc($_)=>$_) } @{ $sth->FETCH('NAME') };
-		my @i_keys  = map { $i_names{lc($_)} } @o_keys;
-		while ($row = $sth->fetchrow_hashref) {
+	    if (keys %$slice) {
+		my @o_keys = keys %$slice;
+		while ($row = $sth->fetchrow_hashref('NAME_lc')) {
 		    my %hash;
-		    @hash{@o_keys} = @{$row}{@i_keys};
+		    @hash{@o_keys} = @{$row}{@o_keys};
 		    push @rows, \%hash;
 		}
 	    }
 	    else {
 		# XXX assumes new ref each fetchhash
-		push @rows, $row while ($row = $sth->fetchrow_hashref);
+		push @rows, $row while ($row = $sth->fetchrow_hashref());
 	    }
 	}
 	else { Carp::croak("fetchall_arrayref($mode) invalid") }
@@ -2121,6 +2150,16 @@ plus the prepare() and do() database handle methods.
 (The exact format of the appended text is subject to change.)
 
 
+=item C<FetchHashKeyName> (string, inherited) I<NEW>
+
+This attribute is used to specify which attribute name the
+fetchrow_hashref() method should use to get the field names for the
+hash keys. For historical reasons it defaults to 'C<NAME>' but it
+is recommended to set it to 'C<NAME_lc>' or 'C<NAME_uc>' according
+to your preference. It can only be set for driver and database tables.
+For statement handles the value is frozen when prepare() is called.
+
+
 =item C<ChopBlanks> (boolean, inherited)
 
 This attribute can be used to control the trimming of trailing space
@@ -2410,16 +2449,27 @@ for you.  The warning can be suppressed by setting C<$allow_active> to
 true.  The cache can be accessed (and cleared) via the L</CachedKids>
 attribute.
 
-Here's an example of one possible use of C<prepare_cached>:
+Here are some examples of C<prepare_cached>:
 
-  while ( ($field, $value) = each %search_fields ) {
-      push @sql,   "$field = ?";
-      push @values, $value;
+  sub insert_hash {
+    my ($table, $field_values) = @_;
+    my @fields = sort keys %$field_values; # sort required
+    my @values = @{$field_values}{@fields};
+    my $sql = sprintf "insert into %s (%s) values (%s)",
+	$table, join(",", @fields), join(",", ("?")x@fields);
+    my $sth = $dbh->prepare_cached($sql);
+    return $sth->execute(@values);
   }
-  $qualifier = "";
-  $qualifier = "where ".join(" and ", @sql) if @sql;
-  $sth = $dbh->prepare_cached("SELECT * FROM table $qualifier");
-  $sth->execute(@values);
+
+  sub search_hash {
+    my ($table, $field_values) = @_;
+    my @fields = sort keys %$field_values; # sort required
+    my @values = @{$field_values}{@fields};
+    my $qualifier = "";
+    $qualifier = "where ".join(" and ", map { "$_=?" } @fields) if @fields;
+    $sth = $dbh->prepare_cached("SELECT * FROM table $qualifier");
+    return $dbh->selectall_arrayref($sth, @values);
+  }
 
 
 =item C<commit>
@@ -2503,56 +2553,55 @@ Apache::DBI module for one example usage.
 
 B<Warning:> This method is experimental and may change.
 
-  $sth = $dbh->table_info;
-  $sth = $dbh->table_info( \%attr );
+  $sth = $dbh->table_info( $catalog, $schema, $table, $type );
+  $sth = $dbh->table_info( $catalog, $schema, $table, $type, \%attr );
+  $sth = $dbh->table_info( \%attr ); # old style
 
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
 
-The following attributes (all or separate) may be used as selection criteria:
+The old style interface passes all the parameters as a reference to an attribute
+hash with some or all of the following attributes:
 
   %attr = (
-       TABLE_CAT   => $CatVal    # String value of the catalog name
-     , TABLE_SCHEM => $SchVal    # String value of the schema name
-     , TABLE_NAME  => $TblVal    # String value of the table name
-     , TABLE_TYPE  => $TypVal    # String value of the table type(s)
+       TABLE_CAT   => $catalog  # String value of the catalog name
+     , TABLE_SCHEM => $schema   # String value of the schema name
+     , TABLE_NAME  => $table    # String value of the table name
+     , TABLE_TYPE  => $type     # String value of the table type(s)
   );
 
 Note: The support for the selection criteria is driver specific. If the
-driver doesn't support one or more then them then you'll get back more
+driver doesn't support one or more then them then you may get back more
 than you asked for and can do the filtering yourself.
 
-The arguments TABLE_CAT, TABLE_SCHEM and TABLE_NAME may accept search
-patterns according to the database/driver, for example:
+The arguments $table, $schema and $table may accept search patterns
+according to the database/driver, for example: $table = '%FOO%';
 
-  $sth = $dbh->table_info( { TABLE_NAME  => '%TAB%'} );
-
-The value of TABLE_TYPE is a comma-separated list of one or more types
-of tables to be returned in the result set. Each value may optionally be
+The value of $type is a comma-separated list of one or more types of
+tables to be returned in the result set. Each value may optionally be
 quoted, e.g.:
 
-  $sth = $dbh->table_info( { TABLE_TYPE  => "TABLE" } );
-  $sth = $dbh->table_info( { TABLE_TYPE  => "'TABLE', 'VIEW'" } );
+  $type = "TABLE";
+  $type = "'TABLE','VIEW'";
 
 In addition the following special cases may also be supported by some drivers:
 
 =over 4
 
 =item *
-If the value of TABLE_CAT is '%' and TABLE_SCHEM and TABLE_NAME name
+If the value of $catalog is '%' and $schema and $table name
 are empty strings, the result set contains a list of catalog names.
 For example:
 
-  $sth = $dbh->table_info({ TABLE_CAT=>'%', TABLE_SCHEM=>'', TABLE_NAME=>'' });
+  $sth = $dbh->table_info('%', '', '');
 
 =item *
-If the value of TABLE_SCHEM is '%' and TABLE_CAT and TABLE_NAME are
-empty strings, the result set contains a list of schema names.
+If the value of $schema is '%' and $catalog and $table are empty
+strings, the result set contains a list of schema names.
 
 =item *
-If the value of TABLE_TYPE is '%' and TABLE_CAT, TABLE_SCHEM, and
-TABLE_NAME are all empty strings, the result set contains a list of
-table types.
+If the value of $type is '%' and $catalog, $schema, and $table are all
+empty strings, the result set contains a list of table types.
 
 =back
 
@@ -2597,15 +2646,87 @@ See also page 306 of the (very large) SQL/CLI specification:
 
   http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
 
+
+=item C<primary_key_info> I<NEW>
+
+B<Warning:> This method is experimental and may change.
+
+  $sth = $dbh->primary_key_info( $catalog, $schema, $table );
+
+Returns an active statement handle that can be used to fetch information
+about columns that make up the primary key for a table.
+The arguments don't accept search patterns (unlike table_info()).
+
+For example:
+
+  $sth = $dbh->primary_key_info( undef, $user, 'foo' );
+  $data = $sth->fetchall_arrayref;
+
+Note: The support for the selection criteria, such as $catalog, is
+driver specific.  If the driver doesn't support catalogs and/or
+schemas, it may ignore these criteria.
+
+The statement handle returned has at least the following fields in the
+order shown below. Other fields, after these, may also be present.
+
+B<TABLE_CAT>: The catalog identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+which is often the case.  This field is empty if not applicable to the
+table.
+
+B<TABLE_SCHEM>: The schema identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+and empty if not applicable to the table.
+
+B<TABLE_NAME>: The table identifier.
+
+B<COLUMN_NAME>: The column identifier.
+
+B<KEY_SEQ>: The column sequence number (starting with 1).
+Note: This field is named B<ORDINAL_POSITION> in SQL/CLI.
+
+B<PK_NAME>: The primary key constraint identifier.
+This field is NULL (C<undef>) if not applicable to the data source.
+
+For more detailed information about the fields and their meanings,
+you can refer to:
+
+  http://msdn.microsoft.com/library/psdk/dasdk/odch6fn7.htm
+
+If that URL ceases to work then use the MSDN search facility at:
+
+  http://search.microsoft.com/us/dev/
+
+and search for C<SQLPrimaryKeys returns> using the exact phrase option.
+The link you want will probably just be called C<SQLPrimaryKeys> and will
+be part of the Data Access SDK.
+
+See also page 266 of the current SQL/CLI Working Draft:
+
+  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
+
+
+=item C<primary_key> I<NEW>
+
+B<Warning:> This method is experimental and may change.
+
+  @key_column_names = $dbh->primary_key( $catalog, $schema, $table );
+
+Simple interface to the primary_key_info() method. Returns a list of
+the column names that comprise the primary key of the specified table.
+The list is in primary key column sequence order.
+
+
 =item C<tables> I<NEW>
 
 B<Warning:> This method is experimental and may change.
 
   @names = $dbh->tables;
+  @names = $dbh->tables( $catalog, $schema, $table, $type );
   @names = $dbh->tables( \%attr );
 
-Returns a list of table and view names, possibly including a schema prefix.
-This list should include all
+Simple interface to table_info(). Returns a plain list of name names,
+possibly including a schema prefix.  This list should include all
 tables that can be used in a C<SELECT> statement without further
 qualification.
 
@@ -3288,6 +3409,7 @@ When passed a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
 to fetch each row as a hash reference. If the parameter hash is empty then
 fetchrow_hashref is simply called in a tight loop and the keys in the hashes
 have whatever name lettercase is returned by default from fetchrow_hashref.
+(See L</FetchHashKeyName> attribute.)
 
 If the parameter hash is not empty, then it is used as a slice to
 select individual columns by name. The names should be lower case
@@ -3312,22 +3434,6 @@ To fetch only the fields called "foo" and "bar" of every row as a hash ref:
 
 The first two examples return a reference to an array of array refs. The last
 returns a reference to an array of hash refs.
-
-
-=item C<fetchall_hashref>
-
-  $tbl_ary_ref = $sth->fetchall_hashref;
-
-The C<fetchall_hashref> method can be used to fetch all the data to be
-returned from a prepared and executed statement handle. It returns a
-reference to an array that contains one hash of field name and value
-pairs per row.
-
-If there are no rows to return, C<fetchall_hashref> returns a reference
-to an empty array. If an error occurs, C<fetchall_hashref> returns the
-data fetched thus far, which may be none.  You should check C<$sth->E<gt>C<err>
-afterwards (or use the C<RaiseError> attribute) to discover if the data is
-complete or was truncated due to an error.
 
 
 =item C<finish>

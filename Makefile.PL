@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.15 2001/03/28 14:52:07 timbo Exp $
+# $Id: Makefile.PL,v 10.16 2001/07/16 16:10:30 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -26,8 +26,9 @@ $osvers =~ s/^\s*(\d+\.\d+).*/$1/;  # drop sub-sub-version: 2.5.1 -> 2.5
 my $ext_pl = $^O eq 'VMS' ? '.pl' : '';
 
 $::opt_v = 0;
-$::opt_g = 0;
 $::opt_thread = 1;	# unset later if not a threaded perl
+$::opt_g = 0;
+$::opt_g = 1 if -d 'RCS' && $ENV{LOGNAME} eq 'timbo'; # it's me!
 
 GetOptions(qw(v! g! thread!))
 	or die "Invalid arguments\n";
@@ -99,8 +100,10 @@ if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
     $opts{CAPI} = 'TRUE' if $Config{archname} =~ /-object\b/i;
 }
 
-$opts{DEFINE} = '-Wall -Wno-comment'
-    if $Config{cc} eq 'gcc';	# ask gcc to be mildly pedantic
+if ($Config{cc} eq 'gcc') {	# ask gcc to be mildly pedantic
+    $opts{DEFINE} .= ' -Wall -Wno-comment';
+    $opts{DEFINE} .= ' -Wpointer-arith -Wconversion' if $::opt_g;
+}
 
 $opts{DEFINE} .= ' -DDBI_NO_THREADS' unless $::opt_thread;
 
@@ -119,11 +122,6 @@ if ($os eq 'MSWin32'  &&  $Config{libs} =~ /\bPerlCRT.lib\b/
     # ActiveState Perl needs this; should better be done in MakeMaker, but
     # as a temporary workaround it seems ok.
     $opts{LIBS} = "-L$Config{archlib}/CORE";
-}
-
-# Set some private WriteMakefile options if this is 'me' :-)
-if ($ENV{S_ARCH_SW} && $ENV{LOGNAME} eq 'timbo'){	# a reasonable guess
-    $opts{DEFINE} .= ' -g -Wpointer-arith -Wconversion';
 }
 
 warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"

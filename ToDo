@@ -1,6 +1,19 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Check/fix: local($h->{PrintError})=0; resets $DBI::errstr at end of scope
+
+Implement _fetchall_arrayref XS
+
+Add row num to fetch trace
+Trace1 = first and last fetch only.
+Trace2 = fetch return only.
+ShowTracePid attrib
+Add UnimpMethodHook (in XS)
+Test and integrate with DProf?
+FetchHashReuse attrib (=1 or ={}) copy from dbh to sth.
+Record attrib STOREs so can be replayed
+
 make lasth return outer handle
 
 make ShowErrorStatement also show the st1 etc? for execute() and do().

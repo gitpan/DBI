@@ -92,6 +92,7 @@ foreach(17..19) { ok(0, 1) }	# soak up to next round number
 my $std_sql = "select mode,size,name from ?";
 my $csr_a = $dbh->prepare($std_sql);
 ok(0, ref $csr_a);
+$dbh->{FetchHashKeyName} = 'NAME_uc';
 my $csr_b = $dbh->prepare($std_sql);
 ok(0, ref $csr_b);
 
@@ -103,6 +104,7 @@ ok(0, $csr_a->{'Database'} eq $dbh);
 ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");	# before NAME
 ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
 ok(0, "@{$csr_b->{NAME}}"    eq "mode size name");
+ok(0, "@{$csr_b->{ $csr_b->{FetchHashKeyName} }}" eq "MODE SIZE NAME");
 
 # get a dir always readable on all platforms
 my $dir = getcwd() || cwd();
@@ -168,18 +170,27 @@ ok(0, "@row_a" ne "@row_b");
 ok(0, $csr_a->finish);
 ok(0, $csr_b->finish);
 
-#$csr_b->trace(4);
+$csr_a = undef;	# force destruction of this cursor now
+ok(0, 1);
+
+print "fetchrow_hashref('NAME_uc')\n";
 ok(0, $csr_b->execute());
 my $row_b = $csr_b->fetchrow_hashref('NAME_uc');
-#$csr_b->trace(0);
 ok(0, $row_b);
 ok(0, $row_b->{MODE} == $row_a[0]);
 ok(0, $row_b->{SIZE} == $row_a[1]);
 ok(0, $row_b->{NAME} eq $row_a[2]);
 
-$csr_a = undef;	# force destruction of this cursor now
-ok(0, 1);
+print "FetchHashKeyName\n";
+ok(0, $csr_b->execute());
+$row_b = $csr_b->fetchrow_hashref();
+ok(0, $row_b);
+ok(0, keys(%$row_b) == 3);
+ok(0, $row_b->{MODE} == $row_a[0]);
+ok(0, $row_b->{SIZE} == $row_a[1]);
+ok(0, $row_b->{NAME} eq $row_a[2]);
 
+print "fetchall_arrayref\n";
 ok(0, $csr_b->execute());
 $r = $csr_b->fetchall_arrayref;
 ok(0, $r);
@@ -188,25 +199,28 @@ ok(0, $r->[0]->[0] == $row_a[0]);
 ok(0, $r->[0]->[1] == $row_a[1]);
 ok(0, $r->[0]->[2] eq $row_a[2]);
 
+print "fetchall_arrayref array slice\n";
 ok(0, $csr_b->execute());
 $r = $csr_b->fetchall_arrayref([2,1]);
 ok(0, $r && @$r);
 ok(0, $r->[0]->[1] == $row_a[1]);
 ok(0, $r->[0]->[0] eq $row_a[2]);
 
+print "fetchall_arrayref hash slice\n";
 ok(0, $csr_b->execute());
 #$csr_b->trace(9);
-$r = $csr_b->fetchall_arrayref({ Size=>1, NAME=>1});
+$r = $csr_b->fetchall_arrayref({ size=>1, name=>1});
 ok(0, $r && @$r);
-ok(0, $r->[0]->{Size} == $row_a[1]);
-ok(0, $r->[0]->{NAME} eq $row_a[2]);
+ok(0, $r->[0]->{size} == $row_a[1]);
+ok(0, $r->[0]->{name} eq $row_a[2]);
 
 #$csr_b->trace(4);
+print "fetchall_arrayref hash\n";
 ok(0, $csr_b->execute());
 $r = $csr_b->fetchall_arrayref({});
 ok(0, $r);
 ok(0, keys %{$r->[0]} == 3);
-ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a", "'@{$r->[0]}{qw(mode size name)}' ne '@row_a'");
+ok(0, "@{$r->[0]}{qw(MODE SIZE NAME)}" eq "@row_a", "'@{$r->[0]}{qw(MODE SIZE NAME)}' ne '@row_a'");
 #$csr_b->trace(0);
 
 # use Data::Dumper; warn Dumper([\@row_a, $r]);
@@ -223,9 +237,9 @@ ok(0, "@row_b" eq "@row_a");
 
 $r = $dbh->selectrow_hashref($std_sql, undef, $dir);
 ok(0, keys %$r == 3);
-ok(0, $r->{mode} eq $row_a[0]);
-ok(0, $r->{size} eq $row_a[1]);
-ok(0, $r->{name} eq $row_a[2]);
+ok(0, $r->{MODE} eq $row_a[0]);
+ok(0, $r->{SIZE} eq $row_a[1]);
+ok(0, $r->{NAME} eq $row_a[2]);
 
 $r = $dbh->selectall_arrayref($std_sql, undef, $dir);
 ok(0, $r);
@@ -236,7 +250,7 @@ ok(0, @$r == $rows);
 $r = $dbh->selectall_hashref($std_sql, undef, $dir);
 ok(0, $r);
 ok(0, keys %{$r->[0]} == 3);
-ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a");
+ok(0, "@{$r->[0]}{qw(MODE SIZE NAME)}" eq "@row_a");
 ok(0, @$r == $rows);
 
 $r = $dbh->selectcol_arrayref($std_sql, undef, $dir);
@@ -261,6 +275,18 @@ ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
 #print "$@\n";
 ok(0, $@ =~ m/Unknown field names: unknown_field_name2/, $@);
 ok(0, $@ =~ m/\Q$error_sql/, $@); # ShowErrorStatement
+
+my $se_sth1 = $dbh->prepare("select mode from ?");
+ok(0, $se_sth1->{Statement} eq "select mode from ?");
+ok(0, $dbh->{Statement}     eq "select mode from ?");
+my $se_sth2 = $dbh->prepare("select name from ?");
+ok(0, $se_sth2->{Statement} eq "select name from ?");
+ok(0, $dbh->{Statement}     eq "select name from ?");
+$se_sth1->execute('.');
+ok(0, $dbh->{Statement}     eq "select mode from ?");
+$se_sth1->finish;
+$se_sth2->finish;
+
 $dbh->{RaiseError} = 0;
 ok(0, !$dbh->{RaiseError});
 $dbh->{ShowErrorStatement} = 0;
@@ -372,4 +398,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 127; }
+BEGIN { $tests = 139; }

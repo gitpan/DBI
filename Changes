@@ -1,3 +1,26 @@
+Changes in DBI 1.19,    20th July 2001
+
+  Made fetchall_arrayref({ foo=>1, ...}) be more strict to the specification
+    in relation to wanting hash slice keys to be lowercase names.
+    WARNING: If you've used fetchall_arrayref({...}) with a hash slice
+    that contains keys with uppercase letters then your code will break.
+    (As far as I recall the spec has always said don't do that.)
+  Fixed $sth->execute() to update $dbh->{Statement} to $sth->{Statement}.
+  Added row number to trace output for fetch method calls.
+  Trace level 1 no longer shows fetches with row>1 (to reduce output volume).
+  Added $h->{FetchHashKeyName} = 'NAME_lc' or 'NAME_uc' to alter
+    behaviour of fetchrow_hashref() method. See docs.
+  Added type_info quote caching to quote() method thanks to Dean Kopesky.
+    Makes using quote() with second data type param much much faster.
+  Added type_into_all() caching to type_info(), spotted by Dean Kopesky.
+  Added new API definition for table_info() and tables(),
+    driver authors please note!
+  Added primary_key_info() to DBI API thanks to Steffen Goeldner.
+  Added primary_key() to DBI API as simpler interface to primary_key_info().
+  Indent and other fixes for DBI::DBD doc thanks to H.Merijn Brand.
+  Added prepare_cached() insert_hash() example thanks to Doug Wilson.
+  Removed false docs for fetchall_hashref(), use fetchall_arrayref({}).
+
 Changes in DBI 1.18,    4th June 2001
 
   Fixed that altering ShowErrorStatement also altered AutoCommit!

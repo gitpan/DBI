@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.32 2001/06/04 17:13:25 timbo Exp $
+/* $Id: DBI.xs,v 10.34 2001/07/20 22:28:28 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -57,7 +57,7 @@ static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 
 static imp_xxh_t *dbih_getcom	   _((SV *h));
 static void       dbih_clearcom	   _((imp_xxh_t *imp_xxh));
-static int	  dbih_logmsg	   _((SV *h, imp_xxh_t *imp_xxh, char *fmt, ...));
+static int	  dbih_logmsg	   _((imp_xxh_t *imp_xxh, char *fmt, ...));
 static SV	 *dbih_make_com	   _((SV *parent_h, char *imp_class, STRLEN imp_size, STRLEN extra));
 static SV	 *dbih_make_fdsv   _((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
 static AV        *dbih_get_fbav	   _((imp_sth_t *imp_sth));
@@ -94,6 +94,7 @@ typedef struct dbi_ima_st {
 #define IMA_spare	 	0x0008	/* */
 #define IMA_NO_TAINT_IN   	0x0010	/* don't check for tainted args	*/
 #define IMA_NO_TAINT_OUT   	0x0020	/* don't taint results		*/
+#define IMA_COPY_STMT   	0x0040	/* copy sth Statement to dbh	*/
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -346,12 +347,12 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 	maxlen = 6;
     maxlen -= 2;			/* account for quotes	*/
     if (len > maxlen) {
-	SvGROW(nsv, (int)(1+maxlen+4+1));
+	SvGROW(nsv, (1+maxlen+4+1));
 	sv_setpvn(nsv, "'", 1);
 	sv_catpvn(nsv, v, maxlen-3);	/* account for three dots */
 	sv_catpvn(nsv, "...'", 4);
     } else {
-	SvGROW(nsv, (int)(1+len+1+1));
+	SvGROW(nsv, (1+len+1+1));
 	sv_setpvn(nsv, "'", 1);
 	sv_catpvn(nsv, v, len);
 	sv_catpvn(nsv, "'", 1);
@@ -406,9 +407,9 @@ dbi_hash(key, i)
 
 static int
 #ifdef I_STDARG
-dbih_logmsg(SV *h, imp_xxh_t *imp_xxh, char *fmt, ...)
+dbih_logmsg(imp_xxh_t *imp_xxh, char *fmt, ...)
 #else
-dbih_logmsg(h, imp_xxh, fmt, va_alist)
+dbih_logmsg(imp_xxh, fmt, va_alist)
 SV *h;
 imp_xxh_t *imp_xxh;
 char *fmt;
@@ -581,7 +582,7 @@ dbih_setup_attrib(h, attrib, parent, read_only)
     STRLEN len = strlen(attrib);
 
     SV *asv = *hv_fetch((HV*)SvRV(h), attrib, len, 1);
-    /* we assume that we won't have any existing 'undef' attribures here */
+    /* we assume that we won't have any existing 'undef' attributes here */
     /* (or, alternately, we take undef to mean 'copy from parent')	 */
     if (!SvOK(asv)) {	/* attribute doesn't already exists (the common case) */
 	SV **psv;
@@ -674,7 +675,7 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
     DBIc_IMP_STASH(imp) = imp_stash;
 
     if (!parent_h) {		/* only a driver (drh) has no parent	*/
-	DBIc_PARENT_H(imp)    = (HV*)&sv_undef;
+	DBIc_PARENT_H(imp)    = &sv_undef;
 	DBIc_PARENT_COM(imp)  = NULL;
 	DBIc_TYPE(imp)	      = DBIt_DR;
 	DBIc_on(imp,DBIcf_WARN		/* set only here, children inherit	*/
@@ -687,7 +688,7 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
 #endif
     } else {		
 	imp_xxh_t *parent_com = DBIh_COM(parent_h);
-	DBIc_PARENT_H(imp)    = (HV*)SvREFCNT_inc(parent_h); /* ensure it lives	*/
+	DBIc_PARENT_H(imp)    = (SV*)SvREFCNT_inc(parent_h); /* ensure it lives	*/
 	DBIc_PARENT_COM(imp)  = parent_com;	 	/* shortcut for speed	*/
 	DBIc_TYPE(imp)	      = DBIc_TYPE(parent_com) + 1;
 	DBIc_FLAGS(imp)       = DBIc_FLAGS(parent_com) & ~DBIcf_INHERITMASK;
@@ -771,6 +772,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1);	/* scalar ref	*/
 	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1);	/* array ref	*/
 	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0);	/* scalar (int)	*/
+	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0);	/* scalar ref */
 	if (parent)
 	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp);
 	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
@@ -784,8 +786,8 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	    /* pre-load Database attribute */
 	    hv_store((HV*)SvRV(h), "Database", 8, newRV((SV*)DBIc_MY_H(parent_imp)), 0);
 	    /* copy (alias) Statement from the sth up into the dbh	*/
-	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 0);
-	    if (tmp_svp && SvOK(*tmp_svp)) /* can be null eg Oracle ref cursors	*/
+	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
+	    if (tmp_svp)
 		hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*tmp_svp), 0);
 	    break;
 	}
@@ -798,7 +800,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 
     DBI_SET_LAST_HANDLE(h);
 
-	DBI_UNLOCK;
+    DBI_UNLOCK;
 }
 
 
@@ -1136,6 +1138,11 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     }
     else if (strEQ(key, "InactiveDestroy")) {
 	(on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
+    }
+    else if (strEQ(key, "FetchHashKeyName")) {
+	if (htype >= DBIt_ST)
+	    croak("Can't set FetchHashKeyName for a statement handle, set in parent before prepare()");
+	cacheit = 1;	/* just save it */
     }
     else if (strEQ(key, "RootClass")) {
 	cacheit = 1;	/* just save it */
@@ -1538,23 +1545,35 @@ quick_FETCH(hrv, keysv, imp_msv)
 }
 
 
-static void
-log_where(logfp, trace_level)
-    PerlIO *logfp;
-    int trace_level;
+static char *
+log_where(int trace_level, SV *buf, int append, char *suffix)
 {
     dTHR;
-    char *file, *sep;
-    STRLEN len;
+    if (!buf) {
+	buf = sv_2mortal(newSV(80));
+	sv_setpv(buf,"");
+    }
+    else
+    if (!append)
+	sv_setpv(buf,"");
     if (CopLINE(curcop)) {
+	char *file;
+	STRLEN len;
+	/* XXX go up scopes till not DBI.pm */
 	file = SvPV(GvSV(CopFILEGV(curcop)), len);
 	if (trace_level<=4) {
+	    char *sep;
 	    if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
 		file = sep+1;
 	}
-        PerlIO_printf(logfp," at %s line %ld", file, (long)CopLINE(curcop));
+	sv_catpvf(buf, " at %s line %ld%s", file, (long)CopLINE(curcop),
+		dirty ? " during global destruction" : "");
     }
-    PerlIO_printf(logfp,"%s.", dirty ? " during global destruction" : "");
+    else
+	sv_catpvf(buf, dirty ? " during global destruction" : "");
+    if (suffix)
+	sv_catpv(buf, suffix);
+    return SvPVX(buf);
 }
 
 
@@ -1618,8 +1637,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    meth_name, neatsvpv(h,0),
 	    (long)SvREFCNT(h), (SvROK(h) ? (long)SvREFCNT(SvRV(h)) : (long)-1),
 	    (long)items, (int)gimme, (long)ima);
-	log_where(logfp, debug);
-	PerlIO_puts(logfp, "\n");	/* end of the line */
+	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n"));
 	PerlIO_flush(logfp);
     }
 
@@ -1740,6 +1758,12 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	DBI_SET_LAST_HANDLE(h);
 	SAVEINT(DBIc_CALL_DEPTH(imp_xxh));
 	call_depth = ++DBIc_CALL_DEPTH(imp_xxh);
+
+	if (ima && ima->flags & IMA_COPY_STMT) { /* execute() */
+	    SV *parent = DBIc_PARENT_H(imp_xxh);
+	    SV **tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
+	    hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*tmp_svp), 0);
+	}
     }
 
     /* --- dispatch --- */
@@ -1875,6 +1899,12 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     if (debug >= 1) {
 	PerlIO *logfp = DBILOGFP;
+	int is_fetch  = (*meth_name=='f' && DBIc_TYPE(imp_xxh)==DBIt_ST && strnEQ(meth_name,"fetch",5));
+	int row_count = (is_fetch) ? DBIc_ROW_COUNT((imp_sth_t*)imp_xxh) : 0;
+	if (is_fetch && row_count>=2 && debug<=1 && SvOK(ST(0))) {
+	    /* skip the 'middle' rows to reduce output */
+	    goto skip_meth_return_trace;
+	}
 	if (!keep_error && SvTRUE(DBIc_ERR(imp_xxh)))
 	    PerlIO_printf(logfp,"    !! ERROR: %s %s\n",
 		neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_ERRSTR(imp_xxh),0));
@@ -1920,11 +1950,14 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (gimme & G_ARRAY) {
 	    PerlIO_printf(logfp," ) [%d items]", outitems);
 	}
+	if (is_fetch && row_count) {
+	    PerlIO_printf(logfp," row%d", row_count);
+	}
 	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
 	    PerlIO_printf(logfp," (%s from cache)", neatsvpv(st1,0));
 	/* XXX add flag to show pid here? */
-	log_where(logfp, debug); /* add file and line number information */
-	PerlIO_puts(logfp, "\n");	/* end of the line */
+	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n")); /* add file and line number information */
+    skip_meth_return_trace:
 	PerlIO_flush(logfp);
     }
 
@@ -2023,10 +2056,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 #define PS_return(flag)  DBIbf_has(ps_return,(flag))
 
 SV *
-preparse(SV *h, char *statement, U32 ps_return, U32 ps_accept)
+preparse(SV *h, char *statement, IV ps_return, IV ps_accept, void *foo)
 {
 /*
-	The idea hear is that ps_accept defines which constructs to
+	The idea here is that ps_accept defines which constructs to
 	recognize (accept) as valid in the source string (other
 	constructs are ignored), and ps_return defines which
 	constructs are valid to return in the result string.
@@ -2045,13 +2078,23 @@ preparse(SV *h, char *statement, U32 ps_return, U32 ps_accept)
 	'?', ':1' and ':name' are all acceptable input, but only
 	':name' should be returned.
 
+	(There's a tricky issue with the '--' comment style because it can
+	clash with valid syntax, i.e., "... set foo=foo--1 ..." so it
+	would be *bad* to misinterpret that as the start of a comment.
+	Perhaps we need a DBIpp_cm_dw (for dash-dash-whitespace) style
+	to allow for that.)
+
+	Also, we'll only support DBIpp_cm_br as an input style. And
+	even then, only with reluctance. We may (need to) drop it when
+	we add support for odbc escape sequences.
+
 */
     int ph_type = 0;
     int idx = 1;
 
     char in_quote = '\0';
     char in_comment = '\0';
-    char *src, *start, *dst, *stmnt;
+    char *src, *start, *dst;
     char *style = "", *laststyle = '\0';
 
     SV *new_stmt_sv = newSV(strlen(statement) * 3);
@@ -2296,11 +2339,12 @@ constant()
 
 
 SV *
-preparse(h, statement, ps_accept, ps_return)
+preparse(h, statement, ps_accept, ps_return, foo=Nullch)
     SV *	h
     char *	statement
     IV		ps_accept
     IV		ps_return
+    void	*foo
 	
 
 
@@ -2731,24 +2775,31 @@ fetchrow_array(sth)
 
 
 SV *
-fetchrow_hashref(sth, keyattrib="NAME")
+fetchrow_hashref(sth, keyattrib=Nullch)
     SV *	sth
     char *	keyattrib
     PREINIT:
     dPERINTERP;
     SV *rowavr;
+    D_imp_sth(sth);
     CODE:
     PUSHMARK(sp);
     XPUSHs(sth);
     PUTBACK;
     if (perl_call_method("fetch", G_SCALAR) != 1)
 	croak("panic: DBI fetch");	/* should never happen */
+    if (!keyattrib || !*keyattrib) {
+	SV *kn = DBIc_FetchHashKeyName(imp_sth);
+	if (kn && SvOK(kn))
+	    keyattrib = SvPVX(kn);
+	else
+	    keyattrib = "NAME";
+    }
     SPAGAIN;
     rowavr = POPs;
     PUTBACK;
     /* have we got an array ref in rowavr */
     if (SvROK(rowavr) && SvTYPE(SvRV(rowavr)) == SVt_PVAV) {
-	D_imp_sth(sth);
 	/* get field names. copy to invoke magic FETCH and for safety */
         SV *ka_rv = newSVsv(*hv_fetch((HV*)DBIc_MY_H(imp_sth), keyattrib,strlen(keyattrib), TRUE));
 	AV *ka_av = (AV*)SvRV(ka_rv);

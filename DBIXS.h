@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.18 2001/06/04 17:13:25 timbo Exp $
+/* $Id: DBIXS.h,v 10.19 2001/07/16 16:10:30 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -89,7 +89,7 @@ typedef struct dbih_com_std_st {
     int  call_depth;	/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
     HV   *my_h;		/* copy of outer handle HV (not refcounted)	*/
-    HV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
+    SV   *parent_h;	/* parent inner handle (ref to hv) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
     dbi_cond  *thr_cond;/* condition for thread access (see dispatch)	*/
 
@@ -99,7 +99,7 @@ typedef struct dbih_com_std_st {
     I32  kids;		/* count of db's for dr's, st's for db's etc	*/
     I32  active_kids;	/* kids which are currently DBIc_ACTIVE		*/
     U32  thr_user;	/* thread id currently using the handle		*/
-    void *spare2;
+    void *spare;
 } dbih_com_std_t;
 
 typedef struct dbih_com_attr_st {
@@ -111,7 +111,7 @@ typedef struct dbih_com_attr_st {
     SV *Errstr;		/* Native engine error message		*/
     SV *Handlers;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
-    I32  spare1;
+    SV *FetchHashKeyName;	/* for fetchrow_hashref		*/
 } dbih_com_attr_t;
 
 
@@ -200,6 +200,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_HANDLERS(imp)	SvRV(_imp2com(imp, attr.Handlers))
 #define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
 #define DBIc_LongReadLen_init	80	/* may change */
+#define DBIc_FetchHashKeyName(imp) (_imp2com(imp, attr.FetchHashKeyName))
 
 /* handle sub-type specific fields						*/
 /*	dbh	*/
@@ -371,13 +372,13 @@ typedef struct {
     SV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
     int         (*bind_as_num)	_((int sql_type, int p, int s, int *t, void *v));
     int         (*hash)		_((char *string, long i));
-    AV        * (*preparse)	_((SV *sth, char *statement, U32 flags, U32 spare));
+    SV        * (*preparse)	_((SV *sth, char *statement, IV ps_return, IV ps_accept, void *foo));
 
     SV *neatsvpvlen;	/* only show dbgpvlen chars when debugging pv's	*/
 
     dbi_mutex	*mutex;
 
-    int         (*logmsg)	_((SV *h, imp_xxh_t *imp_xxh, char *fmt, ...));
+    int         (*logmsg)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
     void *pad[8];
 } dbistate_t;
 

@@ -15,7 +15,7 @@ print "1..$tests\n";
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 10.1 $',
+		'Version' => '$Revision: 10.2 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -59,6 +59,10 @@ DBI::set_err($drh, 1, "test error", "IM999");
 eval { $DBI::rows = 1 };
 ($@ =~ m/Can't modify/)  ? print "ok 15\n" : print "not ok 15\n";
 
+($drh->{FetchHashKeyName} eq 'NAME')  ? print "ok 16\n" : print "not ok 16\n";
+$drh->{FetchHashKeyName} = 'NAME_lc';
+($drh->{FetchHashKeyName} eq 'NAME_lc')  ? print "ok 17\n" : print "not ok 17\n";
 
-BEGIN { $tests = 15 }
+
+BEGIN { $tests = 17 }
 exit 0;

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 10.9 2001/05/29 23:25:55 timbo Exp $
+# $Id: DBD.pm,v 10.10 2001/07/16 16:10:30 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -11,12 +11,12 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 SYNOPSIS
 
-    perldoc DBI::DBD
+  perldoc DBI::DBD
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 10.9 $
-	$Date: 2001/05/29 23:25:55 $
+  $Revision: 10.10 $
+  $Date: 2001/07/16 16:10:30 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -131,27 +131,27 @@ the I<libscan> method.
 Now an example, I use the word C<Driver> wherever you should insert
 your drivers name:
 
-    # -*- perl -*-
+  # -*- perl -*-
 
-    use DBI 1.03;
-    use DBI::DBD;
-    use ExtUtils::MakeMaker;
+  use DBI 1.03;
+  use DBI::DBD;
+  use ExtUtils::MakeMaker;
 
-    ExtUtils::MakeMaker::WriteMakefile(
-        'NAME'         => 'DBD::Driver',
-        'VERSION_FROM' => 'Driver.pm',
-        'INC'          => $DBI_INC_DIR,
-        'dist'         => { 'SUFFIX' => '.gz',
-			    'COMPRESS' => 'gzip -9f' },
-        'realclean'    => '*.xsi'
-    );
+  ExtUtils::MakeMaker::WriteMakefile(
+      'NAME'         => 'DBD::Driver',
+      'VERSION_FROM' => 'Driver.pm',
+      'INC'          => $DBI_INC_DIR,
+      'dist'         => { 'SUFFIX'   => '.gz',
+                            'COMPRESS' => 'gzip -9f' },
+      'realclean'    => '*.xsi'
+  );
 
-    package MY;
-    sub postamble { dbd_postamble(@_); }
-    sub libscan {
-	my($self, $path) = @_;
-	($path =~ /\~$/) ? undef : $path;
-    }
+  package MY;
+  sub postamble { dbd_postamble(@_); }
+  sub libscan {
+      my ($self, $path) = @_;
+      ($path =~ m/\~$/) ? undef : $path;
+  }
 
 See also L<ExtUtils::MakeMaker(3)>. L<ExtUtils::MM_Unix(3)>. 
 
@@ -183,7 +183,7 @@ The primary pre-requisite is Bundle::DBI; you may want or need to add
 some more.
 With the bundle set up correctly, the user can type:
 
-	perl -MCPAN -e 'install Bundle::DBD::Driver'
+        perl -MCPAN -e 'install Bundle::DBD::Driver'
 
 and Perl will download, compile, test and install all the Perl modules
 needed to build your driver.
@@ -202,58 +202,58 @@ You might want to add configuration management, copyright, and
 licencing information at the top.
 
 
-    package Bundle::DBD::Driver;
+  package Bundle::DBD::Driver;
 
-    $VERSION = '0.01';
+  $VERSION = '0.01';
 
-    1;
+  1;
 
-    __END__
+  __END__
 
-    =head1 NAME
+  =head1 NAME
 
-    Bundle::DBD::Driver - A bundle to install all DBD::Driver related modules
+  Bundle::DBD::Driver - A bundle to install all DBD::Driver related modules
 
-    =head1 SYNOPSIS
+  =head1 SYNOPSIS
 
-    C<perl -MCPAN -e 'install Bundle::DBD::Driver'>
+  C<perl -MCPAN -e 'install Bundle::DBD::Driver'>
 
-    =head1 CONTENTS
+  =head1 CONTENTS
 
-    Bundle::DBI  - Bundle for DBI by TIMB (Tim Bunce)
+  Bundle::DBI  - Bundle for DBI by TIMB (Tim Bunce)
 
-    DBD::Driver  - DBD::Driver by YOU (Your Name)
+  DBD::Driver  - DBD::Driver by YOU (Your Name)
 
-    =head1 DESCRIPTION
+  =head1 DESCRIPTION
 
-    This bundle includes all the modules used by the Perl Database
-    Interface (DBI) driver for Driver (DBD::Driver), assuming the
-    use of DBI version 1.13 or later, created by Tim Bunce.
+  This bundle includes all the modules used by the Perl Database
+  Interface (DBI) driver for Driver (DBD::Driver), assuming the
+  use of DBI version 1.13 or later, created by Tim Bunce.
 
-    If you've not previously used the CPAN module to install any
-    bundles, you will be interrogated during its setup phase.
-    But when you've done it once, it remembers what you told it.
-    You could start by running:
+  If you've not previously used the CPAN module to install any
+  bundles, you will be interrogated during its setup phase.
+  But when you've done it once, it remembers what you told it.
+  You could start by running:
 
-        C<perl -MCPAN -e 'install Bundle::CPAN'>
+    C<perl -MCPAN -e 'install Bundle::CPAN'>
 
-    =head1 SEE ALSO
+  =head1 SEE ALSO
 
-    Bundle::DBI
+  Bundle::DBI
 
-    =head1 AUTHOR
+  =head1 AUTHOR
 
-    Your Name E<lt>F<you@yourdomain.com>E<gt>
+  Your Name E<lt>F<you@yourdomain.com>E<gt>
 
-    =head1 THANKS
+  =head1 THANKS
 
-    This bundle was created by ripping off Bundle::libnet created by
-    Graham Barr E<lt>F<gbarr@ti.com>E<gt>, and radically simplified
-    with some information from Jochen Wiedmann E<lt>F<joe@ispsoft.de>E<gt>.
-    The template was then included in the DBI::DBD documentation by
-    Jonathan Leffler E<lt>F<jleffler@informix.com>E<gt>.
+  This bundle was created by ripping off Bundle::libnet created by
+  Graham Barr E<lt>F<gbarr@ti.com>E<gt>, and radically simplified
+  with some information from Jochen Wiedmann E<lt>F<joe@ispsoft.de>E<gt>.
+  The template was then included in the DBI::DBD documentation by
+  Jonathan Leffler E<lt>F<jleffler@informix.com>E<gt>.
 
-    =cut
+  =cut
 
 
 =head2 Driver.pm
@@ -284,8 +284,8 @@ or really specific for the DBD::File package.
   use strict;
   use vars qw($err $errstr $state $drh);
 
-  $err = 0;		# holds error code   for DBI::err
-  $errstr = "";	        # holds error string for DBI::errstr
+  $err = 0;             # holds error code   for DBI::err
+  $errstr = "";         # holds error string for DBI::errstr
   $sqlstate = "";       # holds SQL state for    DBI::state
 
 These variables are used for storing error states and messages.
@@ -299,23 +299,24 @@ that you may assume, there's only one handle for your driver.
 
 =item The driver constructor
 
-  sub driver {
-    return $drh if $drh;	# already created - return same one
-    my($class, $attr) = @_;
+  sub driver
+  {
+      return $drh if $drh;      # already created - return same one
+      my ($class, $attr) = @_;
 
-    $class .= "::dr";
+      $class .= "::dr";
 
-    # not a 'my' since we use it above to prevent multiple drivers
-    $drh = DBI::_new_drh($class, {
-      'Name'    => 'File',
-      'Version' => $VERSION,
-      'Err'     => \$DBD::File::err,
-      'Errstr'  => \$DBD::File::errstr,
-      'State'   => \$DBD::File::state,
-      'Attribution' => 'DBD::File by Jochen Wiedmann',
-    });
+      # not a 'my' since we use it above to prevent multiple drivers
+      $drh = DBI::_new_drh($class, {
+          'Name'        => 'File',
+          'Version'     => $VERSION,
+          'Err'         => \$DBD::File::err,
+          'Errstr'      => \$DBD::File::errstr,
+          'State'       => \$DBD::File::state,
+          'Attribution' => 'DBD::File by Jochen Wiedmann',
+      });
 
-    return $drh;
+      return $drh;
   }
 
 The I<driver> method is the driver handle constructor. It's a
@@ -327,7 +328,7 @@ C<$sth>).
 
 The prototype of DBI::_new_drh is
 
-    $drh = DBI::_new_drh($class, $attr1, $attr2);
+  $drh = DBI::_new_drh($class, $attr1, $attr2);
 
 with the following arguments:
 
@@ -372,32 +373,33 @@ loaded.
 The database handle constructor is a driver method, thus we have
 to change the namespace.
 
-  sub connect {
-    my($drh, $dbname, $user, $auth, $attr)= @_;
+  sub connect
+  {
+      my ($drh, $dbname, $user, $auth, $attr) = @_;
 
-    # Some database specific verifications, default settings
-    # and the like following here. This should only include
-    # syntax checks or similar stuff where it's legal to
-    # 'die' in case of errors.
+      # Some database specific verifications, default settings
+      # and the like following here. This should only include
+      # syntax checks or similar stuff where it's legal to
+      # 'die' in case of errors.
 
-    # create a 'blank' dbh (call superclass constructor)
-    my $dbh = DBI::_new_dbh($drh, {
-      'Name' => $dbname,
-      'USER' => $user,
-      'CURRENT_USER' => $user,
-    });
+      # create a 'blank' dbh (call superclass constructor)
+      my $dbh = DBI::_new_dbh($drh, {
+          'Name'         => $dbname,
+          'USER'         => $user,
+          'CURRENT_USER' => $user,
+      });
 
-    # Process attributes from the DSN; we assume ODBC syntax
-    # here, that is, the DSN looks like var1=val1;...;varN=valN
+      # Process attributes from the DSN; we assume ODBC syntax
+      # here, that is, the DSN looks like var1=val1;...;varN=valN
 
-    my $var;
-    foreach $var (split(/;/, $dbname)) {
-      if ($var =~ /(.*?)=(,*)/) {
-	# Not !!! $dbh->{$var} = $val;
-	$dbh->STORE($var, $val);
+      my $var;
+      foreach $var (split(/;/, $dbname)) {
+          if ($var =~ m/(.*?)=(,*)/) {
+              # Not !!! $dbh->{$var} = $val;
+              $dbh->STORE($var, $val);
+          }
       }
-    }
-    $dbh;
+      $dbh;
   }
 
 This is mostly the same as in the I<driver handle constructor> above.
@@ -405,7 +407,7 @@ The arguments are described in the DBI man page. See L<DBI(3)>.
 The constructor is called, returning a database handle. The constructors
 prototype is
 
-    $dbh = DBI::_new_dbh($drh, $attr1, $attr2);
+  $dbh = DBI::_new_dbh($drh, $attr1, $attr2);
 
 with the same arguments as in the I<driver handle constructor>, the
 exception being C<$class> replaced by C<$drh>.
@@ -435,7 +437,7 @@ attribute.
 
 To report an error, you use the C<DBI::set_err> function/method:
 
-    $h->DBI::set_err($errcode, $errmsg);
+  $h->DBI::set_err($errcode, $errmsg);
 
 This will ensure that the error is recorded correctly and that
 RaiseError and PrintError etc are handled correctly.  Typically you'll
@@ -461,19 +463,20 @@ There's nothing much new in the statement handle constructor.
 
   $DBD::Driver::db::imp_data_size = 0;
 
-  sub prepare {
-	my($dbh, $statement, @attribs)= @_;
+  sub prepare
+  {
+      my ($dbh, $statement, @attribs) = @_;
 
-	# create a 'blank' sth
-	my $sth = DBI::_new_sth($dbh, {
-	    'Statement' => $statement,
-	    });
+      # create a 'blank' sth
+      my $sth = DBI::_new_sth($dbh, {
+          'Statement' => $statement,
+          });
 
-	# Setup module specific data
-	$sth->STORE('driver_params', []);
-	$sth->STORE('NUM_OF_PARAMS', ($statement =~ tr/?//));
+      # Setup module specific data
+      $sth->STORE('driver_params', []);
+      $sth->STORE('NUM_OF_PARAMS', ($statement =~ tr/?//));
 
-	$sth;
+      $sth;
   }
 
 This is still the same: Check the arguments and call the super class
@@ -492,20 +495,21 @@ could not call I<bind_param> in that case.
 Pure Perl drivers will rarely support transactions. Thus you're I<commit>
 and I<rollback> methods will typically be quite simple:
 
-  sub commit {
-    my($dbh) = @_;
-    if ($dbh->FETCH('Warn')) {
-      warn("Commit ineffective while AutoCommit is on");
-    }
-    1;
+  sub commit
+  {
+      my ($dbh) = @_;
+      if ($dbh->FETCH('Warn')) {
+          warn("Commit ineffective while AutoCommit is on");
+      }
+      1;
   }
 
   sub rollback {
-    my($dbh) = @_;
-    if ($dbh->FETCH('Warn')) {
-      warn("Rollback ineffective while AutoCommit is on");
-    }
-    0;
+      my ($dbh) = @_;
+      if ($dbh->FETCH('Warn')) {
+          warn("Rollback ineffective while AutoCommit is on");
+      }
+      0;
   }
 
 
@@ -514,11 +518,11 @@ and I<rollback> methods will typically be quite simple:
 These methods (that we have already used, see above) are called for
 you, whenever the user does a
 
-    $dbh->{$attr} = $val;
+  $dbh->{$attr} = $val;
 
 or, respectively,
 
-    $val = $dbh->{$attr};
+  $val = $dbh->{$attr};
 
 See L<perltie(1)> for details on tied hash refs to understand why these
 methods are required.
@@ -528,36 +532,38 @@ like I<RaiseError> or I<PrintError>. All you have to do handle your
 driver's private attributes and any attributes, like AutoCommit, that
 the DBI can't handle for you. A good example might look like this:
 
-  sub STORE {
-    my($dbh, $attr, $val) = @_;
-    if ($attr eq 'AutoCommit') {
-      # AutoCommit is currently the only standard attribute we have
-      # to consider.
-      if (!$val) { die "Can't disable AutoCommit"; }
-      return 1;
-    }
-    if ($attr =~ /^driver_/) {
-      # Handle only our private attributes here
-      # Note that we could trigger arbitrary actions.
-      # Ideally we should catch unknown attributes.
-      $dbh->{$attr} = $val; # Yes, we are allowed to do this,
-      return 1;             # but only for our private attributes
-    }
-    # Else pass up to DBI to handle for us
-    $dbh->SUPER::STORE($attr, $val);
+  sub STORE
+  {
+      my ($dbh, $attr, $val) = @_;
+      if ($attr eq 'AutoCommit') {
+          # AutoCommit is currently the only standard attribute we have
+          # to consider.
+          if (!$val) { die "Can't disable AutoCommit"; }
+          return 1;
+      }
+      if ($attr =~ m/^driver_/) {
+          # Handle only our private attributes here
+          # Note that we could trigger arbitrary actions.
+          # Ideally we should catch unknown attributes.
+          $dbh->{$attr} = $val; # Yes, we are allowed to do this,
+          return 1;             # but only for our private attributes
+      }
+      # Else pass up to DBI to handle for us
+      $dbh->SUPER::STORE($attr, $val);
   }
 
-  sub FETCH {
-    my($dbh, $attr) = @_;
-    if ($attr eq 'AutoCommit') { return 1; }
-    if ($attr =~ /^driver_/) {
-      # Handle only our private attributes here
-      # Note that we could trigger arbitrary actions.
-      return $dbh->{$attr}; # Yes, we are allowed to do this,
-                            # but only for our private attributes
-    }
-    # Else pass up to DBI to handle
-    $dbh->SUPER::FETCH($attr);
+  sub FETCH
+  {
+      my ($dbh, $attr) = @_;
+      if ($attr eq 'AutoCommit') { return 1; }
+      if ($attr =~ m/^driver_/) {
+          # Handle only our private attributes here
+          # Note that we could trigger arbitrary actions.
+          return $dbh->{$attr}; # Yes, we are allowed to do this,
+                                # but only for our private attributes
+      }
+      # Else pass up to DBI to handle
+      $dbh->SUPER::FETCH($attr);
   }
 
 The DBI will actually store and fetch driver-specific attributes (with all
@@ -583,34 +589,36 @@ using the I<driver_params> attribute from above:
 
   $DBD::Driver::st::imp_data_size = 0;
 
-  sub bind_param {
-    my($sth, $pNum, $val, $attr) = @_;
-    my $type = (ref $attr) ? $attr->{TYPE} : $attr;
-    if ($type) {
-	my $dbh = $sth->{Database};
-	$val = $dbh->quote($sth, $type);
-    }
-    my $params = $sth->FETCH('driver_params');
-    $params->[$pNum-1] = $val;
-    1;
+  sub bind_param
+  {
+      my ($sth, $pNum, $val, $attr) = @_;
+      my $type = (ref $attr) ? $attr->{TYPE} : $attr;
+      if ($type) {
+          my $dbh = $sth->{Database};
+          $val = $dbh->quote($sth, $type);
+      }
+      my $params = $sth->FETCH('driver_params');
+      $params->[$pNum-1] = $val;
+      1;
   }
 
-  sub execute {
-    my($sth, @bind_values) = @_;
-    my $params = (@bind_values) ?
-	\@bind_values : $sth->FETCH('driver_params');
-    my $numParam = $sth->FETCH('NUM_OF_PARAMS');
-    if (@$params != $numParam) { ... }
-    my $statement = $sth->{'Statement'};
-    for (my $i = 0;  $i < $numParam;  $i++) {
-	$statement =~ s/?/$params->[$i]/e;
-    }
-    # Do anything ... we assume that an array ref of rows is
-    # created and store it:
-    $sth->{'driver_data'} = $data;
-    $sth->{'driver_rows'} = @$data; # number of rows
-    $sth->STORE('NUM_OF_FIELDS') = $numFields;
-    @$data || '0E0';
+  sub execute
+  {
+      my ($sth, @bind_values) = @_;
+      my $params = (@bind_values) ?
+          \@bind_values : $sth->FETCH('driver_params');
+      my $numParam = $sth->FETCH('NUM_OF_PARAMS');
+      if (@$params != $numParam) { ... }
+      my $statement = $sth->{'Statement'};
+      for (my $i = 0;  $i < $numParam;  $i++) {
+          $statement =~ s/?/$params->[$i]/e;
+      }
+      # Do anything ... we assume that an array ref of rows is
+      # created and store it:
+      $sth->{'driver_data'} = $data;
+      $sth->{'driver_rows'} = @$data; # number of rows
+      $sth->STORE('NUM_OF_FIELDS') = $numFields;
+      @$data || '0E0';
   }
 
 Things you should note here: We setup the NUM_OF_FIELDS attribute
@@ -633,19 +641,20 @@ We need not implement the methods I<fetchrow_array>, I<fetchall_arrayref>,
 ... because these are already part of DBI. All we need is the method
 I<fetchrow_arrayref>:
 
-  sub fetchrow_arrayref {
-    my($sth) = @_;
-    my $data = $sth->FETCH('driver_data');
-    my $row = shift @$data;
-    if (!$row) { return undef; }
-    if ($sth->FETCH('ChopBlanks')) {
-	map { $_ =~ s/\s+$//; } @$row;
-    }
-    return $sth->_set_fbav($row);
+  sub fetchrow_arrayref
+  {
+      my ($sth) = @_;
+      my $data = $sth->FETCH('driver_data');
+      my $row = shift @$data;
+      if (!$row) { return undef; }
+      if ($sth->FETCH('ChopBlanks')) {
+          map { $_ =~ s/\s+$//; } @$row;
+      }
+      return $sth->_set_fbav($row);
   }
   *fetch = \&fetchrow_arrayref; # required alias for fetchrow_arrayref
 
-  sub rows { my($sth) = @_; $sth->FETCH('driver_rows'); }
+  sub rows { my ($sth) = @_; $sth->FETCH('driver_rows'); }
 
 Note the use of the method I<_set_fbav>: This is required so that
 I<bind_col> and I<bind_columns> work.
@@ -699,7 +708,7 @@ The DBD::Informix test code has to adapt in a number of places to the
 type of database to which it is connected as different Informix
 databases have different capabilities.
 
-	[...More info TBS...]
+        [...More info TBS...]
 
 
 =head1 CREATING A NEW DRIVER USING C/XS
@@ -722,7 +731,7 @@ more hairly than it is now.)
 The DBD::Informix driver is a good reference for a driver implemented
 using 'embedded SQL'. DBD::Ingres may also be worth a look.
 
-	[...More info TBS...]
+        [...More info TBS...]
 
 =head2 REQUIREMENTS ON A DRIVER
 
@@ -791,27 +800,29 @@ are already discussed for Pure Perl drivers or really Oracle specific.
 
 =item The database handle constructor
 
-  sub connect {
-	my($drh, $dbname, $user, $auth)= @_;
+  sub connect
+  {
+      my ($drh, $dbname, $user, $auth) = @_;
 
-	# Some database specific verifications, default settings
-	# and the like following here. This should only include
-	# syntax checks or similar stuff where it's legal to
-	# 'die' in case of errors.
+      # Some database specific verifications, default settings
+      # and the like following here. This should only include
+      # syntax checks or similar stuff where it's legal to
+      # 'die' in case of errors.
 
-	# create a 'blank' dbh (call superclass constructor)
-	my $dbh = DBI::_new_dbh($drh, {
-	    'Name' => $dbname,
-	    'USER' => $user, 'CURRENT_USER' => $user,
-	    });
+      # create a 'blank' dbh (call superclass constructor)
+      my $dbh = DBI::_new_dbh($drh, {
+          'Name'         => $dbname,
+          'USER'         => $user,
+          'CURRENT_USER' => $user,
+          });
 
-	# Call Oracle OCI orlon func in Oracle.xs file
-	# and populate internal handle data.
-	DBD::Oracle::db::_login($dbh, $dbname, $user, $auth)
-	    or return undef;
+      # Call Oracle OCI orlon func in Oracle.xs file
+      # and populate internal handle data.
+      DBD::Oracle::db::_login($dbh, $dbname, $user, $auth)
+          or return undef;
 
-	$dbh;
-    }
+      $dbh;
+  }
 
 This is mostly the same as in the Pure Perl case, the exception being
 the use of the private I<_login> callback: This will really connect to
@@ -829,22 +840,23 @@ the I<connect> method it now has a C callback:
   package DBD::Oracle::db; # ====== DATABASE ======
   use strict;
 
-  sub prepare {
-	my($dbh, $statement, @attribs)= @_;
+  sub prepare
+  {
+      my ($dbh, $statement, @attribs) = @_;
 
-	# create a 'blank' sth
-	my $sth = DBI::_new_sth($dbh, {
-	    'Statement' => $statement,
-	    });
+      # create a 'blank' sth
+      my $sth = DBI::_new_sth($dbh, {
+          'Statement' => $statement,
+          });
 
-	# Call Oracle OCI oparse func in Oracle.xs file.
-	# (This will actually also call oopen for you.)
-	# and populate internal handle data.
+      # Call Oracle OCI oparse func in Oracle.xs file.
+      # (This will actually also call oopen for you.)
+      # and populate internal handle data.
 
-	DBD::Oracle::st::_prepare($sth, $statement, @attribs)
-	    or return undef;
+      DBD::Oracle::st::_prepare($sth, $statement, @attribs)
+          or return undef;
 
-	$sth;
+      $sth;
   }
 
 =back
@@ -889,7 +901,7 @@ Driver.h should look like this:
 
   #include "dbdimp.h"
 
-  #include <dbd_xsh.h>     /* installed by the DBI module  */
+  #include <dbd_xsh.h>    /* installed by the DBI module  */
 
 
 =head2 Implementation header dbdimp.h
@@ -924,30 +936,30 @@ is I<your exclusive part>. Rewrite it from scratch, so it will be
 clean and short, in other words: A better piece of code. (Of course
 have an eye at other people's work.)
 
-   struct imp_drh_st {
-        dbih_drc_t com;		/* MUST be first element in structure	*/
+  struct imp_drh_st {
+      dbih_drc_t com;           /* MUST be first element in structure   */
 
-       /* Insert your driver handle attributes here */
-   };
+      /* Insert your driver handle attributes here */
+  };
 
-   struct imp_dbh_st {
-       dbih_dbc_t com;		/* MUST be first element in structure	*/
+  struct imp_dbh_st {
+      dbih_dbc_t com;           /* MUST be first element in structure   */
 
-       /* Insert your database handle attributes here */
-   };
+      /* Insert your database handle attributes here */
+  };
 
-   struct imp_sth_st {
-       dbih_stc_t com;		/* MUST be first element in structure	*/
+  struct imp_sth_st {
+      dbih_stc_t com;           /* MUST be first element in structure   */
 
-       /* Insert your statement handle attributes here */
-   };
+      /* Insert your statement handle attributes here */
+  };
 
-   /*  Rename functions for avoiding name clashes; prototypes are  */
-   /*  in dbd_xst.h                                                */
-   #define dbd_init	    ora_init
-   #define dbd_db_login	    ora_db_login
-   #define dbd_db_do        ora_db_do
-   ... many more here ...
+  /*  Rename functions for avoiding name clashes; prototypes are  */
+  /*  in dbd_xst.h                                                */
+  #define dbd_init          ora_init
+  #define dbd_db_login      ora_db_login
+  #define dbd_db_do        ora_db_do
+  ... many more here ...
 
 This structures implement your private part of the handles. You I<have>
 to use the name I<imp_dbh_dr|db|st> and the first field I<must> be of
@@ -971,13 +983,14 @@ interest in moving the DBI sources to ANSI as well.
 
 =item Initialization
 
-    #include "Driver.h"
+  #include "Driver.h"
 
-    DBISTATE_DECLARE;
+  DBISTATE_DECLARE;
 
-    void dbd_init(dbistate_t* dbistate) {
-        DBIS = dbistate;  /*  Initialize the DBI macros  */
-    }
+  void dbd_init(dbistate_t* dbistate)
+  {
+      DBIS = dbistate;  /*  Initialize the DBI macros  */
+  }
 
 dbd_init will be called when your driver is first loaded. These
 statements are needed for use of the DBI macros. They will include your
@@ -988,21 +1001,21 @@ private header file I<dbdimp.h> in turn.
 You need a function to handle recording of errors. You can call it
 whatever you like, but we'll call it C<do_error> here.
 
-    void do_error(SV* h, int rc, char* what) {
+  void do_error(SV* h, int rc, char* what) {
 
 Note that I<h> is a generic handle, may it be a driver handle, a
 database or a statement handle.
 
-        D_imp_xxh(h);
+  D_imp_xxh(h);
 
 This macro will declare and initialize a variable I<imp_xxh> with
 a pointer to your private handle pointer. You may cast this to
 to I<imp_drh_t>, I<imp_dbh_t> or I<imp_sth_t>.
 
-        SV *errstr = DBIc_ERRSTR(imp_xxh);
-        sv_setiv(DBIc_ERR(imp_xxh), (IV)rc);	/* set err early	*/
-        sv_setpv(errstr, what);
-        DBIh_EVENT2(h, ERROR_event, DBIc_ERR(imp_xxh), errstr);
+  SV *errstr = DBIc_ERRSTR(imp_xxh);
+  sv_setiv(DBIc_ERR(imp_xxh), (IV)rc);  /* set err early        */
+  sv_setpv(errstr, what);
+  DBIh_EVENT2(h, ERROR_event, DBIc_ERR(imp_xxh), errstr);
 
 Note the use of the macros DBIc_ERRSTR and DBIc_ERR for accessing the
 handles error string and error code.
@@ -1010,17 +1023,17 @@ handles error string and error code.
 The macro DBIh_EVENT2 will ensure that the attributes I<RaiseError>
 and I<PrintError> work: That's all what you have to deal with them. :-)
 
-        if (dbis->debug >= 2)
-	      fprintf(DBILOGFP, "%s error %d recorded: %s\n",
-		    what, rc, SvPV(errstr,na));
+  if (dbis->debug >= 2)
+      fprintf(DBILOGFP, "%s error %d recorded: %s\n",
+          what, rc, SvPV(errstr,na));
 
 That's the first time we see how debug/trace logging works within a DBI
 driver.  Make use of this as often as you can!
 
 =item dbd_db_login
 
-    int dbd_db_login(SV* dbh, imp_dbh_t* imp_dbh, char* dbname,
-                     char* user, char* auth) {
+  int dbd_db_login(SV* dbh, imp_dbh_t* imp_dbh, char* dbname,
+                   char* user, char* auth);
 
 This function will really connect to the database. The argument I<dbh>
 is the database handle. I<imp_dbh> is the pointer to the handles private
@@ -1043,34 +1056,34 @@ attributes:
   char* hostname;
   char* port;
 
-  if (!SvTRUE(imp_data)  ||  !SvROK(imp_data)  ||
-	SvTYPE(hv = (HV*) SvRV(imp_data)) != SVt_PVHV) {
-	croak("Implementation dependent data invalid: Not a hash ref.\n");
+  if (! SvTRUE(imp_data) || !SvROK(imp_data)  ||
+        SvTYPE(hv = (HV*) SvRV(imp_data)) != SVt_PVHV) {
+      croak("Implementation dependent data invalid: Not a hash ref.\n");
   }
   if ((svp = hv_fetch(hv, "hostname", strlen("hostname"), FALSE)) &&
-        SvTRUE(*svp)) {
-	hostname = SvPV(*svp, na);
+      SvTRUE(*svp)) {
+      hostname = SvPV(*svp, na);
   } else {
-	hostname = "localhost";
+      hostname = "localhost";
   }
-  if ((svp = hv_fetch(hv, "port", strlen("port"), FALSE))  &&
-        SvTRUE(*svp)) {
-	port = SvPV(*svp, na);  /*  May be a service name  */
+  if ((svp = hv_fetch(hv, "port", strlen("port"), FALSE)) &&
+      SvTRUE(*svp)) {
+      port = SvPV(*svp, na);  /*  May be a service name  */
   } else {
-        port = DEFAULT_PORT;
+      port = DEFAULT_PORT;
   }
 
 Now you should really connect to the database. If you are successful
 (or even if you fail, but you have allocated some resources), you should
 use the following macros:
 
-    DBIc_IMPSET_on(imp_dbh);
+  DBIc_IMPSET_on(imp_dbh);
 
 This indicates that the driver (implementor) has allocated resources in
 the imp_dbh structure and that the implementors private dbd_db_destroy
 function should be called when the handle is destroyed.
 
-    DBIc_ACTIVE_on(imp_dbh);
+  DBIc_ACTIVE_on(imp_dbh);
 
 This indicates that the handle has an active connection to the server
 and that the dbd_db_disconnect function should be called before the
@@ -1083,8 +1096,8 @@ The dbd_db_login function should return TRUE for success, FALSE otherwise.
 
 =item dbd_db_rollback
 
-    int dbd_db_commit(   SV* dbh, imp_dbh_t* imp_dbh );
-    int dbd_db_rollback( SV* dbh, imp_dbh_t* imp_dbh );
+  int dbd_db_commit(   SV* dbh, imp_dbh_t* imp_dbh );
+  int dbd_db_rollback( SV* dbh, imp_dbh_t* imp_dbh );
 
 These are used for commit and rollback. They should return TRUE for
 success, FALSE for error.
@@ -1099,19 +1112,19 @@ This is your private part of the I<disconnect> method. Any dbh with
 the I<ACTIVE> flag on must be disconnected. (Note that you have to set
 it in I<dbd_db_connect> above.)
 
-    int dbd_db_disconnect(SV* dbh, imp_dbh_t* imp_dbh);
+  int dbd_db_disconnect(SV* dbh, imp_dbh_t* imp_dbh);
 
 The database handle will return TRUE for success, FALSE otherwise.
 In any case it should do a
 
-    DBIc_ACTIVE_off(imp_dbh);
+  DBIc_ACTIVE_off(imp_dbh);
 
 before returning so DBI knows that I<dbd_db_disconnect> was executed.
 
 
 =item dbd_db_discon_all
 
-    int dbd_discon_all (SV *drh, imp_drh_t *imp_drh) {
+  int dbd_discon_all (SV *drh, imp_drh_t *imp_drh);
 
 This function may be called at shutdown time. It should make
 best-efforts to disconnect all database handles - if possible. Some
@@ -1128,9 +1141,10 @@ This is your private part of the database handle destructor. Any dbh with
 the I<IMPSET> flag on must be destroyed, so that you can safely free
 resources. (Note that you have to set it in I<dbd_db_connect> above.)
 
-    void dbd_db_destroy(SV* dbh, imp_dbh_t* imp_dbh) {
-        DBIc_IMPSET_off(imp_dbh);
-    }
+  void dbd_db_destroy(SV* dbh, imp_dbh_t* imp_dbh)
+  {
+      DBIc_IMPSET_off(imp_dbh);
+  }
 
 The DBI Driver.xst code will have called dbd_db_disconnect for you,
 if the handle is still 'active', before calling dbd_db_destroy.
@@ -1143,12 +1157,12 @@ that the destructor was called.
 
 This function handles
 
-     $dbh->{$key} = $value;
+  $dbh->{$key} = $value;
 
 its prototype is
 
-    int dbd_db_STORE_attrib(SV* dbh, imp_dbh_t* imp_dbh, SV* keysv,
-                            SV* valuesv);
+  int dbd_db_STORE_attrib(SV* dbh, imp_dbh_t* imp_dbh, SV* keysv,
+                          SV* valuesv);
 
 You do not handle all attributes, in contrary you should not handle
 DBI attributes here: Leave this to DBI. (There's one exception,
@@ -1180,11 +1194,11 @@ could think of it as an unnamed handle attribute. It's not normally used.
 
 This is the counterpart of dbd_db_STORE_attrib, needed for
 
-    $value = $dbh->{$key};
+  $value = $dbh->{$key};
 
 Its prototype is:
 
-    SV* dbd_db_FETCH_attrib(SV* dbh, imp_dbh_t* imp_dbh, SV* keysv) {
+  SV* dbd_db_FETCH_attrib(SV* dbh, imp_dbh_t* imp_dbh, SV* keysv);
 
 Unlike all previous methods this returns an SV with the value. Note
 that you should normally execute sv_2mortal, if you return a nonconstant
@@ -1194,8 +1208,8 @@ Note, that DBI implements a caching algorithm for attribute values.
 If you think, that an attribute may be fetched, you store it in the
 dbh itself:
 
-    if (cacheit) /* cache value for later DBI 'quick' fetch? */
-        hv_store((HV*)SvRV(dbh), key, kl, cachesv, 0);
+  if (cacheit) /* cache value for later DBI 'quick' fetch? */
+      hv_store((HV*)SvRV(dbh), key, kl, cachesv, 0);
 
 
 =item dbd_st_prepare
@@ -1204,8 +1218,8 @@ This is the private part of the I<prepare> method. Note that you
 B<must not> really execute the statement here. You may, for example,
 preparse and validate the statement or do similar things.
 
-    int dbd_st_prepare(SV* sth, imp_sth_t* imp_sth, char* statement,
-		       SV* attribs);
+  int dbd_st_prepare(SV* sth, imp_sth_t* imp_sth, char* statement,
+                     SV* attribs);
 
 A typical, simple possibility is just to store the statement in the
 imp_data hash ref and use it in dbd_st_execute. If you can, you should
@@ -1215,14 +1229,14 @@ doesn't require that. However, if you do, document it.
 In any case you should set the IMPSET flag, as you did in
 I<dbd_db_connect> above:
 
-   DBIc_IMPSET_on(imp_sth);
+  DBIc_IMPSET_on(imp_sth);
 
 
 =item dbd_st_execute
 
 This is where a statement will really be executed.
 
-   int dbd_st_execute(SV* sth, imp_sth_t* imp_sth);
+  int dbd_st_execute(SV* sth, imp_sth_t* imp_sth);
 
 Note, that you must be aware, that a statement may be executed repeatedly.
 Also, you should not expect, that I<finish> will be called between
@@ -1232,24 +1246,24 @@ If your driver supports binding of parameters (he should!), but the
 database doesn't, you must probably do it here. This can be done as
 follows:
 
-      char* statement = dbd_st_get_statement(sth, imp_sth);
-          /*  Its your drivers task to implement this function.  It      */
-          /*  must restore the statement passed to preparse.            */
-          /*  See use of imp_data above for an example of how to do     */
-          /* this.                                                     */
-      int numParam = DBIc_NUM_PARAMS(imp_sth);
-      int i;
+  char* statement = dbd_st_get_statement(sth, imp_sth);
+      /* Its your drivers task to implement this function.  It     */
+      /* must restore the statement passed to preparse.            */
+      /* See use of imp_data above for an example of how to do     */
+      /* this.                                                     */
+  int numParam = DBIc_NUM_PARAMS(imp_sth);
+  int i;
 
-      for (i = 0;  i < numParam;  i++) {
-	  char* value = dbd_db_get_param(sth, imp_sth, i);
-	      /*  Its your drivers task to implement dbd_db_get_param,  */
-              /*  it must be setup as a counterpart of dbd_bind_ph.     */
-          /*  Look for '?' and replace it with 'value'.  Difficult       */
-          /*  task, note that you may have question marks inside        */
-          /*  quotes and the like ...  :-(                               */
-          /*  See DBD::mysql for an example. (Don't look too deep into  */
-          /*  the example, you will notice where I was lazy ...)        */
-      }
+  for (i = 0; i < numParam; i++) {
+      char* value = dbd_db_get_param(sth, imp_sth, i);
+      /* Its your drivers task to implement dbd_db_get_param,      */
+      /* it must be setup as a counterpart of dbd_bind_ph.         */
+      /* Look for '?' and replace it with 'value'.  Difficult      */
+      /* task, note that you may have question marks inside        */
+      /* quotes and the like ...  :-(                              */
+      /* See DBD::mysql for an example. (Don't look too deep into  */
+      /* the example, you will notice where I was lazy ...)        */
+  }
 
 The next thing is you really execute the statement. Note that you must
 prepare the attributes NUM_OF_FIELDS, NAME, ... when the statement is
@@ -1258,10 +1272,10 @@ I<fetchrow>. In particular you have to tell DBI the number of fields,
 that the statement has, because it will be used by DBI internally.
 Thus the function will typically ends with:
 
-    if (isSelectStatement) {
-	DBIc_NUM_FIELDS(imp_sth) = numFields;
-    DBIc_ACTIVE_on(imp_sth);
-    }
+  if (isSelectStatement) {
+      DBIc_NUM_FIELDS(imp_sth) = numFields;
+      DBIc_ACTIVE_on(imp_sth);
+  }
 
 It is important that the ACTIVE flag only be set for select statements.
 See I<dbd_st_preparse> and I<dbd_db_connect> above for more explanations.
@@ -1277,40 +1291,40 @@ you.
 
 What you do is the following:
 
-    AV* av;
-    int numFields = DBIc_NUM_FIELDS(imp_sth); /* Correct, if NUM_FIELDS
-        is constant for this statement. There are drivers where this is
-        not the case! */
-    int chopBlanks = DBIc_is(imp_sth, DBIcf_ChopBlanks);
-    int i;
+  AV* av;
+  int numFields = DBIc_NUM_FIELDS(imp_sth); /* Correct, if NUM_FIELDS
+      is constant for this statement. There are drivers where this is
+      not the case! */
+  int chopBlanks = DBIc_is(imp_sth, DBIcf_ChopBlanks);
+  int i;
 
-    if (!fetch_new_row_of_data(...)) {
-	 ... /* check for error or end-of-data */
-	 DBIc_ACTIVE_off(imp_sth); /* turn off Active flag automatically */
-	 return Nullav;
-    }
-    /* get the fbav (field buffer array value) for this row	*/
-    /* it is very important to only call this after you know	*/
-    /* that you have a row of data to return.			*/
-    av = DBIS->get_fbav(imp_sth);
-    for (i = 0;  i < numFields;  i++) {
-        SV* sv = fetch_a_field(..., i);
-        if (chopBlanks && SvOK(sv) && type_is_blank_padded(field_type[i])) {
-            /*  Remove white space from end (only) of sv  */
-        }
-        sv_setsv(AvARRAY(av)[i], sv); /* Note: (re)use! */
-    }
-    return av;
+  if (!fetch_new_row_of_data(...)) {
+      ... /* check for error or end-of-data */
+      DBIc_ACTIVE_off(imp_sth); /* turn off Active flag automatically */
+      return Nullav;
+  }
+  /* get the fbav (field buffer array value) for this row       */
+  /* it is very important to only call this after you know      */
+  /* that you have a row of data to return.                     */
+  av = DBIS->get_fbav(imp_sth);
+  for (i = 0; i < numFields; i++) {
+      SV* sv = fetch_a_field(..., i);
+      if (chopBlanks && SvOK(sv) && type_is_blank_padded(field_type[i])) {
+          /*  Remove white space from end (only) of sv  */
+      }
+      sv_setsv(AvARRAY(av)[i], sv); /* Note: (re)use! */
+  }
+  return av;
 
 There's no need to use a fetch_a_field function returning an SV*.
 It's more common to use your database API functions to fetch the
 data as character strings and use code like this:
 
-	sv_setpvn(AvARRAY(av)[i], char_ptr, char_count);
+  sv_setpvn(AvARRAY(av)[i], char_ptr, char_count);
 
 NULL values must be returned as undef. You can use code like this:
 
-	SvOK_off(AvARRAY(av)[i]);
+  SvOK_off(AvARRAY(av)[i]);
 
 The function returns the AV prepared by DBI for success or C<Nullav>
 otherwise.
@@ -1328,10 +1342,10 @@ ACTIVE to on for the sth.
 
 Minimal example (the DBI default method just does this):
 
-    int dbd_st_finish(SV* sth, imp_sth_t* imp_sth) {
-        DBIc_ACTIVE_off(imp_sth);
-        return 1;
-    }
+  int dbd_st_finish(SV* sth, imp_sth_t* imp_sth) {
+      DBIc_ACTIVE_off(imp_sth);
+      return 1;
+  }
 
 The function returns TRUE for success, FALSE otherwise.
 
@@ -1340,10 +1354,10 @@ The function returns TRUE for success, FALSE otherwise.
 
 This function is the private part of the statement handle destructor.
 
-    void dbd_st_destroy(SV* sth, imp_sth_t* imp_sth);
-        ... /* any clean-up that's needed */
-        DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it   */
-   }
+  void dbd_st_destroy(SV* sth, imp_sth_t* imp_sth) {
+      ... /* any clean-up that's needed */
+      DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it   */
+  }
 
 The DBI Driver.xst code will call dbd_st_finish for you, if the sth has
 the ACTIVE flag set, before calling dbd_st_destroy.
@@ -1355,9 +1369,9 @@ the ACTIVE flag set, before calling dbd_st_destroy.
 These functions correspond to dbd_db_STORE|FETCH attrib above, except
 that they are for statement handles. See above.
 
-    int dbd_st_STORE_attrib(SV* sth, imp_sth_t* imp_sth, SV* keysv,
-                            SV* valuesv);
-    SV* dbd_st_FETCH_attrib(SV* sth, imp_sth_t* imp_sth, SV* keysv);
+  int dbd_st_STORE_attrib(SV* sth, imp_sth_t* imp_sth, SV* keysv,
+                          SV* valuesv);
+  SV* dbd_st_FETCH_attrib(SV* sth, imp_sth_t* imp_sth, SV* keysv);
 
 
 =item dbd_bind_ph
@@ -1366,9 +1380,9 @@ This function is internally used by the I<bind_param> method, the
 I<bind_param_inout> method and by the DBI Driver.xst code if C<execute>
 is called with any bind parameters.
 
-    int dbd_bind_ph (SV *sth, imp_sth_t *imp_sth, SV *param,
-		     SV *value, IV sql_type, SV *attribs,
-		     int is_inout, IV maxlen);
+  int dbd_bind_ph (SV *sth, imp_sth_t *imp_sth, SV *param,
+                   SV *value, IV sql_type, SV *attribs,
+                   int is_inout, IV maxlen);
 
 The I<param> argument holds an IV with the parameter number (1, 2, ...).
 The I<value> argument is the parameter value and I<sql_type> is its type.
@@ -1398,11 +1412,11 @@ each execute, the driver must evaluate the references and internally
 bind the values resulting from the references.  This is only applicable
 if the user writes:
 
-        $sth->execute;
+  $sth->execute;
 
 If the user writes:
 
-        $sth->execute(@values);
+  $sth->execute(@values);
 
 then DBI automatically calls the binding code for each element of
 @values.  These calls are indistinguishable from explicit user calls to
@@ -1496,13 +1510,13 @@ whether the connection to the database is still alive. Typically
 code like this:
 
   sub ping {
-    my $dbh = shift;
-    $sth = $dbh->prepare_cached(q{
-      select * from A_TABLE_NAME where 1=0
-    }) or return 0;
-    $sth->execute or return 0;
-    $sth->finish;
-    return 1;
+      my $dbh = shift;
+      $sth = $dbh->prepare_cached(q{
+          select * from A_TABLE_NAME where 1=0
+      }) or return 0;
+      $sth->execute or return 0;
+      $sth->finish;
+      return 1;
   }
 
 where A_TABLE_NAME is the name of a table that always exists (such as a
@@ -1530,7 +1544,7 @@ In dbd_init():
 
 In the relevant places do:
 
-  if (DBIc_COMPAT(imp_sth))	/* only do this for compatibility mode handles */
+  if (DBIc_COMPAT(imp_sth))     /* only do this for compatibility mode handles */
       sv_setiv(sql_rowcount, the_row_count);
 
 
@@ -1593,8 +1607,8 @@ all sorts of problems.
 Once upon a long time ago, the only way of handling the internal DBI
 boolean flags/attributes was through macros such as:
 
-    DBIc_WARN       DBIc_WARN_on        DBIc_WARN_off
-    DBIc_COMPAT     DBIc_COMPAT_on      DBIc_COMPAT_off
+  DBIc_WARN       DBIc_WARN_on        DBIc_WARN_off
+  DBIc_COMPAT     DBIc_COMPAT_on      DBIc_COMPAT_off
 
 Each of these took an imp_xxh pointer as an argument.
 
@@ -1603,10 +1617,10 @@ RaiseError and PrintError, and these do not have the full set of
 macros.
 The approved method for handling these is now the four macros:
 
-	DBIc_is(imp, flag)
-	DBIc_has(imp, flag)    an alias for DBIc_is
-	DBIc_on(imp, flag)
-	DBIc_off(imp, flag)
+  DBIc_is(imp, flag)
+  DBIc_has(imp, flag)    an alias for DBIc_is
+  DBIc_on(imp, flag)
+  DBIc_off(imp, flag)
 
 Consequently, the DBIc_XXXXX family of macros is now mostly deprecated
 and new drivers should avoid using them, even though the older drivers
@@ -1646,12 +1660,12 @@ or I<DBD::Driver::st> packages, they are not even derived from it.
 Instead they are instances of the I<DBI::db> or I<DBI::st> classes or
 a derived subclass. Thus, if you write a method I<mymethod> and do a
 
-    $dbh->mymethod()
+  $dbh->mymethod()
 
 then the autoloader will search for that method in the package I<DBI::db>.
 Of course you can instead to a
 
-    $dbh->func('mymethod')
+  $dbh->func('mymethod')
 
 and that will indeed work, even if I<mymethod> is inherited, but not
 without additional work. Setting C<@ISA> is not sufficient.
@@ -1663,7 +1677,7 @@ The first problem is, that the I<connect> method has no idea of
 subclasses. For example, you cannot implement base class and subclass
 in the same file: The I<install_driver> method wants to do a
 
-    require DBD::Driver;
+  require DBD::Driver;
 
 In particular, your subclass B<has> to be a separate driver, from
 the view of DBI, and you cannot share driver handles.
@@ -1674,19 +1688,19 @@ simply overwrite the method, unless you do something like this,
 quoted from I<DBD::CSV>:
 
   sub connect ($$;$$$) {
-    my($drh, $dbname, $user, $auth, $attr) = @_;
+      my ($drh, $dbname, $user, $auth, $attr) = @_;
 
-    my $this = $drh->DBD::File::dr::connect($dbname, $user, $auth, $attr);
-    if (!exists($this->{csv_tables})) {
-      $this->{csv_tables} = {};
-    }
+      my $this = $drh->DBD::File::dr::connect($dbname, $user, $auth, $attr);
+      if (!exists($this->{csv_tables})) {
+          $this->{csv_tables} = {};
+      }
 
-    $this;
+      $this;
   }
 
 Note that we cannot do a
 
-    $srh->SUPER::connect($dbname, $user, $auth, $attr);
+  $srh->SUPER::connect($dbname, $user, $auth, $attr);
 
 as we would usually do in a an OO environment, because $drh is an instance
 of I<DBI::dr>. And note, that the I<connect> method of I<DBD::File> is
@@ -1705,14 +1719,14 @@ driver uses a prefix I<driver_> for its private methods. Thus it's
 always clear whether to pass attributes to the super class or not.
 For example, consider this STORE method from the I<DBD::CSV> class:
 
-    sub STORE {
-	my($dbh, $attr, $val) = @_;
-	if ($attr !~ /^driver_/) {
-	    return $dbh->DBD::File::db::STORE($attr, $val);
-	}
-	if ($attr eq 'driver_foo') {
-	...
-    }
+  sub STORE {
+      my ($dbh, $attr, $val) = @_;
+      if ($attr !~ /^driver_/) {
+          return $dbh->DBD::File::db::STORE($attr, $val);
+      }
+      if ($attr eq 'driver_foo') {
+      ...
+  }
 
 
 =head1 ACKNOWLEDGEMENTS
@@ -1750,7 +1764,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = substr(q$Revision: 10.9 $, 10);
+$VERSION = substr(q$Revision: 10.10 $, 10);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
