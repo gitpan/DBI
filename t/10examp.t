@@ -224,7 +224,7 @@ sub is_tainted {
 	my $foo;
     return ! eval { ($foo=join('',@_)), kill 0; 1; };
 }
-if (0 && is_tainted($^X) && !$DBI::PurePerl) {
+if (is_tainted($^X) && !$DBI::PurePerl) {
     print "Taint attribute test enabled\n";
     $dbh->{'Taint'} = 0;
     my $st;
@@ -322,6 +322,10 @@ ok(0, $row_b);
 ok(0, $row_b->{MODE} == $row_a[0]);
 ok(0, $row_b->{SIZE} == $row_a[1]);
 ok(0, $row_b->{NAME} eq $row_a[2]);
+
+print "fetchrow_hashref('ParamValues')\n";
+ok(0, $csr_b->execute());
+ok(0, !defined eval { $csr_b->fetchrow_hashref('ParamValues') } ); # PurePerl croaks
 
 print "FetchHashKeyName\n";
 ok(0, $csr_b->execute());
@@ -661,4 +665,6 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 243; }
+exit 0;
+
+BEGIN { $tests = 245; }

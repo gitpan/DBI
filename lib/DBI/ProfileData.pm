@@ -75,6 +75,9 @@ use vars qw($VERSION);
 $VERSION = "1.0";
 
 use Carp qw(croak);
+use Symbol;
+
+use DBI::Profile qw(dbi_profile_merge);
 
 # some constants for use with node data arrays
 sub COUNT     () { 0 };
@@ -122,7 +125,8 @@ sub _read_files {
     my $read_header = 0;
     
     foreach my $filename (@$files) {
-        open(my $fh, $filename)
+        my $fh = gensym;
+        open($fh, $filename)
           or croak("Unable to read profile file '$filename': $!");
         
         $self->_read_header($fh, $filename, $read_header ? 0 : 1);
@@ -150,7 +154,7 @@ sub _read_header {
         chomp;
         last unless length $_;
         /^(\S+)\s*=\s*(.*)/
-          or croak("Syntax error in profile file '$filename': line $.");
+          or croak("Syntax error in header in $filename line $.: $_");
         $self->{_header}{$1} = $2 if $keep;
     }
 }
@@ -166,11 +170,11 @@ sub _read_body {
     my (@data, $index, $key, $path_key);
     while (<$fh>) {
         chomp;
-        if (/^\+\s+(\d+)\s(.*)/) {
+        if (/^\+\s+(\d+)\s?(.*)/) {
             # it's a key
             ($key, $index) = ($2, $1 - 1);
 
-            # unmangle key
+            # unmangle key	XXX looks unsafe
             $key =~ s/\\n/\n/g;
             $key =~ s/\\r/\r/g;
             $key =~ s/\\\\/\\/g;
@@ -178,19 +182,20 @@ sub _read_body {
             $#path = $index;      # truncate path to new length
             $path[$index] = $key; # place new key at end
 
-        } else {
+        }
+	elsif (/^=/) {
             # it's data - file in the node array with the path in index 0
             @data = /^=\s+(\d+)
-                       \s+(\d+\.\d+)
-                       \s+(\d+\.\d+)
-                       \s+(\d+\.\d+)
-                       \s+(\d+\.\d+)
-                       \s+(\d+\.\d+)
-                       \s+(\d+\.\d+)
+                       \s+(\d+\.?\d*)
+                       \s+(\d+\.?\d*)
+                       \s+(\d+\.?\d*)
+                       \s+(\d+\.?\d*)
+                       \s+(\d+\.?\d*)
+                       \s+(\d+\.?\d*)
                        \s*$/x;
 
             # no data?
-            croak("Syntax error in $filename : line $.") unless @data;
+            croak("Invalid data syntax format in $filename line $.: $_") unless @data;
 
             # elements of @path can't have NULLs in them, so this
             # forms a unique string per @path.  If there's some way I
@@ -201,7 +206,7 @@ sub _read_body {
             # look for previous entry
             if (exists $lookup->{$path_key}) {
                 # merge in the new data
-                $self->_merge_data($nodes->[$lookup->{$path_key}], \@data);
+		dbi_profile_merge($nodes->[$lookup->{$path_key}], \@data);
             } else {
                 # insert a new node - nodes are arrays with data in 0-6
                 # and path data after that
@@ -211,11 +216,14 @@ sub _read_body {
                 $lookup->{$path_key} = $#$nodes;
             }
         }
+	else {
+            croak("Invalid line type syntax error in $filename line $.: $_");
+	}
     }
 }
 
 # takes an existing node and merges in new data points
-sub _merge_data {
+sub _merge_data {	# XXX use dbi_profile_merge instead
     my ($self, $node, $data) = @_;
 
     # add counts and total duration

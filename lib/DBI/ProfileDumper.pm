@@ -158,6 +158,7 @@ use vars qw(@ISA $VERSION);
 $VERSION = "1.0";
 
 use Carp qw(croak);
+use Symbol;
 
 # validate params and setup default
 sub new {
@@ -175,7 +176,7 @@ sub flush_to_disk {
     my $self = shift;
     my $data = $self->{Data};
 
-    my $fh;
+    my $fh = gensym;
     if ($self->{_wrote_header}) {
         # append more data to the file
         open($fh, ">>$self->{File}") 

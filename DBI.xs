@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.18 2002/11/29 23:54:32 timbo Exp $
+/* $Id: DBI.xs,v 11.19 2002/12/01 22:34:29 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -3474,14 +3474,22 @@ fetchrow_hashref(sth, keyattrib=Nullch)
     PUTBACK;
     /* have we got an array ref in rowavr */
     if (SvROK(rowavr) && SvTYPE(SvRV(rowavr)) == SVt_PVAV) {
-	/* get field names. copy to invoke magic FETCH and for safety */
-        SV *ka_rv = newSVsv(*hv_fetch((HV*)DBIc_MY_H(imp_sth), keyattrib,strlen(keyattrib), TRUE));
-	AV *ka_av = (AV*)SvRV(ka_rv);
+	int i;
 	AV *rowav = (AV*)SvRV(rowavr);
 	int num_fields = AvFILL(rowav)+1;
-	HV *hv = newHV();
-
-	int i;
+	HV *hv;
+	AV *ka_av;
+        SV *ka_rv = *hv_fetch((HV*)DBIc_MY_H(imp_sth), keyattrib,strlen(keyattrib), TRUE);
+        ka_rv = newSVsv(ka_rv);	/* copy to invoke FETCH magic */
+	if (!(SvROK(ka_rv) && SvTYPE(SvRV(ka_rv))==SVt_PVAV)) {
+	    sv_setiv(DBIc_ERR(imp_sth), 1);
+	    sv_setpvf(DBIc_ERRSTR(imp_sth),
+		"Can't use attribute '%s' because it doesn't contain a reference to an array",
+		keyattrib, num_fields);
+	    XSRETURN_UNDEF;
+	}
+	ka_av = (AV*)SvRV(ka_rv);
+	hv    = newHV();
 	for (i=0; i < num_fields; ++i) {	/* honor the original order as sent by the database */
 	    STRLEN len;
 	    SV  **field_name_svp = av_fetch(ka_av, i, 1);

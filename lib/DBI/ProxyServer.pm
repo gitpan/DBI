@@ -1,4 +1,4 @@
-#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.6 2002/10/29 10:00:44 timbo Exp $
+#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.7 2002/12/01 22:34:29 timbo Exp $
 # -*- perl -*-
 #
 #   DBI::ProxyServer - a proxy server for DBI drivers
@@ -220,7 +220,7 @@ sub CallMethod {
     my $msg = $@;
     undef $dbh->{'private_server'};
     if ($msg) {
-	$server->Error($msg);
+	$server->Debug("CallMethod died with: $@");
 	die $msg;
     } else {
 	$server->Debug("CallMethod: <= " . join(",", @result));

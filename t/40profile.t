@@ -23,7 +23,7 @@ BEGIN {
 }
 
 use Test;
-BEGIN { plan tests => 54; }
+BEGIN { plan tests => 56; }
 
 use Data::Dumper;
 $Data::Dumper::Indent = 1;
@@ -83,12 +83,14 @@ my $data = $dbh->{Profile}{Data}{$sql};
 ok($data);
 ok(ref $data, 'ARRAY');
 ok(@$data == 7);
+ok((grep { defined($_)                } @$data) == 7);
+ok((grep { DBI::looks_like_number($_) } @$data) == 7);
+ok((grep { $_ >= 0                    } @$data) == 7);
 my ($count, $total, $first, $shortest, $longest, $time1, $time2) = @$data;
 ok($count > 3);
-ok($total > 0);
-ok($first > 0);
-ok($shortest > 0);
-ok($longest > 0);
+ok($total > $first);
+ok($total > $longest);
+ok($longest > 0); # XXX theoretically not reliable
 ok($longest > $shortest);
 ok($time1 > 0);
 ok($time2 > 0);

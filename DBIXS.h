@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.10 2002/11/26 00:20:33 timbo Exp $
+/* $Id: DBIXS.h,v 11.11 2002/12/01 22:34:29 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -442,10 +442,10 @@ static dbistate_t **get_dbistate() {
 /* attribs value. One day we may add some extra magic in here.		*/
 #define DBD_ATTRIBS_CHECK(func, h, attribs)	\
     if ((attribs) && SvOK(attribs)) {		\
-	STRLEN lna=0;				\
+	STRLEN lna1=0, lna2=0;			\
 	if (!SvROK(attribs) || SvTYPE(SvRV(attribs))!=SVt_PVHV)		\
 	    croak("%s->%s(...): attribute parameter '%s' is not a hash ref",	\
-		    SvPV(h,lna), func, SvPV(attribs,lna));		\
+		    SvPV(h,lna1), func, SvPV(attribs,lna2));		\
     } else (attribs) = Nullsv
 
 #define DBD_ATTRIB_GET_SVP(attribs, key,klen)			\

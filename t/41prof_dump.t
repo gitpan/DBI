@@ -56,5 +56,5 @@ ok($1, $DBI::ProfileDumper::VERSION);
 # check that expected key is there
 ok($prof =~ /\+\s+1\s+\Q$sql\E/m);
 
-unlink("dbi.prof");
+# unlink("dbi.prof"); # now done by 'make clean'
 

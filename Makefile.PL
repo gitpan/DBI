@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.11 2002/11/30 00:46:18 timbo Exp $
+# $Id: Makefile.PL,v 11.12 2002/12/01 22:34:29 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -110,7 +110,7 @@ my %opts = (
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
     clean => { FILES=> "\$(DISTVNAME) Perl.xsi "
-			."dbish$ext_pl dbiproxy$ext_pl dbiprof$ext_pl ndtest.prt" },
+			."dbish$ext_pl dbiproxy$ext_pl dbiprof$ext_pl dbi.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest ci tardist',
 	PREOP => '$(MAKE) -f Makefile.old distdir',

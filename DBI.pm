@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.22 2002/11/29 23:54:32 timbo Exp $
+# $Id: DBI.pm,v 11.23 2002/12/01 22:34:29 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.31"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.32"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,8 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.31
-(C<$Date: 2002/11/29 23:54:32 $>).
+This is the DBI specification that corresponds to the DBI version 1.32
+(C<$Date: 2002/12/01 22:34:29 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -149,7 +149,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.22 $, 10);
+my $Revision = substr(q$Revision: 11.23 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -514,7 +514,7 @@ sub connect {
 	$user = '' if !defined $user;
 	my $msg = "$class connect('$dsn','$user',...) failed: ".$drh->errstr;
 	DBI->trace_msg("       $msg\n");
-	unless ($attr->{HandleError} && $attr->{HandleError}($msg, $drh, $dbh)) {
+	unless ($attr->{HandleError} && $attr->{HandleError}->($msg, $drh, $dbh)) {
 	    Carp::croak($msg) if $attr->{RaiseError};
 	    Carp::carp ($msg) if $attr->{PrintError};
 	}
@@ -2730,12 +2730,13 @@ to set the DBI trace level for a specific handle.
 
 =item C<FetchHashKeyName> (string, inherited)
 
-This attribute is used to specify which attribute name the
-fetchrow_hashref() method should use to get the field names for the
-hash keys. For historical reasons it defaults to 'C<NAME>' but it
-is recommended to set it to 'C<NAME_lc>' or 'C<NAME_uc>' according
-to your preference. It can only be set for driver and database tables.
-For statement handles the value is frozen when prepare() is called.
+This attribute is used to specify whether the fetchrow_hashref()
+method should perform case conversion on the field names used for
+the hash keys. For historical reasons it defaults to 'C<NAME>' but
+it is recommended to set it to 'C<NAME_lc>' (convert to lower case)
+or 'C<NAME_uc>' (convert to upper case) according to your preference.
+It can only be set for driver and database handles.  For statement
+handles the value is frozen when prepare() is called.
 
 
 =item C<ChopBlanks> (boolean, inherited)
@@ -5481,6 +5482,11 @@ Other database related links:
  http://www.jcc.com/sql_stnd.html
  http://cuiwww.unige.ch/OSG/info/FreeDB/FreeDB.home.html
 
+Security, especially the "SQL Injection" attack:
+
+ http://online.securityfocus.com/infocus/1644
+ http://www.nextgenss.com/research/papers.html
+
 Commercial and Data Warehouse Links
 
  http://www.dwinfocenter.org
@@ -5703,8 +5709,7 @@ DBI::ProxyServer are part of the DBI distribution.
 
 =item SQL Parser
 
-See also the SQL::Statement module, a very simple SQL parser and engine,
-base of the DBD::CSV driver.
+See also the SQL::Statement module, SQL parser and engine.
 
 =back
 
