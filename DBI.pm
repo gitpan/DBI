@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.17 2002/07/15 11:18:57 timbo Exp $
+# $Id: DBI.pm,v 11.18 2002/07/18 14:23:44 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.29; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.30"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -113,8 +113,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.29
-(C<$Date: 2002/07/15 11:18:57 $>).
+This is the DBI specification that corresponds to the DBI version 1.30
+(C<$Date: 2002/07/18 14:23:44 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -142,7 +142,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.17 $, 10);
+my $Revision = substr(q$Revision: 11.18 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -298,7 +298,7 @@ my $keeperr = { O=>0x0004 };
 
 my @TieHash_IF = (	# Generic Tied Hash Interface
 	'STORE'   => { O=>0x0410 },
-	'FETCH'   => { O=>0x0400 },
+	'FETCH'   => { O=>0x0404 },
 	'FIRSTKEY'=> $keeperr,
 	'NEXTKEY' => $keeperr,
 	'EXISTS'  => $keeperr,
@@ -2905,18 +2905,21 @@ the C<prepare> is skipped.
 If any method fails, and L</RaiseError> is not set, C<selectrow_array>
 will return an empty list.
 
-In a scalar context, C<selectrow_array> returns the value of the I<first> field.
-An C<undef> is returned if there are no matching rows or an error
-occurred. Since that C<undef> can't be distinguished from an C<undef> returned
-because the first field value was NULL, calling C<selectrow_array> in
-a scalar context should be used with caution.
+If called in a scalar context for a statement handle that has more
+than one column, it is undefined whether the driver will return
+the value of the first column or the last. So don't do that.
+Also, in a scalar context, an C<undef> is returned if there are no
+more rows or if an error occurred. That C<undef> can't be distinguished
+from an C<undef> returned because the first field value was NULL.
+For these reasons you should exercise some caution if you use
+C<selectrow_array> in a scalar context.
 
 
 =item C<selectrow_arrayref>
 
-  $ary_ref = $dbh->selectrow_array($statement);
-  $ary_ref = $dbh->selectrow_array($statement, \%attr);
-  $ary_ref = $dbh->selectrow_array($statement, \%attr, @bind_values);
+  $ary_ref = $dbh->selectrow_arrayref($statement);
+  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr);
+  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr, @bind_values);
 
 This utility method combines L</prepare>, L</execute> and
 L</fetchrow_arrayref> into a single call. It returns the first row of
@@ -4407,14 +4410,13 @@ the C<RaiseError> attribute) to discover if the empty list returned was
 due to an error.
 
 If called in a scalar context for a statement handle that has more
-than one column, it is I<undefined> whether the driver will return
-the value of the first column of the last. So don't do that.
-
-An C<undef> is returned if there are no more rows or if an error
-occurred. That C<undef> can't be distinguished from an C<undef>
-returned because the first field value was NULL. For these reasons
-you should exercise some caution if you use C<fetchrow_array> in a
-scalar context.
+than one column, it is undefined whether the driver will return
+the value of the first column or the last. So don't do that.
+Also, in a scalar context, an C<undef> is returned if there are no
+more rows or if an error occurred. That C<undef> can't be distinguished
+from an C<undef> returned because the first field value was NULL.
+For these reasons you should exercise some caution if you use
+C<fetchrow_array> in a scalar context.
 
 =item C<fetchrow_hashref>
 

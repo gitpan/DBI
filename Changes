@@ -22,6 +22,17 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
 
 =head1 CHANGES
 
+=head2 Changes in DBI 1.30,    18th July 2002
+
+  Fixed problems with selectrow_array, selectrow_arrayref, and
+    selectall_arrayref introduced in DBI 1.29.
+  Fixed FETCHing a handle attribute to not clear $DBI::err etc (broken in 1.29).
+  Fixed core dump at trace level 9 or above.
+  Fixed compilation with perl 5.6.1 + ithreads (i.e. Windows).
+  Changed definition of behaviour of selectrow_array when called in a scalar
+    context to match fetchrow_array.
+  Corrected selectrow_arrayref docs which showed selectrow_array thanks to Paul DuBois.
+
 =head2 Changes in DBI 1.29,    15th July 2002
 
   NOTE: This release changes the specified behaviour for the

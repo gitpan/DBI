@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.13 2002/07/15 11:18:57 timbo Exp $
+/* $Id: DBI.xs,v 11.14 2002/07/18 14:23:44 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -217,8 +217,10 @@ INIT_PERINTERP;
     DBIS->logmsg = dbih_logmsg;
     DBIS->logfp	 = PerlIO_stderr();
 #ifdef DBI_USE_THREADS
+#if (PERL_VERSION >= 8) /* fp_dup prototype changed in 5.8.0 */
     /* XXX the fp_dup type param is a fudge, but fp_dup doesn't use it anyway */
     DBIS->logfp	 = parent_dbis ? fp_dup(parent_dbis->logfp,'>',0) : PerlIO_stderr();
+#endif
 #endif
     DBIS->neatsvpvlen = perl_get_sv("DBI::neat_maxlen", GV_ADDMULTI);
     if (!parent_dbis)
@@ -2021,11 +2023,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     if (debug >= 9) {
 	PerlIO *logfp = DBILOGFP;
-        PerlIO_printf(logfp,"    >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x ima%lx thr#%p pid#%ld)",
+        PerlIO_printf(logfp,"    >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x ima%lx pid#%ld)",
 	    meth_name, neatsvpv(h,0),
 	    (long)SvREFCNT(h), (SvROK(h) ? (long)SvREFCNT(SvRV(h)) : (long)-1),
-	    (long)items, (int)gimme, (long)ima,
-	    DBIc_THR_USER(imp_xxh), (long)PerlProc_getpid());
+	    (long)items, (int)gimme, (long)(ima?ima->flags:0), (long)PerlProc_getpid());
 	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n"));
 	PerlIO_flush(logfp);
     }
@@ -2083,10 +2084,11 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 {
     PerlInterpreter * h_perl = DBIc_THR_USER(imp_xxh) ;
     if (h_perl != my_perl) {
+	/* XXX could call a 'handle clone' method here, for dbh's at least */
 	if (is_DESTROY) {
 	    if (debug >= 2) {
-		PerlIO_printf(DBILOGFP,"    DESTROY ignored because DBI handle (type=%d) is owned thread %p not current thread %p\n",
-		      DBIc_TYPE(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name, h_perl, my_perl) ;
+		PerlIO_printf(DBILOGFP,"    DESTROY ignored because DBI %sh handle (%s) is owned by thread %p not current thread %p\n",
+		      dbih_htype_name(DBIc_TYPE(imp_xxh)), HvNAME(DBIc_IMP_STASH(imp_xxh)), h_perl, my_perl) ;
 		PerlIO_flush(DBILOGFP);
 	    }
 	    XSRETURN(0); /* don't DESTROY handle, if it is not our's !*/

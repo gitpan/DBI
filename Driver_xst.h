@@ -1,5 +1,5 @@
 /*
-#  $Id: Driver_xst.h,v 1.2 2002/07/15 11:18:57 timbo Exp $
+#  $Id: Driver_xst.h,v 1.3 2002/07/18 14:23:44 timbo Exp $
 #  Copyright (c) 2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -9,9 +9,17 @@
 static SV *
 dbixst_bounce_method(char *methname, int params)
 {
+    /* XXX this 'magic' undoes the dMARK embedded in the dXSARGS of our caller	*/
+    /* so that the dXSARGS below can set things up as they were for our caller	*/
+    void *xxx = PL_markstack_ptr++;
     dXSARGS; /* declares sp, ax, mark, items */
     int i;
     SV *sv;
+    int debug = 0;
+    if (debug >= 3) {
+	PerlIO_printf(DBILOGFP, "    -> %s (trampoline call with %d (%ld) params)\n", methname, params, (long)items);
+	xxx = xxx; /* avoid unused var warning */
+    }
     EXTEND(SP, params);
     PUSHMARK(SP);
     for (i=0; i < params; ++i) {
@@ -23,6 +31,8 @@ dbixst_bounce_method(char *methname, int params)
     SPAGAIN;
     sv = (i) ? POPs : &sv_undef;
     PUTBACK;
+    if (debug >= 3)
+	PerlIO_printf(DBILOGFP, "    <- %s= %s (trampoline call return)\n", methname, neatsvpv(sv,0));
     return sv;
 }
 
