@@ -92,8 +92,8 @@ struct imp_fdh_st { dbih_fdc_t com; };
 typedef struct dbi_ima_st {
     U8 minargs;
     U8 maxargs;
-    U8 hidearg;
-    U8 trace_level;
+    IV hidearg;
+    IV trace_level;
     char *usage_msg;
     U32   flags;
 } dbi_ima_t;
@@ -657,10 +657,10 @@ set_trace(SV *h, SV *level_sv, SV *file)
     if (level != RETVAL) { /* set value */
 	if ((level & DBIc_TRACE_LEVEL_MASK) > 0) {
 	    PerlIO_printf(DBIc_LOGPIO(imp_xxh),
-		"    %s trace level set to 0x%lx/%ld (DBI @ Ox%lx/%ld) in DBI %s%s (pid %d)\n",
+		"    %s trace level set to 0x%lx/%ld (DBI @ 0x%lx/%ld) in DBI %s%s (pid %d)\n",
 		neatsvpv(h,0),
-		(long)(level &  DBIc_TRACE_LEVEL_MASK),
-		(long)(level & ~DBIc_TRACE_LEVEL_MASK),
+		(long)(level & DBIc_TRACE_FLAGS_MASK),
+		(long)(level & DBIc_TRACE_LEVEL_MASK),
 		DBIc_TRACE_LEVEL(imp_xxh), DBIc_TRACE_FLAGS(imp_xxh),
 		XS_VERSION, dbi_build_opt, (int)PerlProc_getpid());
 	    if (!PL_dowarn)
@@ -1159,27 +1159,27 @@ dbih_clearcom(imp_xxh_t *imp_xxh)
 	if (DBIc_TYPE(imp_xxh) <= DBIt_DB) {
 	    imp_dbh_t *imp_dbh = (imp_dbh_t*)imp_xxh; /* works for DRH also */
 	    if (DBIc_CACHED_KIDS(imp_dbh)) {
-		warn("DBI handle cleared whilst still holding %d cached kids",
-			HvKEYS(DBIc_CACHED_KIDS(imp_dbh)) );
+		warn("DBI handle 0x%x cleared whilst still holding %d cached kids",
+			DBIc_MY_H(imp_xxh), HvKEYS(DBIc_CACHED_KIDS(imp_dbh)) );
 		SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh)); /* may recurse */
 		DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
 	    }
 	}
 
 	if (DBIc_ACTIVE(imp_xxh)) {	/* bad news		*/
-	    warn("DBI handle cleared whilst still active");
+	    warn("DBI handle 0x%x cleared whilst still active", DBIc_MY_H(imp_xxh));
 	    dump = TRUE;
 	}
 
 	/* check that the implementor has done its own housekeeping	*/
 	if (DBIc_IMPSET(imp_xxh)) {
-	    warn("DBI handle has uncleared implementors data");
+	    warn("DBI handle 0x%x has uncleared implementors data", DBIc_MY_H(imp_xxh));
 	    dump = TRUE;
 	}
 
 	if (DBIc_KIDS(imp_xxh)) {
-	    warn("DBI handle has %d uncleared child handles",
-		    (int)DBIc_KIDS(imp_xxh));
+	    warn("DBI handle 0x%x has %d uncleared child handles",
+		    DBIc_MY_H(imp_xxh), (int)DBIc_KIDS(imp_xxh));
 	    dump = TRUE;
 	}
     }
@@ -1541,12 +1541,8 @@ dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
 	    char *hint = "";
 	    if (strEQ(key, "NUM_FIELDS"))
 		hint = ", perhaps you meant NUM_OF_FIELDS";
-	    /* special dispensation for DBI::ProxyServer to reduce problems	*/
-	    /* when clients are using newer version of the DBI. Ought to be a	*/
-	    /* more general mechanism (eg event with event handler in proxysvr)	*/
-	    (gv_fetchpv("DBI::ProxyServer::ISA", FALSE, SVt_PVAV))
-		? warn( msg, neatsvpv(h,0), key, hint)
-	        : croak(msg, neatsvpv(h,0), key, hint);
+	    warn(msg, neatsvpv(h,0), key, hint);
+	    return FALSE;	/* don't store it */
 	}
 	/* Allow private_* attributes to be stored in the cache.	*/
 	/* This is designed to make life easier for people subclassing	*/
@@ -1845,21 +1841,20 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
 
     /* finally check the actual hash just in case	*/
     if (valuesv == Nullsv) {
+	valuesv = &sv_undef;
+	cacheit = 0;
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
 	if (svp)
 	    valuesv = newSVsv(*svp);	/* take copy to mortalize */
-	else if (!isUPPER(*key))	/* dbd_*, private_* etc */
-	    valuesv = &sv_undef;
-	else if (	(*key=='H' && strEQ(key, "HandleError"))
+	else if (!(	(*key=='H' && strEQ(key, "HandleError"))
 		||	(*key=='H' && strEQ(key, "HandleSetErr"))
 		||	(*key=='S' && strEQ(key, "Statement"))
 		||	(*key=='P' && strEQ(key, "ParamValues"))
 		||	(*key=='P' && strEQ(key, "Profile"))
 		||	(*key=='C' && strEQ(key, "CursorName"))
-	)
-	    valuesv = &sv_undef;
-	else
-	    croak("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
+		||	!isUPPER(*key)	/* dbd_*, private_* etc */
+	))
+	    warn("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
     }
     
     if (cacheit) {
@@ -2288,7 +2283,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     int is_DESTROY;
     int is_FETCH;
     int keep_error = FALSE;
-    UV  ErrCount = ~0;
+    UV  ErrCount = UV_MAX;
     int i, outitems;
     int call_depth;
     double profile_t1 = 0.0;
@@ -2345,7 +2340,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		clear_cached_kids(mg->mg_obj, imp_xxh, meth_name, trace_level);
 	    if (trace_level >= 3)
                 PerlIO_printf(DBILOGFP,
-		    "%c   <> DESTROY ignored for outer handle %s (inner %s has ref cnt %ld)\n",
+		    "%c   <> DESTROY(%s) ignored for outer handle (inner %s has ref cnt %ld)\n",
 		    (dirty?'!':' '), neatsvpv(h,0), neatsvpv(mg->mg_obj,0),
 		    (long)SvREFCNT(SvRV(mg->mg_obj))
 		);
@@ -2702,8 +2697,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     err_sv = DBIc_ERR(imp_xxh);
 
-    if (trace_level >= 1
-	&& !(trace_level == 1 /* don't trace nested calls at level 1 */
+    if (trace_level > 1
+	|| (trace_level == 1 /* don't trace nested calls at level 1 */
 	    && call_depth <= 1
 	    && (!DBIc_PARENT_COM(imp_xxh) || DBIc_CALL_DEPTH(DBIc_PARENT_COM(imp_xxh)) < 1))
     ) {
@@ -2724,9 +2719,14 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    (DBIc_is(imp_xxh, DBIcf_TaintIn|DBIcf_TaintOut)) ? 'T' : ' ',
 		    (qsv) ? '>' : '-',
 		    meth_name);
-	if (trace_level==1 && items>=2) { /* make level 1 more useful */
+	if (trace_level==1 && (items>=2||is_DESTROY)) { /* make level 1 more useful */
 	    /* we only have the first two parameters available here */
-	    PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
+	    if (is_DESTROY) /* show handle as first arg to DESTROY */
+		/* want to show outer handle so trace makes sense	*/
+		/* but outer handle has been destroyed so we fake it	*/
+		PerlIO_printf(logfp,"(%s=HASH(%p)", HvNAME(SvSTASH(SvRV(orig_h))), DBIc_MY_H(imp_xxh));
+	    else
+		PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
 	    if (items >= 3)
 		PerlIO_printf(logfp," %s", neatsvpv(st2,0));
 	    PerlIO_printf(logfp,"%s)", (items > 3) ? " ..." : "");
@@ -3517,9 +3517,9 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
 	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, "U",1)) != NULL) {
 	    STRLEN lna;
 	    AV *av = (AV*)SvRV(*svp);
-	    ima->minargs    = SvIV(*av_fetch(av, 0, 1));
-	    ima->maxargs    = SvIV(*av_fetch(av, 1, 1));
-			      svp = av_fetch(av, 2, 0);
+	    ima->minargs = (U8)SvIV(*av_fetch(av, 0, 1));
+	    ima->maxargs = (U8)SvIV(*av_fetch(av, 1, 1));
+	    svp = av_fetch(av, 2, 0);
 	    ima->usage_msg  = savepv( (svp) ? SvPV(*svp,lna) : "");
 	    ima->flags |= IMA_HAS_USAGE;
 	    if (trace_msg && DBIS_TRACE_LEVEL >= 11)
@@ -3555,10 +3555,10 @@ trace(class, level_sv=&sv_undef, file=Nullsv)
         set_trace_file(file);
     if (level != RETVAL) {
 	if ((level & DBIc_TRACE_LEVEL_MASK) > 0) {
-	    PerlIO_printf(DBILOGFP,"    DBI %s%s default trace level set to Ox%lx/%ld (in pid %d)\n",
+	    PerlIO_printf(DBILOGFP,"    DBI %s%s default trace level set to 0x%lx/%ld (pid %d)\n",
 		XS_VERSION, dbi_build_opt,
-                (long)(level &  DBIc_TRACE_LEVEL_MASK),
-                (long)(level & ~DBIc_TRACE_LEVEL_MASK),
+                (long)(level & DBIc_TRACE_FLAGS_MASK),
+                (long)(level & DBIc_TRACE_LEVEL_MASK),
 		(int)PerlProc_getpid());
 	    if (!PL_dowarn)
 		PerlIO_printf(DBILOGFP,"    Note: perl is running without the recommended perl -w option\n");

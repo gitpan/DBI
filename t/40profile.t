@@ -1,4 +1,5 @@
 #!perl -w
+
 use strict;
 
 #
@@ -25,7 +26,7 @@ BEGIN {
 }
 
 use Test;
-BEGIN { plan tests => 57; }
+BEGIN { plan tests => 60; }
 
 use Data::Dumper;
 $Data::Dumper::Indent = 1;
@@ -94,9 +95,13 @@ ok((grep { DBI::looks_like_number($_) } @$data) == 7);
 ok((grep { $_ >= 0                    } @$data) == 7) or warn "profile data: [@$data]\n";
 my ($count, $total, $first, $shortest, $longest, $time1, $time2) = @$data;
 if ($shortest < 0) {
-    warn "Time went backwards at some point during the test on this $Config{archname} system!\n";
+    my $sys = "$Config{archname} $Config{osvers}"; # sparc-linux 2.4.20-2.3sparcsmp
+    warn "Time went backwards at some point during the test on this $sys system!\n";
     warn "Perhaps you have time sync software (like NTP) that adjusted the clock\n";
-    warn "backwards by more than $shortest seconds during the test.\n";
+    warn "backwards by more than $shortest seconds during the test. PLEASE RETRY.\n";
+    # Don't treat very small negative amounts as a failure - it's always been due
+    # due to NTP of buggy multiprocessor systems.
+    $shortest = 0 if $shortest > -0.008;
 }
 ok($count > 3);
 ok($total > $first);
@@ -117,7 +122,7 @@ print "Profile Output\n\n$output";
 # check that output was produced in the expected format
 ok(length $output);
 ok($output =~ /^DBI::Profile:/);
-ok($output =~ /\((\d+) method calls\)/);
+ok($output =~ /\((\d+) calls\)/);
 ok($1 >= $count);
 
 # try statement and method name path
@@ -133,16 +138,27 @@ $sql = "select name from .";
 $sth = $dbh->prepare($sql);
 $sth->execute();
 while ( my $hash = $sth->fetchrow_hashref ) {}
+undef $sth; # DESTROY
 
 # check that the resulting tree fits the expected layout
 $data = $dbh->{Profile}{Data};
 ok($data);
 ok(exists $data->{$sql});
-ok(keys %{$data->{$sql}} == 3);
+ok(keys %{$data->{$sql}}, 4);
+print "Profile Data keys: @{[ keys %{$data->{$sql}} ]}\n";
 ok(exists $data->{$sql}{prepare});
 ok(exists $data->{$sql}{execute});
 ok(exists $data->{$sql}{fetchrow_hashref});
+ok(exists $data->{$sql}{DESTROY});
 
+my $do_sql = "set foo=1";
+$dbh->do($do_sql); # check dbh do() gets associated with right statement
+ok(exists $data->{$do_sql}{do});
+# In perl 5.6 the sth DESTROY gets included. In perl 5.8 it doesn't.
+ok(keys %{$data->{$do_sql}},
+  (exists $data->{$do_sql}{DESTROY}) ? 2 : 1);
+
+print "Profile Data keys: @{[ keys %{$data->{$do_sql}} ]}\n";
 
 
 # try a custom path
@@ -182,4 +198,4 @@ ok(exists $data->{foo}{"Hi, mom"});
 DBI->trace(0, "STDOUT"); # close current log to flush it
 ok(-s $LOG_FILE);
 
-exit 0;
+1;

@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.42"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.43"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -118,8 +118,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.42
-(C<$Date: 2004/02/01 11:16:16 $>).
+This is the DBI specification that corresponds to the DBI version 1.43.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -259,14 +258,14 @@ Exporter::export_ok_tags(keys %EXPORT_TAGS);
 }
 
 # Alias some handle methods to also be DBI class methods
-for (qw(trace_msg set_err parse_trace_flags parse_trace_flag)) {
+for (qw(trace_msg set_err parse_trace_flag parse_trace_flags)) {
   no strict;
   *$_ = \&{"DBD::_::common::$_"};
 }
 
 use strict;
 
-DBI->trace(split '=', $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
+DBI->trace(split /=/, $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
 
 $DBI::connect_via = "connect";
 
@@ -383,7 +382,7 @@ my $keeperr = { O=>0x0004 };
 	commit     	=> { U =>[1,1], O=>0x0480|0x0800 },
 	rollback   	=> { U =>[1,1], O=>0x0480|0x0800 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x3200 },
-	last_insert_id	=> { U =>[3,4,'$table_name, $field_name [, \%attr ]'],     O=>0x2100 },
+	last_insert_id	=> { U =>[5,6,'$catalog, $schema, $table_name, $field_name [, \%attr ]'], O=>0x2800 },
 	preparse    	=> {  }, # XXX
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'],                    O=>0x2200 },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $if_active ] ]'],   O=>0x2200 },
@@ -443,12 +442,10 @@ my $keeperr = { O=>0x0004 };
     },
 );
 
-my($class, $method);
-foreach $class (keys %DBI::DBI_methods){
-    my %pkgif = %{ $DBI::DBI_methods{$class} };
-    foreach $method (keys %pkgif){
-	DBI->_install_method("DBI::${class}::$method", 'DBI.pm',
-			$pkgif{$method});
+while ( my ($class, $meths) = each %DBI::DBI_methods ) {
+    while ( my ($method, $info) = each %$meths ) {
+	my $fullmeth = "DBI::${class}::$method";
+	DBI->_install_method($fullmeth, 'DBI.pm', $info);
     }
 }
 
@@ -484,7 +481,16 @@ sub CLONE {
     }
     %DBI::installed_drh = ();	# clear loaded drivers so they have a chance to reinitialize
 }
-	
+
+sub parse_dsn {
+    my ($class, $dsn) = @_;
+    $dsn =~ s/^(dbi):(\w*?)(?:\((.*?)\))?://i or return;
+    my ($scheme, $driver, $attr, $attr_hash) = (lc($1), $2, $3);
+    $driver ||= $ENV{DBI_DRIVER} || '';
+    $attr_hash = { split /\s*=>?\s*|\s*,\s*/, $attr, -1 } if $attr;
+    return ($scheme, $driver, $attr, $attr_hash, $dsn);
+}
+
 
 # --- The DBI->connect Front Door methods
 
@@ -492,6 +498,7 @@ sub connect_cached {
     # For library code using connect_cached() with mod_perl
     # we redirect those calls to Apache::DBI::connect() as well
     my ($class, $dsn, $user, $pass, $attr) = @_;
+    # XXX modifies callers data!
     ($attr ||= {})->{dbi_connect_method} =
 	($DBI::connect_via eq "Apache::DBI::connect")
 	    ? 'Apache::DBI::connect' : 'connect_cached';
@@ -533,13 +540,14 @@ sub connect {
 		."and DBI_DSN env var not set");
 
     if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Sponge' && $driver ne 'Switch') {
+	my $dbi_autoproxy = $ENV{DBI_AUTOPROXY};
 	my $proxy = 'Proxy';
-	if ($ENV{DBI_AUTOPROXY} =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i) {
+	if ($dbi_autoproxy =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i) {
 	    $proxy = $1;
 	    my $attr_spec = $2 || '';
 	    $driver_attrib_spec = ($driver_attrib_spec) ? "$driver_attrib_spec,$attr_spec" : $attr_spec;
 	}
-	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
+	$dsn = "$dbi_autoproxy;dsn=dbi:$driver:$dsn";
 	$driver = $proxy;
 	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver($driver_attrib_spec):$dsn\n");
     }
@@ -587,7 +595,10 @@ sub connect {
 	unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
 	    $user = '' if !defined $user;
 	    $dsn = '' if !defined $dsn;
-	    my $errstr = $drh->errstr;
+	    # $drh->errstr isn't safe here because $dbh->DESTROY may not have
+	    # been called yet and so the dbh errstr would not have been copied
+	    # up to the drh errstr. Certainly true for connect_cached!
+	    my $errstr = $DBI::errstr;
 	    $errstr = '(no error string)' if !defined $errstr;
 	    my $msg = "$class connect('$dsn','$user',...) failed: $errstr";
 	    DBI->trace_msg("       $msg\n");
@@ -637,6 +648,12 @@ sub connect {
 
 	# if we've been subclassed then let the subclass know that we're connected
 	$dbh->connected($dsn, $user, $pass, $attr) if ref $dbh ne 'DBI::db';
+
+	# if the caller has provided a callback then call it
+	# especially useful with connect_cached() XXX not enabled/tested/documented
+	if (0 and $dbh and my $oc = $dbh->{OnConnect}) { # XXX
+	    $oc->($dbh, $dsn, $user, $pass, $attr) if ref $oc eq 'CODE';
+	}
 
 	DBI->trace_msg("    <- connect= $dbh\n") if $DBI::dbi_debug;
 
@@ -871,15 +888,15 @@ sub _dbtype_names { # list dbtypes for hierarchy, ie Informix=>ADO=>ODBC
 
 sub _load_class {
     my ($load_class, $missing_ok) = @_;
-    #DBI->trace_msg("    _load_class($load_class, $missing_ok)\n");
+    DBI->trace_msg("    _load_class($load_class, $missing_ok)\n", 2);
     no strict 'refs';
     return 1 if @{"$load_class\::ISA"};	# already loaded/exists
     (my $module = $load_class) =~ s!::!/!g;
-    #DBI->trace_msg("    _load_class require $module\n");
+    DBI->trace_msg("    _load_class require $module\n", 2);
     eval { require "$module.pm"; };
     return 1 unless $@;
     return 0 if $missing_ok && $@ =~ /^Can't locate \Q$module.pm\E/;
-    die; # propagate $@;
+    die $@;
 }
 
 
@@ -1234,7 +1251,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $level = 0;
 	my $flags = 0;
 	my @unknown;
-	for my $word (split /\s*[|&]\s*/, $spec) {
+	for my $word (split /\s*[|&,]\s*/, $spec) {
 	    if (DBI::looks_like_number($word) && $word <= 0xF && $word >= 0) {
 		$level = $word;
 	    } elsif ($word eq 'ALL') {
@@ -1448,7 +1465,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		for (@$slice) { $_-- }
 	    }
 	}
-	return $sth->fetchall_arrayref($slice, $attr->{MaxRows});
+	my $rows = $sth->fetchall_arrayref($slice, my $MaxRows = $attr->{MaxRows});
+	$sth->finish if defined $MaxRows;
+	return $rows;
     }
 
     sub selectall_hashref {
@@ -1675,19 +1694,18 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $sth = shift;
 	my $fields = $sth->FETCH('NUM_OF_FIELDS') || 0;
 	if ($fields <= 0 && !$sth->{Active}) {
-	    # XXX ought to be set_err
-	    die "Statement has no result columns to bind"
-		." (perhaps you need to successfully call execute first)";
+	    return $sth->set_err(1, "Statement has no result columns to bind"
+		    ." (perhaps you need to successfully call execute first)");
 	}
 	# Backwards compatibility for old-style call with attribute hash
 	# ref as first arg. Skip arg if undef or a hash ref.
-	my $attr = $_[0]; # maybe
-	shift if !defined $attr or ref($attr) eq 'HASH';
+	my $attr;
+	$attr = shift if !defined $_[0] or ref($_[0]) eq 'HASH';
 
 	die "bind_columns called with ".@_." refs when $fields needed."
 	    if @_ != $fields;
 	my $idx = 0;
-	$sth->bind_col(++$idx, shift) or return
+	$sth->bind_col(++$idx, shift, $attr) or return
 	    while (@_);
 	return 1;
     }
@@ -2254,6 +2272,23 @@ The following methods are provided by the DBI class:
 
 =over 4
 
+=item C<parse_dsn>
+
+  ($scheme, $driver, $attr_string, $attr_hash, $driver_dsn) = DBI->parse_dsn($dsn)
+      or die "Can't parse DBI DSN '$dsn'";
+
+Breaks apart a DBI Data Source Name (DSN) and returns the individual
+parts. If $dsn doesn't contain a valid DSN then parse_dsn() returns
+an empty list.
+
+$scheme is the first part of the DSN and is currently always 'dbi'.
+$driver is the driver name, possibly defaulted to $ENV{DBI_DRIVER},
+and may be undefined.  $attr_string is the optional attribute string,
+which may be undefined.  If $attr_string is true then $attr_hash
+is a reference to a hash containing the parsed attribute names and
+values. $driver_dsn is the last part of the DBI DSN string.
+
+
 =item C<connect>
 
   $dbh = DBI->connect($data_source, $username, $password)
@@ -2786,6 +2821,29 @@ default method is provided by the DBI.
 It returns false where a driver hasn't implemented a method and the
 default method is provided by the DBI is just an empty stub.
 
+=item C<parse_trace_flags>
+
+  $trace_settings_integer = $h->parse_trace_flags($trace_settings);
+
+Parses a string containing trace settings and returns the corresponding
+integer value used internally by the DBI and drivers.
+
+The $trace_settings argument is a string containing a trace level
+between 0 and 15 and/or trace flag names separated by vertical bar
+("C<|>") or comma ("C<,>") characters. For example: C<"SQL|3|foo">.
+
+It uses the parse_trace_flag() method, described below, to process
+the individual trage flag names.
+
+=item C<parse_trace_flag>
+
+  $bit_flag = $h->parse_trace_flag($trace_flag_name);
+
+Returns the bit flag corresponding to the trace flag name in
+$trace_flag_name.  Drivers are expected to override this method and
+check if $trace_flag_name is a driver specific trace flags and, if
+not, then call the DBIs default parse_trace_flag().
+
 =back
 
 
@@ -3109,7 +3167,10 @@ end of the Statement text in the error message.
 
 The C<TraceLevel> attribute can be used as an alternative to the
 L</trace> method to set the DBI trace level and trace flags for a
-specific handle. See L</TRACING> for more details.
+specific handle.  See L</TRACING> for more details.
+
+The C<TraceLevel> attribute is especially useful combined with
+C<local> to alter the trace settings for just a single block of code.
 
 =item C<FetchHashKeyName> (string, inherited)
 
@@ -3505,7 +3566,8 @@ complete or was truncated due to an error.
 
 The L</fetchall_arrayref> method called by C<selectall_arrayref>
 supports a $max_rows parameter. You can specify a value for $max_rows
-by including a 'C<MaxRows>' attribute in \%attr.
+by including a 'C<MaxRows>' attribute in \%attr. In which case finish()
+is called for you after fetchall_arrayref() returns.
 
 The L</fetchall_arrayref> method called by C<selectall_arrayref>
 also supports a $slice parameter. You can specify a value for $slice by
@@ -3827,8 +3889,6 @@ of information types to ensure the DBI itself works properly:
 
 =item C<table_info>
 
-B<Warning:> This method is experimental and may change.
-
   $sth = $dbh->table_info( $catalog, $schema, $table, $type );
   $sth = $dbh->table_info( $catalog, $schema, $table, $type, \%attr );
 
@@ -4018,8 +4078,6 @@ See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
 =item C<primary_key_info>
 
-B<Warning:> This method is experimental and may change.
-
   $sth = $dbh->primary_key_info( $catalog, $schema, $table );
 
 Returns an active statement handle that can be used to fetch information
@@ -4071,8 +4129,6 @@ the column names that comprise the primary key of the specified table.
 The list is in primary key column sequence order.
 
 =item C<foreign_key_info>
-
-B<Warning:> This method is experimental and may change.
 
   $sth = $dbh->foreign_key_info( $pk_catalog, $pk_schema, $pk_table
                                , $fk_catalog, $fk_schema, $fk_table );
@@ -5197,7 +5253,14 @@ all the rows in one go. Here's an example:
     ...
   }
 
-That is the fastest way to fetch and process lots of rows using the DBI.
+That can be the fastest way to fetch and process lots of rows using the DBI,
+but it depends on the relative cost of method calls vs memory allocation.
+
+A standard C<while> loop with column binding is often faster because
+the cost of allocating memory for the batch of rows is greater than
+the saving by reducing method calls. It's possible that the DBI may
+provide a way to reuse the memory of a previous batch in future, which
+would then shift the balance back towards fetchall_arrayref().
 
 
 =item C<fetchall_hashref>
@@ -5317,7 +5380,7 @@ to be automatically updated simply because it refers to the same
 memory location as the corresponding column value.  This makes using
 bound variables very efficient. Multiple variables can be bound
 to a single column, but there's rarely any point. Binding a tied
-variable doesn't work.
+variable doesn't work, currently.
 
 The L</bind_param> method
 performs a similar, but opposite, function for input variables.
@@ -5581,10 +5644,13 @@ in the keys but all the values undef, but some drivers may return
 a ref to an empty hash.
 
 It is possible that the values in the hash returned by C<ParamValues>
-are not exactly the same as those passed to bind_param() or execute().
-The driver may have modified the values in some way based on the
+are not I<exactly> the same as those passed to bind_param() or execute().
+The driver may have slightly modified values in some way based on the
 TYPE the value was bound with. For example a floating point value
 bound as an SQL_INTEGER type may be returned as an integer.
+The values returned by C<ParamValues> can be passed to another
+bind_param() method with the same TYPE and will be seen by the
+database as the same value.
 
 It is also possible that the keys in the hash returned by C<ParamValues>
 are not exactly the same as those implied by the prepared statement.
@@ -6160,7 +6226,44 @@ trace level then the DBI trace level is raised to match it.
 The previous DBI trace setings are restored when the called method
 returns.
 
-=head1 Enabling Trace
+=head2 Trace Levels
+
+Trace I<levels> are as follows:
+
+  0 - Trace disabled.
+  1 - Trace DBI method calls returning with results or errors.
+  2 - Trace method entry with parameters and returning with results.
+  3 - As above, adding some high-level information from the driver
+      and some internal information from the DBI.
+  4 - As above, adding more detailed information from the driver.
+  5 to 15 - As above but with more and more obscure information.
+
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.
+Levels 3 and above are best reserved for investigating a specific
+problem, when you need to see "inside" the driver and DBI.
+
+The trace output is detailed and typically very useful. Much of the
+trace output is formatted using the L</neat> function, so strings
+in the trace output may be edited and truncated by that function.
+
+=head2 Trace Flags
+
+Trace I<flags> are used to enable tracing of specific activities
+within the DBI and drivers. The DBI defines some trace flags and
+drivers can define others. DBI trace flag names begin with a capital
+letter and driver specific names begin with a lowercase letter, as
+usual.
+
+Curently the DBI only defines two trace flags:
+
+  ALL - turn on all DBI and driver flags (not recommended)
+  SQL - trace SQL statements executed (not yet implemented)
+
+The L</parse_trace_flags> and L</parse_trace_flag> methods are used
+to convert trace flag names into the coresponding integer bit flags.
+
+=head2 Enabling Trace
 
 The C<$h-E<gt>trace> method sets the trace settings for a handle
 and C<DBI-E<gt>trace> does the same for the DBI.
@@ -6173,26 +6276,12 @@ See L</DBI_TRACE> for more information.
 Finally, you can set, or get, the trace settings for a handle using
 the C<TraceLevel> attribute.
 
-=head2 Trace Levels
+All of those methods use parse_trace_flags() and so allow you set
+both the trace level and multiple trace flags by using a string
+containing the trace level and/or flag names separated by vertical
+bar ("C<|>") or comma ("C<,>") characters. For example:
 
-Trace levels are as follows:
-
-  0 - Trace disabled.
-  1 - Trace DBI method calls returning with results or errors.
-  2 - Trace method entry with parameters and returning with results.
-  3 - As above, adding some high-level information from the driver
-      and some internal information from the DBI.
-  4 - As above, adding more detailed information from the driver.
-  5 and above - As above but with more and more obscure information.
-
-Trace level 1 is best for a simple overview of what's happening.
-Trace level 2 is a good choice for general purpose tracing.
-Levels 3 and above are best reserved for investigating a specific
-problem, when you need to see "inside" the driver and DBI.
-
-The trace output is detailed and typically very useful. Much of the
-trace output is formatted using the L</neat> function, so strings
-in the trace output may be edited and truncated by that function.
+  local $h->{TraceLevel} = "3|SQL|foo";
 
 =head2 Trace Output
 
@@ -6278,7 +6367,7 @@ The DBI_TRACE environment variable specifies the global default
 trace settings for the DBI at startup. Can also be used to direct
 trace output to a file. When the DBI is loaded it does:
 
-  DBI->trace(split '=', $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
+  DBI->trace(split /=/, $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
 
 So if C<DBI_TRACE> contains an "C<=>" character then what follows
 it is used as the name of the file to append the trace to.
@@ -6569,6 +6658,11 @@ If you'd like the DBI to do something new or different the best way
 to make that happen is to do it yourself and send me a patch to the
 source code that shows the changes.
 
+=head2 Browsing the source code repository
+
+Use http://svn.perl.org/modules/dbi/trunk (basic)
+or  http://svn.perl.org/viewcvs/modules/ (more useful)
+
 =head2 How to create a patch using Subversion
 
 The DBI source code is maintained using Subversion (a replacement
@@ -6589,7 +6683,7 @@ change log message and diff of each change checked-in to the source.
 After making your changes you can generate a patch file, but before
 you do, make sure your source is still upto date using:
 
-  svn update http://svn.perl.org/modules/dbi/trunk
+  svn update
 
 If you get any conflicts reported you'll need to fix them first.
 Then generate the patch file from within the C<trunk> directory using:

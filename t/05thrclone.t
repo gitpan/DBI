@@ -2,54 +2,70 @@
 
 # --- Test DBI support for threads created after the DBI was loaded
 
+BEGIN { eval "use threads;" }	# Must be first
+my $use_threads_err = $@;
+
 use strict;
 use Config qw(%Config);
+use Test::More;
 
 BEGIN {
     if (!$Config{useithreads} || $] < 5.008) {
-	print "1..0 # Skipped: this $^O perl $] not configured to support iThreads\n";
-	exit 0;
+	plan skip_all => "this $^O perl $] not configured to support iThreads";
     }
+    die $use_threads_err if $use_threads_err; # need threads
 }
 
-use threads;
-use Test::More tests => 10;
+my $threads = 10;
 
-# ---
+plan tests => 3 + 4 * $threads;
 
 {
     package threads_sub;
     use base qw(threads);
 }
 
-use DBI;
+BEGIN {
+	use_ok('DBI');
+}
 
 $DBI::neat_maxlen = 12345;
+cmp_ok($DBI::neat_maxlen, '==', 12345, '... assignment of neat_maxlen was successful');
 
 my @connect_args = ("dbi:ExampleP:", '', '');
 
 my $dbh_parent = DBI->connect_cached(@connect_args);
-ok($dbh_parent);
+isa_ok( $dbh_parent, 'DBI::db' );
 
-sub tests1 {
-  is($DBI::neat_maxlen, 12345);
+# this our function for the threads to run
 
-  my $dbh = DBI->connect_cached(@connect_args);
-  ok($dbh);
-  isnt($dbh, $dbh_parent);
-  is($dbh->{Driver}->{Kids}, 1) unless $DBI::PurePerl && ok(1);
+sub testing {
+    cmp_ok($DBI::neat_maxlen, '==', 12345, '... DBI::neat_maxlen still holding its value');
+
+    my $dbh = DBI->connect_cached(@connect_args);
+    isa_ok( $dbh, 'DBI::db' );
+    isnt($dbh, $dbh_parent, '... new $dbh is not the same instance as $dbh_parent');
+ 
+    SKIP: {
+	# skip seems broken with threads (5.8.3)
+	# skip "Kids attribute not supported under DBI::PurePerl", 1 if $DBI::PurePerl;
+
+        cmp_ok($dbh->{Driver}->{Kids}, '==', 1, '... the Driver has one Kid')
+		unless $DBI::PurePerl && ok(1);
+    }
 }
+
+# load up the threads
 
 my @thr;
-foreach (1..2) {
-    print "\n\n*** creating thread $_\n";
-    push @thr, threads_sub->create( \&tests1 );
-}
-foreach (@thr) {
-    print "\n\n*** joining thread $_\n";
-    $_->join;
+push @thr, threads_sub->create( \&testing ) foreach (1..$threads);
+
+# join all the threads
+
+foreach my $thread (@thr) {
+    $thread->join;
 }
 
-ok(1);
+pass('... all tests have passed');
 
-exit 0;
+1;

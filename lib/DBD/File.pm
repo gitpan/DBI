@@ -29,7 +29,7 @@ package DBD::File;
 
 use vars qw(@ISA $VERSION $drh $valid_attrs);
 
-$VERSION = '0.30';      # bumped from 0.22 to 0.30 with inclusion in DBI
+$VERSION = '0.31';      # bumped from 0.22 to 0.30 with inclusion in DBI
 
 $drh = undef;		# holds driver handle once initialised
 
@@ -97,6 +97,7 @@ sub connect ($$;$$$) {
           , sql_statement_version => 1  # S:S version
         };
     }
+    $this->STORE('Active',1);
     return set_versions($this);
 }
 
@@ -130,8 +131,8 @@ sub data_sources ($;$) {
     while (defined($file = readdir($dirh))) {
 	my $d = $haveFileSpec ?
 	    File::Spec->catdir($dir, $file) : "$dir/$file";
-	if ($file ne ($haveFileSpec ? File::Spec->curdir() : '.')
-	    and  $file ne ($haveFileSpec ? File::Spec->updir() : '..')
+        # allow current dir ... it can be a data_source too
+	if ( $file ne ($haveFileSpec ? File::Spec->updir() : '..')
 	    and  -d $d) {
 	    push(@dsns, "DBI:$driver:f_dir=$d");
 	}
@@ -192,11 +193,24 @@ sub prepare ($$;@) {
     }
     $sth;
 }
-
+sub csv_cache_sql_parser_object {
+    my $dbh = shift;
+    my $parser = {
+            dialect    => 'CSV',
+            RaiseError => $dbh->FETCH('RaiseError'),
+            PrintError => $dbh->FETCH('PrintError'),
+        };
+    my $sql_flags  = $dbh->FETCH('sql_flags') || {};
+    %$parser = (%$parser,%$sql_flags);
+    $parser = SQL::Parser->new($parser->{dialect},$parser);
+    $dbh->{csv_sql_parser_object} = $parser;
+    return $parser;
+}
 sub disconnect ($) {
+    shift->STORE('Active',0);
+    undef $DBD::File::drh;
     1;
 }
-
 sub FETCH ($$) {
     my ($dbh, $attrib) = @_;
     if ($attrib eq 'AutoCommit') {
@@ -251,6 +265,8 @@ sub STORE ($$$) {
 }
 
 sub DESTROY ($) {
+    # for backwards compatibility only, remove eventually
+    shift->STORE('Active',0);
     undef;
 }
 
@@ -409,6 +425,10 @@ sub execute {
     } else {
 	$params = $sth->{'f_params'};
     }
+
+    # start of by finishing any previous execution if still active
+    $sth->finish if $sth->{Active};
+    $sth->{'Active'}=1;
     my $stmt = $sth->{'f_stmt'};
     my $result = eval { $stmt->execute($sth, $params); };
     return $sth->set_err(1,$@) if $@;
@@ -417,7 +437,11 @@ sub execute {
     }
     return $result;
 }
-
+sub finish {
+    my $sth = shift;
+    $sth->{Active}=0;
+    delete $sth->{f_stmt}->{data};
+}
 sub fetch ($) {
     my $sth = shift;
     my $data = $sth->{f_stmt}->{data};
@@ -427,10 +451,11 @@ sub fetch ($) {
     }
     my $dav = shift @$data;
     if (!$dav) {
+        $sth->{Active} = 0; # mark as no longer active
 	return undef;
     }
     if ($sth->FETCH('ChopBlanks')) {
-	map { $_ =~ s/\s+$//; } @$dav;
+	map { $_ =~ s/\s+$// if $_; $_ } @$dav;
     }
     $sth->_set_fbav($dav);
 }

@@ -23,7 +23,7 @@ package DBD::DBM;
 #################
 use base qw( DBD::File );
 use vars qw($VERSION $ATTRIBUTION $drh $methods_already_installed);
-$VERSION     = '0.01';
+$VERSION     = '0.02';
 $ATTRIBUTION = 'DBD::DBM by Jeff Zucker';
 
 # no need to have driver() unless you need private methods
@@ -45,6 +45,7 @@ sub driver ($;$) {
     #
     if ( $DBI::VERSION >= 1.37 and !$methods_already_installed++ ) {
         DBD::DBM::db->install_method('dbm_versions');
+        DBD::DBM::st->install_method('dbm_schema');
     }
 
     $this;
@@ -127,6 +128,7 @@ sub connect ($$;$$$) {
                              ? 'SQL::Statement'
    	                     : 'DBI::SQL::Nano';
     }
+    $this->STORE('Active',1);
     return $this;
 }
 
@@ -239,6 +241,14 @@ package DBD::DBM::st;
 $DBD::DBM::st::imp_data_size = 0;
 @DBD::DBM::st::ISA = qw(DBD::File::st);
 
+sub dbm_schema {
+    my($sth,$tname)=@_;
+    return $sth->set_err(1,'No table name supplied!') unless $tname;
+    return $sth->set_err(1,"Unknown table '$tname'!")
+       unless $sth->{Database}->{dbm_tables}
+          and $sth->{Database}->{dbm_tables}->{$tname};
+    return $sth->{Database}->{dbm_tables}->{$tname}->{schema};
+}
 # you could put some :st private methods here
 
 # you may need to over-ride some DBD::File::st methods here
@@ -280,15 +290,15 @@ sub open_table ($$$$$) {
     #
     # your DBD may not need this, gloabls and defaults may be enough
     #
-    my $dbm_type = $dbh->{dbm_tables}->{$file}->{type}
+    my $dbm_type = $dbh->{dbm_tables}->{$tname}->{type}
                 || $dbh->{dbm_type}
                 || 'SDBM_File';
-    $dbh->{dbm_tables}->{$file}->{type} = $dbm_type;
+    $dbh->{dbm_tables}->{$tname}->{type} = $dbm_type;
 
-    my $serializer = $dbh->{dbm_tables}->{$file}->{mldbm}
+    my $serializer = $dbh->{dbm_tables}->{$tname}->{mldbm}
                   || $dbh->{dbm_mldbm}
                   || '';
-    $dbh->{dbm_tables}->{$file}->{mldbm} = $serializer if $serializer;
+    $dbh->{dbm_tables}->{$tname}->{mldbm} = $serializer if $serializer;
 
     my $ext =  '' if $dbm_type eq 'GDBM_File'
                   or $dbm_type eq 'DB_File'
@@ -299,8 +309,8 @@ sub open_table ($$$$$) {
                   or $dbm_type eq 'SDBM_File'
                   or $dbm_type eq 'ODBM_File';
     $ext = $dbh->{dbm_ext} if defined $dbh->{dbm_ext};
-    $ext = $dbh->{dbm_tables}->{$file}->{ext}
-        if defined $dbh->{dbm_tables}->{$file}->{ext};
+    $ext = $dbh->{dbm_tables}->{$tname}->{ext}
+        if defined $dbh->{dbm_tables}->{$tname}->{ext};
     $ext = '' unless defined $ext;
 
     my $open_mode = O_RDONLY;
@@ -331,7 +341,7 @@ sub open_table ($$$$$) {
     # LOCKING
     #
     my($nolock,$lockext,$lock_table);
-    $lockext = $dbh->{dbm_tables}->{$file}->{lockfile};
+    $lockext = $dbh->{dbm_tables}->{$tname}->{lockfile};
     $lockext = $dbh->{dbm_lockfile} if !defined $lockext;
     if ( (defined $lockext and $lockext == 0) or !$HAS_FLOCK
     ) {
@@ -384,24 +394,31 @@ sub open_table ($$$$$) {
 
     # COLUMN NAMES
     #
-    my $store = $dbh->{dbm_tables}->{$file}->{store_metadata};
+    my $store = $dbh->{dbm_tables}->{$tname}->{store_metadata};
        $store = $dbh->{dbm_store_metadata} unless defined $store;
        $store = 1 unless defined $store;
-    $dbh->{dbm_tables}->{$file}->{store_metadata} = $store;
+    $dbh->{dbm_tables}->{$tname}->{store_metadata} = $store;
 
-    my $col_names = $h{"_metadata \0"} if $store;
-    $col_names ||= $dbh->{dbm_tables}->{$file}->{c_cols}
-               || $dbh->{dbm_tables}->{$file}->{cols}
+    my($meta_data,$schema,$col_names);
+    $meta_data = $col_names = $h{"_metadata \0"} if $store;
+    if ($meta_data and $meta_data =~ m~<dbd_metadata>(.+)</dbd_metadata>~is) {
+        $schema  = $col_names = $1;
+        $schema  =~ s~.*<schema>(.+)</schema>.*~$1~is;
+        $col_names =~ s~.*<col_names>(.+)</col_names>.*~$1~is;
+    }
+    $col_names ||= $dbh->{dbm_tables}->{$tname}->{c_cols}
+               || $dbh->{dbm_tables}->{$tname}->{cols}
                || $dbh->{dbm_cols}
                || ['k','v'];
     $col_names = [split /,/,$col_names] if (ref $col_names ne 'ARRAY');
-    $dbh->{dbm_tables}->{$file}->{cols} = $col_names;
+    $dbh->{dbm_tables}->{$tname}->{cols}   = $col_names;
+    $dbh->{dbm_tables}->{$tname}->{schema} = $schema;
 
     my $i;
     my %col_nums  = map { $_ => $i++ } @$col_names;
 
     my $tbl = {
-	table_name     => $table,
+	table_name     => $tname,
 	file           => $file,
 	ext            => $ext,
         hash           => \%h,
@@ -570,9 +587,19 @@ sub push_row ($$$) {
 #
 sub push_names ($$$) {
     my($self, $data, $row_aryref) = @_;
-    $data->{Database}->{dbm_tables}->{$self->{file}}->{c_cols} = $row_aryref;
-    $self->{hash}->{"_metadata \0"} = join(',',@{$row_aryref})
-        if $self->{store_metadata};
+    $data->{Database}->{dbm_tables}->{$self->{table_name}}->{c_cols}
+       = $row_aryref;
+    next unless $self->{store_metadata};
+    my $stmt = $data->{f_stmt};
+    my $col_names = join ',', @{$row_aryref};
+    my $schema = $data->{Database}->{Statement};
+       $schema =~ s/^[^\(]+\((.+)\)$/$1/s;
+       $schema = $stmt->schema_str if $stmt->can('schema_str');
+    $self->{hash}->{"_metadata \0"} = "<dbd_metadata>"
+                                    . "<schema>$schema</schema>"
+                                    . "<col_names>$col_names</col_names>"
+                                    . "</dbd_metadata>"
+                                    ;
 }
 
 # fetch_one_row, delete_one_row, update_one_row
@@ -690,7 +717,7 @@ But here's a sample to get you started.
  use DBI;
  my $dbh = DBI->connect('dbi:DBM:');
  $dbh->{RaiseError} = 1;
- for my $sql( split /\s^;\n+/,"
+ for my $sql( split /;\n+/,"
      CREATE TABLE user ( user_name TEXT, phone TEXT );
      INSERT INTO user VALUES ('Fred Bloggs','233-7777');
      INSERT INTO user VALUES ('Sanjay Patel','777-3333');
@@ -701,7 +728,7 @@ But here's a sample to get you started.
  "){
      my $sth = $dbh->prepare($sql);
      $sth->execute;
-     $sth->dump_results if $sql =~ /SELECT/;
+     $sth->dump_results if $sth->{NUM_OF_FIELDS};
  }
  $dbh->disconnect;
 
@@ -776,7 +803,7 @@ Each "flavor" of DBM stores its files in a different format and has different ca
 
 By default, DBD::DBM uses the SDBM_File type of storage since SDBM_File comes with Perl itself.  But if you have other types of DBM storage available, you can use any of them with DBD::DBM also.
 
-You can specify the DBM type using the "dbm_type" attribute which can be set in the connection string or with the $dbh->{dbm_type} attribute for global settings or with the $dbh->{dbm_tables}->{$table_name}->{dbm_type} attribute for per-table settings in cases where a single script is accessing more than one kind of DBM file.
+You can specify the DBM type using the "dbm_type" attribute which can be set in the connection string or with the $dbh->{dbm_type} attribute for global settings or with the $dbh->{dbm_tables}->{$table_name}->{type} attribute for per-table settings in cases where a single script is accessing more than one kind of DBM file.
 
 In the connection string, just set type=TYPENAME where TYPENAME is any DBM type such as GDBM_File, DB_File, etc.  Do I<not> use MLDBM as your dbm_type, that is set differently, see below.
 
@@ -794,11 +821,11 @@ If you are going to have several tables in your script that come from different 
  #
  # sets global default of GDBM_File
 
- my $dbh->{dbm_tables}->{foo}->{dbm_type} = 'DB_File';
+ my $dbh->{dbm_tables}->{foo}->{type} = 'DB_File';
  #
  # over-rides the global setting, but only for the table called "foo"
 
- print $dbh->{dbm_tables}->{foo}->{dbm_type};
+ print $dbh->{dbm_tables}->{foo}->{type};
  #
  # prints the dbm_type for the table "foo"
 
@@ -818,8 +845,8 @@ Some examples:
  $dbh=DBI->connect(
     'dbi:DBM:mldbm=MySerializer'           # use MLDBM with a user defined module
  );
- $dbh->{mldbm} = 'MySerializer';           # same as above
- print $dbh->{mldbm}                       # show the MLDBM serializer
+ $dbh->{dbm_mldbm} = 'MySerializer';       # same as above
+ print $dbh->{dbm_mldbm}                   # show the MLDBM serializer
  $dbh->{dbm_tables}->{foo}->{mldbm}='Data::Dumper';   # set Data::Dumper for table "foo"
  print $dbh->{dbm_tables}->{foo}->{mldbm}; # show serializer for table "foo"
 

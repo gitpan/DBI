@@ -124,11 +124,11 @@ MSG
 my %opts = (
     NAME=> 'DBI',
     VERSION_FROM=> 'DBI.pm',
-    PREREQ_PM => { "Test::More" => 0 },
+    PREREQ_PM => { "Test::More" => 0.40 },
     EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl" ],
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
-    clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zz_*.t"
+    clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zv*_*.t"
 			." dbiproxy$ext_pl dbiprof$ext_pl dbitrace.log dbi.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest tardist',
