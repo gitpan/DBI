@@ -1,0 +1,229 @@
+Current DBI Implementation Notes:
+
+	$ary_ref = $sth->fetch; currently always returns the same array ref.
+	This may be a feature that stays, then again it may not.
+
+	$sth->bind_param currently takes a variable value not a reference.
+	That may change later.
+
+    *** MANY THINGS MAY CHANGE SOON *** See README file ***
+
+
+Changes in DBI 0.67,	15 Feb 1996
+
+	Trivial change to test suite to fix a problem shown up by the
+	Perl5.002gamma release Test::Harness.
+
+
+Changes in DBI 0.66,	29 Jan 1996
+
+	Minor changes to bring the DBI into line with 5.002 mechanisms,
+	specifically the xs/pm VERSION checking mechanism.
+	No functionality changes. One no-last-handle bug fix (rare problem).
+	Requires 5.002 (beta2 or later).
+
+
+Changes in DBI 0.65,	23 Oct 1995
+
+	Added $DBI::state to hold SQL CLI / ODBC SQLSTATE value.
+	SQLSTATE "00000" (success) is returned as "" (false), all else is true.
+	If a driver does not explicitly initialise it (via $h->{State} or
+	DBIc_STATE(imp_xxh) then $DBI::state will automatically return "" if
+	$DBI::err is false otherwise "S1000" (general error).
+	As always, this is a new feature and liable to change.
+
+	The is *no longer* a default error handler!
+	You can add your own using push(@{$h->{Handlers}}, sub { ... })
+	but be aware that this interface may change (or go away).
+
+	The DBI now automatically clears $DBI::err, errstr and state before
+	calling most DBI methods. Previously error conditions would persist.
+	Added DBIh_CLEAR_ERROR(imp_xxh) macro.
+
+	DBI now EXPORT_OK's some utility functions, neat($value),
+	neat_list(@values) and dump_results($sth).
+
+	Slightly enhanced t/min.t minimal test script in an effort to help
+	narrow down the few stray core dumps that some porters still report.
+
+	Renamed readblob to blob_read (old name still works but warns).
+	Added default blob_copy_to_file method.
+
+	Added $sth = $dbh->tables method. This returns an $sth for a query
+	which has these columns: TABLE_CATALOGUE, TABLE_OWNER, TABLE_NAME,
+	TABLE_TYPE, REMARKS in that order. The TABLE_CATALOGUE column
+	should be ignored for now.
+
+
+Changes in DBI 0.64,	23 Oct 1995
+
+	Fixed 'disconnect invalidates 1 associated cursor(s)' problem.
+	Drivers using DBIc_ACTIVE_on/off() macros should not need any changes
+	other than to test for DBIc_ACTIVE_KIDS() instead of DBIc_KIDS().
+	Fixed possible core dump in dbih_clearcom during global destruction.
+
+
+Changes in DBI 0.63,	1 Sep 1995
+
+	Minor update. Fixed uninitialised memory bug in method
+	attribute handling and streamlined processing and debugging.
+	Revised usage definitions for bind_* methods and readblob.
+
+
+Changes in DBI 0.62,	26 Aug 1995
+
+	Added method redirection method $h->func(..., $method_name).
+	This is now the official way to call private driver methods
+	that are not part of the DBI standard.  E.g.:
+	    @ary = $sth->func('ora_types');
+	It can also be used to call existing methods. Has very low cost.
+
+	$sth->bind_col columns now start from 1 (not 0) to match SQL.
+	$sth->bind_columns now takes a leading attribute parameter (or undef),
+	e.g., $sth->bind_columns($attribs, \$col1 [, \$col2 , ...]);
+
+	Added handy DBD_ATTRIBS_CHECK macro to vet attribs in XS.
+	Added handy DBD_ATTRIB_GET_SVP, DBD_ATTRIB_GET_BOOL and
+	DBD_ATTRIB_GET_IV macros for handling attributes.
+
+	Fixed STORE for NUM_OF_FIELDS and NUM_OF_PARAMS.
+	Added FETCH for NUM_OF_FIELDS and NUM_OF_PARAMS.
+
+	Dispatch no longer bothers to call _untie().
+	Faster startup via install_method/_add_dispatch changes.
+
+
+Changes in DBI 0.61,	22 Aug 1995
+
+	Added $sth->bind_col($column, \$var [, \%attribs ]);
+
+	This method enables perl variable to be directly and automatically
+	updated when a row is fetched. It requires no driver support
+	(if the driver has been written to use DBIS->get_fbav).
+	Currently \%attribs is unused.
+
+	Added $sth->bind_columns(\$var [, \$var , ...]);
+
+	This method is a short-cut for bind_col which binds all the
+	columns of a query in one go (with no attributes). It also
+	requires no driver support.
+
+	Added $sth->bind_param($parameter, $var [, \%attribs ]);
+
+	This method enables attributes to be specified when values are
+	bound to placeholders. It also enables binding to occur away
+	from the execute method to improve execute efficiency.
+	The DBI does not provide a default implementation of this.
+	See the DBD::Oracle module for a detailed example.
+
+	The DBI now provides default implementations of both fetch and
+	fetchrow.  Each is written in terms of the other. A driver is
+	expected to implement at least one of them.
+
+	More macro and assorted structure changes in DBDXS.h. Sorry!
+	The old dbihcom definitions have gone. All fields have macros.
+	The imp_xxh_t type is now used within the DBI as well as drivers.
+	Drivers must set DBIc_NUM_FIELDS(imp_sth) and DBIc_NUM_PARAMS(imp_sth).
+
+	test.pl includes a trivial test of bind_param and bind_columns.
+
+
+Changes in DBI 0.60,	17 Aug 1995
+
+	This release has significant code changes but much less
+	dramatic than the previous release. The new implementors data
+	handling mechanism has matured significantly (don't be put off
+	by all the struct typedefs in DBIXS.h, there's just to make it
+	easier for drivers while keeping things type-safe).
+
+	The DBI now includes two new methods:
+
+	do		$dbh->do($statement)
+
+	This method prepares, executes and finishes a statement. It is
+	designed to be used for executing one-off non-select statements
+	where there is no benefit in reusing a prepared statement handle.
+
+	fetch		$array_ref = $sth->fetch;
+
+	This method is the new 'lowest-level' row fetching method. The
+	previous @row = $sth->fetchrow method now defaults to calling
+	the fetch method and expanding the returned array reference.
+
+	The DBI now provides fallback attribute FETCH and STORE functions
+	which drivers should call if they don't recognise an attribute.
+
+	THIS RELEASE IS A GOOD STARTING POINT FOR DRIVER DEVELOPERS!
+	Study DBIXS.h from the DBI and Oracle.xs etc from DBD::Oracle.
+	There will be further changes in the interface but nothing
+	as dramatic as these last two releases! (I hope :-)
+
+
+Changes in DBI 0.59	15 Aug 1995
+
+	NOTE: THIS IS AN UNSTABLE RELEASE!
+
+	Major reworking of internal data management!
+	Performance improvements and memory leaks fixed.
+	Added a new NullP (empty) driver and a -m flag
+	to test.pl to help check for memory leaks.
+	Major changes to DBI/DBD interface include:
+
+	1. All imp_xxh_t structs must now have a dbih_ccc_t struct
+	   as the first element in the structure.
+
+	2. The previous initialisation scheme of
+
+		# create and init private data structure
+		$imp_data = _private_func(...);
+		# create handle and reference private data structure
+		$xxh = DBD::_new_xxh({...}, $imp_data);
+
+	   is now
+
+		# publish size of overall structure required
+		$imp_data_size = ...;	# sizeof(imp_xxh_t)
+		# create 'blank' handle of required size
+		$xxh = DBD::_new_xxh({...});
+		# init private data into space in handle
+		_private_func($xxh, ...);
+
+	   _private_func moves 'down' to the next level of handle class.
+	   E.g. a previous
+		$imp_data = ...::dr::_login(...)
+	   becomes
+		...::db::_login($dbh,...)
+
+	3. The local variable initialisation scheme of
+
+		foo(sth)
+		{
+		    D_dbihcom(sth);
+		    D_imp_sth;
+
+	   is now
+
+		foo(sth)
+		{
+		    D_imp_sth(sth);
+	   also:    D_imp_dbh_from_sth;
+	   and:     D_imp_drh_from_dbh;
+	   if needed.
+
+	Study DBD::Oracle version 0.21 for more details.
+	(Comparing parts of v0.21 with v0.20 may be useful.)
+
+	Known Problems:
+
+	1. A Perl5.001m binary built with -DDEBUGGING seems to
+	   cause (@row = $sth->fetchrow) to be called in a scalar
+	   context. Works fine using a non -DDEBUGGING perl.
+	   This might be a local problem. Please report to findings.
+    
+
+Changes in DBI 0.58	21 June 1995
+
+	Added DBI->internal->{DebugLog} = $filename;
+	Reworked internal logging.
+	Added $VERSION.
+	Made disconnect_all a compulsary method for drivers.
