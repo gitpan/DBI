@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 1.6 1997/09/05 19:16:40 timbo Exp $
+### $Id: FAQ.pm,v 1.7 1998/07/09 09:22:52 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,9 @@
 ### made to Alligator Descartes <I<descarte@hermetica.com>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 1.7  1998/07/09  09:22:52  timbo
+# *** empty log message ***
+#
 # Revision 1.6  1997/09/05  19:16:40  timbo
 # *** empty log message ***
 #
@@ -39,7 +42,7 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <HTML>
 <HEAD>
 <!-- -->
-<!-- $Id: FAQ.pm,v 1.6 1997/09/05 19:16:40 timbo Exp $ -->
+<!-- $Id: FAQ.pm,v 1.7 1998/07/09 09:22:52 timbo Exp $ -->
 <!-- -->
 <TITLE>Frequently Asked Questions for DBI</TITLE>
 </HEAD>
@@ -189,19 +192,10 @@ There are a few information sources on DBI.
 
 =item I<DBI Specification>
 
-    http://www.hermetica.com/technologia/perl/DBI/doc/dbispec
+The DBI specification is defined by the DBI documentation (supplied as
+POD documentation within the DBI module).
 
-There are two specifications available at this link, the new DBI Draft
-Specification which is a rapidly evolving document as Tim Bunce and the
-development team drive towards a stable interface, and the old
-historical DBperl Specification out of which the current DBI interface
-evolved.
-
-The latter document should be regarded as being of historical interest 
-only and should not serve as a programming manual, or authoratative in any 
-sense. However, it is still a very useful reference source.
-
-=item I<POD documentation>
+=item I<POD Documentation>
 
 I<POD>s are chunks of documentation usually embedded within perl programs
 that document the code ``I<in place>'', providing a useful resource for
@@ -267,6 +261,8 @@ There are a series of occasional rambles from various people on the
 DBI mailing lists who, in an attempt to clear up a simple point, end up
 drafting fairly comprehensive documents. These are quite often varying in
 quality, but do provide some insights into the workings of the interfaces.
+They also quite often use old-style code (especially around connect) so
+always compare with the latest DBI Specification.
 
 =item I<``DBI -- The perl5 Database Interface''>
 
@@ -290,8 +286,8 @@ for completeness' sake.
 
 =item I<``The Perl5 Database Interface''>
 
-This item is a book to be written by Alligator Descartes ( for it is me )
-and published by O'Reilly and Associates this coming Winter. 
+This item is a book due to be written by Alligator Descartes
+sometime and will be published by O'Reilly and Associates.
 
 Here is the putative table of contents for the book.
 
@@ -527,21 +523,7 @@ changes required and pre-patched versions can be found at:
 
 =head2 3.3 Can I access Microsoft Access or SQL-Server databases with DBI?
 
-    Contributed by Tim Bunce and Jeff Urlwin
-
-Supplied with DBI-0.79 ( and later ) is an experimental DBI 'emulation layer'
-for the I<Win32::ODBC> module. It's called I<DBI::W32ODBC> and is,
-at the moment, very minimal. You will need the I<Win32::ODBC> module 
-available from:
-
-    http://www.roth.net
-
-Given its status, problem reports without fixes are likely to be ignored. 
-You will also need the I<Win32 DBI patch kit> as supplied by Jeff Urlwin,
-which you can locate by reading the previous question's answer.
-
-To get back to the question, theoretically, yes, you can access Microsoft 
-Access and SQL-Server databases from DBI I<via> ODBC!
+Yse. Use the ODBC driver (DBD::ODBC).
 
 =head2 3.4 Is the a DBD for <I<insert favourite database here>>?
 
@@ -725,6 +707,10 @@ The ``Idiot's Guide To Solving Perl / CGI Problems'' can be located at:
 
 as can the ``Perl CGI Programming FAQ''. Read I<BOTH> these documents 
 carefully! They will probably save you many hours of work.
+
+=head2 4.5 How do I get the number of rows returned from a select statement?
+
+Count them. Read the DBI docs for the rows method.
 
 =head2 5.1 Can I do multi-threading with DBI?
 

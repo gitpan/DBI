@@ -1,21 +1,27 @@
 {
     package DBD::ExampleP;
 
-    require DBI;
+    use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 1.7 1997/12/10 16:50:14 timbo Exp $
+#   $Id: ExampleP.pm,v 1.9 1998/08/09 20:48:38 timbo Exp $
 #
-#   Copyright (c) 1994, Tim Bunce
+#   Copyright (c) 1994,1997,1998 Tim Bunce
 #
 #   You may distribute under the terms of either the GNU General Public
 #   License or the Artistic License, as specified in the Perl README file.
 
-    @statnames = qw(dev ino mode nlink uid gid
-	rdev size atime mtime ctime blksize blocks name);
+    @statnames = qw(dev ino mode nlink
+	uid gid rdev size
+	atime mtime ctime
+	blksize blocks name);
     @statnames{@statnames} = (0 .. @statnames-1);
-    @stattypes = qw(1 1 1 1 1 1 1 1 3 3 3 1 1 2);
+
+    @stattypes = (SQL_INTEGER, SQL_INTEGER, SQL_INTEGER, SQL_INTEGER,
+	SQL_INTEGER, SQL_INTEGER, SQL_INTEGER, SQL_INTEGER,
+	SQL_INTEGER, SQL_INTEGER, SQL_INTEGER,
+	SQL_INTEGER, SQL_INTEGER, SQL_VARCHAR);
     @stattypes{@statnames} = @stattypes;
 
     $drh = undef;	# holds driver handle once initialised
@@ -28,7 +34,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 1.7 $',
+	    'Version' => '$Revision: 1.9 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -60,6 +66,10 @@
         $this;
     }
 
+    sub data_sources {
+	return ("dbi:ExampleP:dir=.");	# possibly usefully meaningless
+    }
+
     sub disconnect_all {
 	# we don't need to tidy up anything
     }
@@ -73,28 +83,66 @@
 
     sub prepare {
 	my($dbh, $statement)= @_;
-	my($fields, $param)
-		= $statement =~ m/^select ([\w,\s]+)\s+from\s+(.*?)/i;
-	my(@fields) = split(/\s*,\s*/, $fields);
 
-	my(@bad) = map($DBD::ExampleP::statnames{$_} ? () : $_, @fields);
+	my($fields, $param)
+		= $statement =~ m/^select\s+(.*?)\s+from\s+(\S*)/i;
+	unless (defined $fields and defined $param) {
+	    $dbh->event("ERROR", 1, "Syntax error in select statement");
+	    return undef;
+	}
+
+	my @fields = ($fields eq '*')
+			? keys %DBD::ExampleP::statnames
+			: split(/\s*,\s*/, $fields);
+
+	my @bad = map {
+	    defined $DBD::ExampleP::statnames{$_} ? () : $_
+	} @fields;
 	if (@bad) {
 	    $dbh->event("ERROR", 1, "Unknown field names: @bad");
 	    return undef;
 	}
 
-	my($outer, $sth) = DBI::_new_sth($dbh, {
+	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'     => $statement,
-	    'fields'        => \@fields,
-	    }, ['example implementors private data']);
+	}, ['example implementors private data']);
+
+	$sth->{'dbd_param'}->[1] = $param if $param !~ /\?/;
 
 	$outer->{NAME} = \@fields;
-	$outer->{NULLABLE} = (0) x @fields;
+	$outer->{NULLABLE} = [ (0) x @fields ];
 	$outer->{NUM_OF_FIELDS} = @fields;
-	$outer->{NUM_OF_PARAMS} = 1;
+	$outer->{NUM_OF_PARAMS} = ($param !~ /\?/) ? 0 : 1;
 
 	$outer;
     }
+
+
+    sub type_info_all {
+	my ($dbh) = @_;
+	my $ti = [
+	    {	TYPE_NAME	=> 0,
+		DATA_TYPE	=> 1,
+		PRECISION	=> 2,
+		LITERAL_PREFIX	=> 3,
+		LITERAL_SUFFIX	=> 4,
+		CREATE_PARAMS	=> 5,
+		NULLABLE	=> 6,
+		CASE_SENSITIVE	=> 7,
+		SEARCHABLE	=> 8,
+		UNSIGNED_ATTRIBUTE=> 9,
+		MONEY		=> 10,
+		AUTO_INCREMENT	=> 11,
+		LOCAL_TYPE_NAME	=> 12,
+		MINIMUM_SCALE	=> 13,
+		MAXIMUM_SCALE	=> 14,
+	    },
+	    [ 'VARCHAR', DBI::SQL_VARCHAR, undef, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
+	    [ 'INTEGER', DBI::SQL_INTEGER, undef, "","",   undef, 0, 0, 1, 0, 0,0,undef,0,0 ],
+	];
+	return $ti;
+    }
+
 
     sub disconnect {
 	return 1;
@@ -130,7 +178,7 @@
 
     sub bind_param {
 	my($sth, $param, $value, $attribs) = @_;
-	$sth->{'param'}->[$param] = $value;
+	$sth->{'dbd_param'}->[$param] = $value;
     }
 	
     sub execute {
@@ -139,36 +187,45 @@
 	if (@dir) {
 	    $dir = $dir[0];
 	} else {
-	    $dir = $sth->{'param'}->[1] || die "No bind_param";
+	    $dir = $sth->{'dbd_param'}->[1];
+	    unless (defined $dir) {
+		$sth->event("ERROR", 2, "No bind parameter supplied");
+		return undef;
+	    }
 	}
 	$sth->finish;
-	$sth->{'datahandle'} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
-	opendir($sth->{'datahandle'}, $dir)
+	$sth->{dbd_datahandle} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+	opendir($sth->{dbd_datahandle}, $dir)
 		or ($sth->event("ERROR", 2, "opendir($dir): $!"), return undef);
-	$sth->{'dir'} = $dir;
+	$sth->{dbd_dir} = $dir;
 	1;
     }
 
     sub fetch {
-	my($sth) = @_;
-	my $f = readdir($sth->{'datahandle'});
+	my $sth = shift;
+	my $f = readdir($sth->{dbd_datahandle});
 	unless($f){
 	    $sth->finish;     # no more data so finish
-	    return ();
+	    return;
 	}
-	my(%s); # fancy a slice of a hash?
+	my %s; # fancy a slice of a hash?
 	# put in all the data fields
-	@s{@DBD::ExampleP::statnames} = (stat("$sth->{'dir'}/$f"), $f);
+	@s{@DBD::ExampleP::statnames} = (stat("$sth->{'dbd_dir'}/$f"), $f);
 	# return just what fields the query asks for
-	[ @s{ @{$sth->{'fields'}} } ];
+	my @new = @s{ @{$sth->{NAME}} };
+
+	#my $row = $sth->_get_fbav;
+	#@$row =  @new;
+	#$row->[0] = $new[0]; $row->[1] = $new[1]; $row->[2] = $new[2];
+	return $sth->_set_fbav(\@new);
     }
     *fetchrow_arrayref = \&fetch;
 
     sub finish {
-	my($sth) = @_;
-	return undef unless $sth->{'datahandle'};
-	closedir($sth->{'datahandle'});
-	$sth->{'datahandle'} = undef;
+	my $sth = shift;
+	return undef unless $sth->{dbd_datahandle};
+	closedir($sth->{dbd_datahandle});
+	$sth->{dbd_datahandle} = undef;
 	return 1;
     }
 
@@ -177,8 +234,8 @@
 	# In reality this would interrogate the database engine to
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
-	if ($attrib eq 'DATA_TYPE'){
-	    my(@t) = @DBD::ExampleP::stattypes{@{$sth->{'fields'}}};
+	if ($attrib eq 'TYPE'){
+	    my @t = @DBD::ExampleP::stattypes{@{$sth->{NAME}}};
 	    return \@t;
 	}
 	# else pass up to DBI to handle

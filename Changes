@@ -1,5 +1,28 @@
+Changes in DBI 0.94,	9th August 1998
 
-Changes in DBI 0.92,	13th February 1998
+  WARNING: THIS IS AN EXPERIMENTAL RELEASE!
+
+  Added DBD::Shell and dbish interactive DBI shell. Try it!
+  Any database attribs can be set via DBI->connect(,,, \%attr).
+  Added _get_fbav and _set_fbav methods for Perl driver developers
+    (see ExampleP driver for perl usage). Drivers which don't use
+    one of these methods (either via XS or Perl) are not compliant.
+  DBI trace now shows adds " at yourfile.pl line nnn"!
+  PrintError and RaiseError now prepend driver and method name.
+  The available_drivers method no longer returns NullP or Sponge.
+  Added $dbh->{Name}.
+  Added $dbh->quote($value, $data_type).
+  Added more hints to install_driver failure message.
+  Added DBD::Proxy and DBI::ProxyServer (from Jochen Wiedmann).
+  Added $DBI::neat_maxlen to control truncation of trace output.
+  Added $dbh->selectall_arrayref and $dbh->selectrow_array methods.
+  Added $dbh->tables.
+  Added $dbh->type_info and $dbh->type_info_all.
+  Added $h->trace_msg($msg) to write to trace log.
+  Added @bool = DBI::looks_like_number(@ary).
+  Many assorted improvements to the DBI docs.
+
+Changes in DBI 0.93,	13th February 1998
 
   Fixed DBI::DBD::dbd_postamble bug causing 'Driver.xsi not found' errors.
   Changes to handling of 'magic' values in neatsvpv (used by trace).

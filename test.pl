@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.24 1998/02/04 17:35:24 timbo Exp $
+# $Id: test.pl,v 1.25 1998/07/09 09:22:52 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 1.24 $}."\n";
+    print q{DBI test application $Revision: 1.25 $}."\n";
     $| = 1;
     eval "require blib;"	# wasn't in 5.003, hence the eval
 }
@@ -57,6 +57,17 @@ print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 my $dbh = DBI->connect('', '', '', $driver);
 $dbh->debug($::opt_h);
 
+if (0) {	# only works after 5.004_04
+    my $h = DBI->connect('dbi:NullP:');
+	$h->trace(3);
+	{
+		warn "RaiseError= '$h->{RaiseError}' (pre local)\n";
+		local($h->{RaiseError}) = 1;
+		warn "RaiseError= '$h->{RaiseError}' (post local)\n";
+	}
+	warn "RaiseError= '$h->{RaiseError}' (post local block)\n";
+}
+
 if ($::opt_m) {
 
     mem_test($dbh) while 1;
@@ -65,7 +76,7 @@ if ($::opt_m) {
 
     # new experimental connect_test_perf method
     DBI->connect_test_perf("dbi:$driver:", '', '', {
-	dbi_loops=>10, dbi_par=>10, dbi_verb=>1
+	dbi_loops=>5, dbi_par=>20, dbi_verb=>1
     });
 
     require Benchmark;

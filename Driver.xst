@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 1.6 1998/02/13 14:27:16 timbo Exp $
+#  $Id: Driver.xst,v 1.8 1998/08/09 20:48:38 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -44,14 +44,14 @@ discon_all_(drh)
 MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::db
 
 void
-_login(dbh, dbname, uid, pwd)
+_login(dbh, dbname, username, pwd)
     SV *	dbh
     char *	dbname
-    char *	uid
+    char *	username
     char *	pwd
     CODE:
     D_imp_dbh(dbh);
-    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, uid, pwd) ? &sv_yes : &sv_no;
+    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, username, pwd) ? &sv_yes : &sv_no;
 
 
 void
@@ -60,7 +60,7 @@ commit(dbh)
     CODE:
     D_imp_dbh(dbh);
     if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
-	    warn("commit ineffective with AutoCommit");
+	    warn("commit ineffective with AutoCommit enabled");
     ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 void
@@ -69,7 +69,7 @@ rollback(dbh)
     CODE:
     D_imp_dbh(dbh);
     if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
-	    warn("rollback ineffective with AutoCommit");
+	    warn("rollback ineffective with AutoCommit enabled");
     ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 void
@@ -86,10 +86,12 @@ disconnect(dbh)
 	DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
-    /* still exists. This possibly needs some more thought.			*/
+    /* still exists. This possibly needs some more thought.		*/
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
-	warn("disconnect(%s) invalidates %d active cursor(s)",
-	    SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
+	char *plural = (DBIc_ACTIVE_KIDS(imp_dbh)==1) ? "" : "s";
+	warn("disconnect(%s) invalidates %d active statement%s. %s",
+	    SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh), plural,
+	    "Either destroy statement handles or call finish on them before disconnecting.");
     }
     ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
@@ -187,12 +189,16 @@ _prepare(sth, statement, attribs=Nullsv)
     }
 
 
+#ifdef dbd_st_rows
+
 void
 rows(sth)
     SV *	sth
     CODE:
     D_imp_sth(sth);
     XST_mIV(0, dbd_st_rows(sth, imp_sth));
+
+#endif
 
 
 void
@@ -213,6 +219,7 @@ bind_param(sth, param, value, attribs=Nullsv)
 	else {
 	    SV **svp;
 	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
+	    /* XXX we should perhaps complain if TYPE is not SvNIOK */
 	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
 	}
     }

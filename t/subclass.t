@@ -68,6 +68,7 @@ ok(0, 1, 1);
 
 $dbh = MyDBI->connect("dbi:Sponge:foo","","");
 ok(0, ref $dbh, 'MyDBI::db');
+#$dbh->trace(3);
 
 $sth = $dbh->prepare("foo",
 	# data for DBD::Sponge to return via fetch

@@ -1,21 +1,40 @@
-sql shell
+Test with threaded perl (re dTHR etc).
+Make thread safe.
+
+Since I'm going to add a perl-level @flags = DBI::looks_like_a_number(@ary)
+a perl-level DBI::chop_blanks(@lvalue_ary) might be a good idea
+(you'd only pass fields you wanted chopped as args).
+Plus an XS macro DBI_CHOP_BLANKS(sv)
+                                                            
+Upload PPT presentation to CPAN.
+
+fetch_scroll handling via get_fbav.
+
+Add $sth->{Statement}.
+
+Add $sth->{RowCacheSize} and $dbh->prepare($stmt, { RowCacheSize => $n });
+
+Add per-handle debug file pointer (or at least a macro that _looks_ like that).
+Or, better yet, a function pointer so we can do more clever things.
+
+Rework handle creation for
+$h->clone ?, and maybe
+$dbh->connect([$user, $passwd])	# to reconnect, possibly as a different user
 
 generic dbd_preparse
 
 SQL Parser
   CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
 
-$dbh->quote($value, [ $field_type_num_to_quote_for ]) ? (int=none, date=?)
-
-Shared error codes between all handles!
+Fix shared error codes between handles!
 
 Add problem reporting info to DBI.pm
 
-Check with threaded perl again.
+Metadata!
 
-Metadata
-
-For DBD's in perl allow write access to some attrs if CALL_DEPTH > 1
+Add 'break handling' when field values change? Use two fbav's so 'previous
+record' is available. Defind break fields and handlers. Call them via
+an alternate fetch_with_break method.
 
 
 -----------

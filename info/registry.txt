@@ -1,0 +1,244 @@
+Registry of Values for the SQL Standard
+(ANSI X3.135 and ISO/IEC 9075)
+With especial attention to values related to
+SQL/CLI ([ANSI/]ISO/IEC 9075-3)
+Registry maintained by Jim Melton
+(jim.melton@sybase.com)
+1. Introduction
+This registry lists the ranges of values that have been reserved for various numeric values and strings within SQL/CLI and other parts of the SQL standard.  Certain ranges are allocated to ISO, to X/Open (and potentially to other consortia), and to specific vendors. Adherence to this registry ensures that the same value will not be defined by two different sources to represent incompatible behaviour.
+Each entry in the registry specifies who may define values, not who may use them.  Vendors may use a value in any range, provided they uses the value as specified by the source to which its range is registered.
+For example, values in ranges reserved to ISO are also used in the X/Open SQL/CLI specification in cases where the ISO SQL/CLI International Standard covers the same material, while ranges registered to X/Open are used for material that has not yet been adopted by ISO.
+Vendors may well choose to define multiple values for the same feature. Useful vendor features may be specified in future versions of SQL/CLI to promote application portability, and promote standardisation of the specifications.  At such time as a feature is adopted for the SQL/CLI standards, this registry will define relevant values occupying the appropriate range.  In these cases, this registry may change the definition of the ranges in future editions, as an alternative less intrusive to existing applications than redefining specific values.
+All ranges include both endpoints.
+The legend "In Use" indicates ranges that are already in use by various implementations.  Vendors should not request values within these ranges.  However, there may be unused values within those ranges.
+Portable applications should use only the values defined in this document, and should refer to them using symbolic names wherever possible.
+This registry is available on the SQL Standards Archives at the following URL:
+	ftp://jerry.ece.umassd.edu/isowg3/dbl/SQL_Registry
+
+2. 
+Function Return Values
+Each SQL/CLI function returns an SQL SMALLINT indicating the function result.  This table lists portable return values from functions and specifies the meaning of each.
+
+Lower Value	Upper Value	Registered
+User
+-100	1	ISO
+2	99	Microsoft
+100	199	X/Open
+3. Handle Types
+The AllocHandle() and FreeHandle() functions take as the HandleType argument an SQL SMALLINT that specifies the type of handle to be allocated or freed.
+
+Lower Value	Upper Value	Registered
+User
+1	100	ISO
+4. Attributes
+An SQL INTEGER value as an argument to an SQL/CLI function that sets or gets an attribute specifies the attribute in question.
+On some implementations, there is a single number space for attributes of all types of handle.  For instance, in some implementations, an INTEGER value defined as a statement attribute can also be used as a connection attribute; doing so may let the application specify a default value for the statement attribute whenever it creates a statement handle within that connection. This registry intends to never specify the same value as attributes of different handle types, and advises vendors to adhere to this rule.
+4.1. Environment, Connection, and Statement Attributes
+Lower Value	Upper Value	Registered
+User
+All negative values	ISO
+-150	-101	ISO/IEC 9579 (Remote Database Access)
+0	1000	In Use
+1001	1019	MicroRim
+1020	1039	FFE Software
+1040	1139	Intersolv
+1140	1149	Rochester Software
+1150	1199	Simba Technologies, Inc.
+1200	1249	Microsoft Corp.
+1250	1299	IBM DB2 CLI
+1300	1399	IBI
+1400	1449	NCR
+1450	1499	Oracle
+1500	1549	Fulcrum
+1550	1599	Walldata
+1600	1649	Showcase AS/400
+1650	1699	Visigenic
+1700	1749	Progress Software Corp.
+1750	1799	Fujitsu Limited
+1800	1849	Tandem Computers
+1850	1899	NEON Systems
+1900	1949	Watcom (a Sybase company)
+1950	1959	VMARK Software, Inc.
+2001	2049	Borland
+2050	2099	Open Horizon, Inc.
+2100	2149	IBM AS/400
+2150	2199	Quadbase Systems, Inc.
+2200	2249	Olivetti North America, Inc.
+2250	2349	Informix, Inc.
+2350	2399	Broadbase Information Systems
+2400	2449	Transoft, Inc./Transoft Ltd.
+2450	2599	IBM DB2 CLI
+4000	4999	Progress Software Corp.
+9000	9999	Perl DBI
+10000	19999	X/Open
+65000	65535	Microsoft Corp.
+5. Integers Denoting Fields in the SQL Descriptor
+An SQL SMALLINT value passed as the FieldIdentifier argument to GetDescField(), SetDescField(), or ColAttribute() identifies the descriptor field to which the application wishes to gain access.
+
+Lower Value	Upper Value	Registered
+User
+All negative values	ISO
+0	999	In Use
+1000	1199	ISO
+1200	1249	Microsoft Corp.
+1250	1299	IBM DB2 CLI
+1300	1349	NCR
+1400	1499	Oracle
+1500	1549	NEON
+1650	1699	Visigenic
+1700	1749	Progress Software Corp.
+1750	1799	Fujitsu Limited
+1800	1849	Tandem Computers
+1850	1899	Microsoft Corp.
+1900	1949	Informix, Inc.
+9000	9999	Perl DBI
+32000	32767	Microsoft Corp.
+6. Integers Denoting Fields in the SQL Diagnostics Area
+An SQL SMALLINT value passed as the RecNumber argument to GetDiagField() identifies the diagnostic field that the application wishes to retrieve.
+
+Lower Value	Upper Value	Registered
+User
+-9999	-9000	Perl DBI
+-1849	-1800	Tandem Computers
+-1299   	-1250	IBM DB2 CLI
+-1249   	-1150	Microsoft Corp.
+-499    	-400	Progress Software Corp.
+-99 	-1	X/Open
+All non-negative values	ISO
+7. Integers Denoting SQL Dynamic Statements
+An SQL INTEGER in one of the header fields of the diagnostics area indicates the type of SQL statement that the underlying function executed.  This field can be retrieved by specifying SQL_DIAG_DYNAMIC_FUNCTION_CODE on a call to GetDiagField().
+
+Lower Value	Upper Value	Registered
+User
+-9999	-9000	Perl DBI
+-899	-800	Tandem Computers
+   -499	-400	Progress Software Corp.
+   -399	-300	IBM DB2 CLI
+-200	-299	Microsoft Corp. 
+    -99	-1	X/Open
+All non-negative values	ISO
+8. Integers Denoting Data Types
+An SQL SMALLINT in the TYPE field of an SQL descriptor, and as an argument to certain other SQL/CLI functions such as the binding functions, specifies the SQL data type of a data item.
+
+Lower Value	Upper Value	Registered
+User
+-9999	-9000	Perl DBI
+-1049	-850	NCR
+-849	-800	Tandem Computers
+-599	-550	Progress Software Corp.
+-549	-500	Visigenic
+-499	-450	Fujitsu Limited
+-449	-400	Oracle
+-399	-350	IBM DB2 CLI
+-100	-149	Informix, Inc.
+-99	-1	Microsoft Corp.
+9	11	In Use
+All non-negative values	ISO
+9. Integers Denoting SQL/CLI Functions
+An SQL SMALLINT value can be passed to Functions() to identify an SQL/CLI function in order to determine whether the application supports it.
+
+Lower Value	Upper Value	Registered
+User
+0	100	In Use
+400	499	Progress Software Corp.
+800	849	Tandem Computers
+1000	1199	ISO
+1200	1249	Microsoft Corp.
+1250	1299	IBM DB2 CLI
+1300	1999	ISO
+2000	2999	X/Open
+9000	9999	Perl DBI
+10. Integers Denoting Other Information Requests
+An SQL SMALLINT value can be passed to GetInfo() to specify an implementation characteristic to retrieve.
+
+Lower Value	Upper Value	Registered
+User
+-534	-1	Microsoft Corp.
+0	100	In Use
+1001	1010	Simba Technologies, Inc.
+1011	1110	Intersolv
+1111	1150	Oracle
+1151	1200	Microsoft Corp. 
+1201	1225	Fulcrum
+1226	1249	NEON
+1250	1299	IBM DB2 CLI
+1650	1699	Visigenic
+1700	1749	Progress Software Corp.
+1750	1799	Microsoft Corp.
+1800	1849	Tandem Computers
+1850	1899	Informix, Inc.
+1900	1949	"Simba Technologies" (to be replaced later by the name of a partner)
+1950	1999	Broadbase Information Systems
+9000	9999	Perl DBI
+10000	19999	X/Open
+20000	29999	ISO
+11. Registry of Strings for Vendor Escape Clause
+The X/Open SQL specification specifies syntax by which an SQL statement can include syntax defined by a vendor (or by a specific SQL standard).  Identification of vendor-specific SQL requires use of a vendor-name and product-name.
+The vendor-name is a character string that represents an organisation or individual that requests an entry in the registry. The product-name is a character string that represents a database product.  The registry must be maintained so that these two columns, taken together, are unique.  The vendor-name and product-name strings are represented exactly as shown and application programs should assume that they are case-sensistive.
+
+Registrant	Vendor-name	Product-name
+Fulcrum Technologies, Inc.	FULCRUM	SEARCHSERVER
+IBM	IBM	DB2
+Ingram Group	INGRAM GROUP	DBB
+Ingram Group	INGRAM GROUP	DBI
+Microsoft Corp.	MICROSOFT	ODBC
+Microsoft Corp.	MICROSOFT	ODBC Btrieve Driver
+Microsoft Corp.	MICROSOFT	ODBC dBase Driver
+Microsoft Corp.	MICROSOFT	ODBC Excel Driver
+Microsoft Corp.	MICROSOFT	ODBC FoxPro Driver
+Microsoft Corp.	MICROSOFT	ODBC MICROSOFT ACCESS 2.0 Driver
+Microsoft Corp.	MICROSOFT	ODBC Paradox Driver
+Microsoft Corp.	MICROSOFT	ODBC Text Driver
+Microsoft Corp.	MICROSOFT	SQL SERVER
+Progress Software Corp.	PSC	PROGRESS/ODBC
+Progress Software Corp.	PSC	PROGRESS/SQL
+Tandem Computers	TANDEM	NSODBC
+Tandem Computers	TANDEM	SQL/MP
+VMARK Software, Inc.	VMARK	FastPath
+VMARK Software, Inc.	VMARK	HyperSTAR
+12. Registry of Strings for CLASS_ORIGIN and SUBCLASS_ORIGIN
+The International Standard for SQL and the X/Open SQL specification provides a field in the diagnostics area by which an SQLSTATE class code value or an SQLSTATE subclass code value can be associated with a specific product.
+The CLASS_ORIGIN value is a character string that represents an SQL product for which an entry in the registry has been created. The registry must be maintained so that this column is unique among all CLASS_ORIGIN values.  The values are represented exactly as shown and application programs should assume that they are case-sensistive.
+
+Registrant	CLASS_ORIGIN
+Ingram Group	DBB
+Ingram Group	DBI
+UniSQL	UniSQL/X
+UniSQL	UniSQL/M
+ISO/IEC 9579 (Remote Database Access)	ISO 9579
+
+13. 
+Codes for Completion Type
+An SQL SMALLINT used to specify completion semantics for EndTran().
+
+Lower Value	Upper Value	Registered
+User
+1	2	ISO/IEC 9075-3 (SQL/CLI)
+3	3	ISO/IEC 9579 (Remote Database Access)
+All non-negative values	ISO
+
+14. Update History
+Original:	Spike, Creating information as part of the X/Open SQL document
+Converted:	Jim Melton, Initialize the registry
+Update 1:	Jim Melton, Add Tandem Computers information
+Update 2:	Jim Melton, Add ISO range to "Integers Denoting SQL/CLI Functions" per in-use values; add ISO ranges to "Integers Denoting Fields in the SQL Descriptor" per in-use values; add an "In Use" in various places as required; fix table heading format (18 May, 1995)
+Update 3:	Jim Melton; Add NEON Systems values to "Environment, Connection, and Statement Attributes"
+Update 4:	Jim Melton; Add Watcom values to "Environment, Connection, and Statement Attributes"
+Update 5:	Jim Melton; Add VMARK values to vendor name, product name, and connection/statement attributes
+Update 6:	Jim Melton; Add NCR values to Integers "Denoting Fields in the SQL Descriptor"
+Update 7:	Jim Melton; Add Microsoft values for DynamicFunctionCode, Diagnostics Area, and Descriptor Area
+Update 8:	Jim Melton; Add "In Use" range for "Environment, Connection, and Statement Attributes" (9 Oct, 1995)
+Update 9:	Jim Melton; Add NCR values to "Integers Denoting Data Types" (5 April, 1996)
+Update 10:	Jim Melton; Add Open Horizon, Inc. Values to "Environment, Connection, and Statement Attributes" (7 May, 1996)
+Update 11:	Jim Melton; correct the "In Use" range of "Environment, Connection, and Statement Attributes" to be 0-1000 instead of 0-999, per email from Murali Venkatrao on 8 May, 1996; also added 2100-2149 for "IBM AS/400" on 16 May, 1996; also changed "IBM" to "IBM DB2 CLI" per email from Frank Pellow on 16 May, 1996
+Update 12:	Jim Melton; Add Olivetti, North America, Inc. values to "Environment, Connection, and Statement Attributes" (25 November, 1996)
+Update 13:	Jim Melton; add a pointer to the URL where the Registry can be obtained (12 December, 1996)
+Update 14:	Jim Melton; add Informix, Inc. values to "Environment, Connection, and Statement Attributes", to "Integers Denoting Data Types", to "Integers Denoting Fields in the SQL Descriptor", and to "Integers Denoting Other Information Requests" (5-6 March, 1997)
+Update 15:	Jim Melton; changed all references to "PageAhead Software" to "Simba Technologies, Inc." per instructions from Adrian Cole (14 March, 1997)
+Update 16:	Jim Melton; added values to "Integers Denoting Other Information Requests" for: "Simba Technologies" (to be replaced later by the name of a partner): (4 July, 1997)
+Update 17:	Jim Melton; added values to "Environment, Connection, and Statement Attributes" and to "Registry of Strings for CLASS_ORIGIN and SUBCLASS_ORIGIN" for ISO/IEC 9579. 
+Update 18:	Jim Melton; divided "Integers Denoting Other Information Requests" range of 1111-1200, formerly allocated to Oracle, into 1111-1150 for Oracle and 1151-1200 for Microsoft; requested by Murali Venkatrao of Microsoft (2 October, 1997) - also changed pointer to where the Registry can be found, removing it from the Open Group site and placing it on the SQL Standards Archives. 
+Update 19:	Jim Melton; assigned Broadbase Information Systems values to "Environment, Connection, and Statement Attributes" and to "Integers Denoting Other Information Requests" at the request of John Sichi. 
+Update 20:	Jim Melton; assigned Transoft, Inc./Transoft Ltd. Values to "Environment, Connection, and Statement Attributes" at the request of Peter Smithson. 
+Update 21:	Jim Melton; assigned more IBM DB2 CLI values to "Environment, Connection, and Statement Attributes" at the request of Paul Cotton. 
+Update 22:	Jim Melton; assigned values in all tables for Perl DBI at the request of Tim Bunce of the Ingram Group. 

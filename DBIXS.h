@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.46 1998/02/13 14:27:16 timbo Exp $
+/* $Id: DBIXS.h,v 1.48 1998/08/09 20:48:38 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
@@ -12,7 +12,6 @@
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
-
 
 /* Perl backwards compatibility definitions */
 #ifndef boolSV	/* added in perl5.004		*/
@@ -47,6 +46,14 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver
 #endif
 
 
+#ifdef USE_THREADS
+/* #define DBI_USE_THREADS DOES NOT WORK - recursive calls hang */
+#define dbi_mutex perl_mutex
+#else
+#define dbi_mutex void
+#endif
+
+
 /* forward declaration of 'DBI Handle Common Data', see below		*/
 
 /* implementor needs to define actual struct { dbih_??c_t com; ... }*/
@@ -75,13 +82,15 @@ typedef struct dbih_com_std_st {
     SV   *my_h_obj;	/* copy of own SvRV(inner handle) (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
+    dbi_mutex *h_mutex;	/* concept placeholder for (driver?) mutex	*/
 
     HV   *imp_stash;	/* who is the implementor for this handle	*/
     SV   *imp_data;	/* optional implementors data (for perl imp's)	*/
 
     I32  kids;		/* count of db's for dr's, st's for db's etc	*/
     I32  active_kids;	/* kids which are currently DBIc_ACTIVE		*/
-    char *last_method;	/* name of last method called, set by dispatch	*/
+    I32  spare1;
+    void *spare2;
 } dbih_com_std_t;
 
 typedef struct dbih_com_attr_st {
@@ -93,6 +102,7 @@ typedef struct dbih_com_attr_st {
     SV *Errstr;		/* Native engine error message		*/
     SV *Handlers;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
+    I32  spare1;
 } dbih_com_attr_t;
 
 
@@ -127,9 +137,12 @@ typedef struct {		/* -- STATEMENT --			*/
     int 	num_params;	/* number of placeholders		*/
     int 	num_fields;	/* NUM_OF_FIELDS, must be set		*/
     AV  	*fields_svav;	/* special row buffer (inc bind_cols)	*/
+    IV		row_count;	/* incremented by get_fbav()		*/
 
     AV		*fields_fdav;	/* not used yet, may change */
 
+    I32  spare1;
+    void *spare2;
 } dbih_stc_t;
 
 typedef struct {		/* -- FIELD DESCRIPTOR --		*/
@@ -147,6 +160,8 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
     I32   col_length;
     I32   col_disp_size;
 
+    I32  spare1;
+    void *spare2;
 } dbih_fdc_t;
 
 
@@ -158,11 +173,11 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_MY_H_OBJ(imp)  	_imp2com(imp, std.my_h_obj)
 #define DBIc_PARENT_H(imp)  	_imp2com(imp, std.parent_h)
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
+#define DBIc_MUTEX(imp)  	_imp2com(imp, std.h_mutex)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
-#define DBIc_LAST_METHOD(imp) 	_imp2com(imp, std.last_method)
 
 #define DBIc_DEBUG(imp)		(_imp2com(imp, attr.Debug))
 #define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))
@@ -171,7 +186,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_ERRSTR(imp)	SvRV(_imp2com(imp, attr.Errstr))
 #define DBIc_HANDLERS(imp)	SvRV(_imp2com(imp, attr.Handlers))
 #define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
-#define DBIc_LongReadLen_init	80
+#define DBIc_LongReadLen_init	80	/* may change */
 
 /* handle sub-type specific fields						*/
 /*	dbh	*/
@@ -179,6 +194,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 /*	sth	*/
 #define DBIc_NUM_FIELDS(imp)  	_imp2com(imp, num_fields)
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
+#define DBIc_ROW_COUNT(imp)  	_imp2com(imp, row_count)
 #define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_svav)
 #define DBIc_FDESC_AV(imp)  	_imp2com(imp, fields_fdav)
 #define DBIc_FDESC(imp, i)  	((imp_fdh_t*)(void*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
@@ -195,10 +211,11 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_PrintError  0x0100	/* warn() on error			*/
 #define DBIcf_AutoCommit  0x0200	/* dbh only. used by drivers		*/
 #define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
+#define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
 
 #define DBIcf_INHERITMASK			/* what NOT to pass on to children */	\
 	(U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
-	/* These are for dbh only:					   */	\
+	/* These are for dbh only:	*/						\
 	| DBIcf_AutoCommit	)
 
 /* general purpose flag setting and testing macros */
@@ -291,29 +308,30 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define UNKNOWN_event	"UNKNOWN"
 
 #define DBIh_CLEAR_ERROR(imp_xxh) (void)( \
-	    (void)SvOK_off(DBIc_ERR(imp_xxh)),    	\
-	    (void)SvOK_off(DBIc_ERRSTR(imp_xxh)),	\
-	    (SvPOK(DBIc_STATE(imp_xxh)) ? SvCUR(DBIc_STATE(imp_xxh))=0 : 0)	\
-	)
+	(void)SvOK_off(DBIc_ERR(imp_xxh)),    	\
+	(void)SvOK_off(DBIc_ERRSTR(imp_xxh)),	\
+	(SvPOK(DBIc_STATE(imp_xxh)) ? SvCUR(DBIc_STATE(imp_xxh))=0 : 0)	\
+    )
 
 
 /* --- DBI State Structure --- */
 
 typedef struct {
 
-#define DBISTATE_VERSION  93	/* Must change whenever dbistate_t does	*/
+#define DBISTATE_VERSION  94	/* Must change whenever dbistate_t does	*/
 
     /* this must be the first member in structure			*/
-    void (*check_version) _((char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv,
-				int drc_s, int dbc_s, int stc_s, int fdc_s));
+    void (*check_version) _((char *name,
+		int dbis_cv, int dbis_cs, int need_dbixs_cv,
+		int drc_s, int dbc_s, int stc_s, int fdc_s));
 
     /* version and size are used to check for DBI/DBD version mis-match	*/
     U16 version;	/* version of this structure			*/
     U16 size;
     U16 xs_version;	/* version of the overall DBIXS / DBD interface	*/
+    U16 spare_pad;
 
     I32 debug;
-    int debugpvlen;	/* only show dbgpvlen chars when debugging pv's	*/
     FILE *logfp;
 
     /* pointers to DBI functions which the DBD's will want to use	*/
@@ -329,7 +347,11 @@ typedef struct {
     int         (*hash)		_((char *string, long i));
     AV        * (*preparse)	_((SV *sth, char *statement, U32 flags, U32 spare));
 
-    void *pad[10];
+    SV *neatsvpvlen;	/* only show dbgpvlen chars when debugging pv's	*/
+
+    dbi_mutex	*mutex;
+
+    void *pad[9];
 } dbistate_t;
 
 /* macros for backwards compatibility */
@@ -374,7 +396,7 @@ typedef struct {
 #define DBD_ATTRIB_GET_SVP(attribs, key,klen)			\
 	(DBD_ATTRIB_OK(attribs)					\
 	    ? hv_fetch((HV*)SvRV(attribs), key,klen, 0)		\
-	    : (void*)Nullsv)
+	    : (SV **)Nullsv)
 	
 #define DBD_ATTRIB_GET_BOOL(attribs, key,klen, svp, var)		\
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\

@@ -2,10 +2,11 @@
     package DBD::Sponge;
 
     require DBI;
+    require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: Sponge.pm,v 1.2 1998/02/04 17:35:24 timbo Exp $
+#   $Id: Sponge.pm,v 1.4 1998/08/09 20:48:38 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -21,7 +22,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 1.2 $',
+	    'Version' => '$Revision: 1.4 $',
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;
@@ -45,15 +46,46 @@
 
     sub prepare {
 	my($dbh, $statement, $attribs) = @_;
-	my($outer, $sth) = DBI::_new_sth($dbh, {
+	my $rows = $attribs->{'rows'}
+	    || Carp::croak("No rows attribute supplied to prepare");
+	delete $attribs->{'rows'};
+	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'   => $statement,
-	    'rows'        => $attribs->{'rows'},
-	    });
+	    'rows'        => $rows,
+	});
+	# we need to set NUM_OF_FIELDS
+	my $firstrow = $rows->[0];
+	$sth->STORE(NUM_OF_FIELDS => scalar @$firstrow);
+	my $names = $attribs->{names}
+		|| [ map { "col$_" } 1..@$firstrow ];
+	$sth->{NAME} = $names if $names;
 
 	$outer;
     }
 
-    sub DESTROY { }
+    sub type_info_all {
+	my ($dbh) = @_;
+	my $ti = [
+	    {	TYPE_NAME	=> 0,
+		DATA_TYPE	=> 1,
+		PRECISION	=> 2,
+		LITERAL_PREFIX	=> 3,
+		LITERAL_SUFFIX	=> 4,
+		CREATE_PARAMS	=> 5,
+		NULLABLE	=> 6,
+		CASE_SENSITIVE	=> 7,
+		SEARCHABLE	=> 8,
+		UNSIGNED_ATTRIBUTE=> 9,
+		MONEY		=> 10,
+		AUTO_INCREMENT	=> 11,
+		LOCAL_TYPE_NAME	=> 12,
+		MINIMUM_SCALE	=> 13,
+		MAXIMUM_SCALE	=> 14,
+	    },
+	    [ 'VARCHAR', DBI::SQL_VARCHAR, undef, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
+	];
+	return $ti;
+    }
 
     sub FETCH {
         my ($dbh, $attrib) = @_;
@@ -75,6 +107,9 @@
         }
         return $dbh->DBD::_::db::STORE($attrib, $value);
     }
+
+    sub DESTROY { }
+
 }
 
 
@@ -83,21 +118,20 @@
     use strict;
 
     sub execute {
-	my($sth, $dir) = @_;
+	my ($sth) = @_;
 	1;
     }
 
     sub fetch {
-	my($sth) = @_;
-	my $row = shift(@{$sth->{'rows'}});
-	return $row if $row;
-	$sth->finish;     # no more data so finish
-	return undef;
+	my ($sth) = @_;
+	my $row = shift @{$sth->{'rows'}};
+	unless ($row) {
+	    $sth->STORE(Active => 0);
+	    return undef;
+	}
+	return $sth->_set_fbav($row);
     }
-
-    sub finish {
-	my($sth) = @_;
-    }
+    *fetchrow_arrayref = \&fetch;
 
     sub FETCH {
 	my ($sth, $attrib) = @_;
