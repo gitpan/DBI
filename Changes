@@ -9,6 +9,12 @@ Current DBI Implementation Notes:
     *** MANY THINGS MAY CHANGE *** See README file ***
 
 
+Changes in DBI 0.70,	16 June 1996
+
+	Added extra invalid handle check (dbih_getcom)
+	Fixed broken $dbh->quote method.
+	Added check for old GCC in Makefile.PL
+
 Changes in DBI 0.69
 
 	Fixed small memory leak.

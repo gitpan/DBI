@@ -1,5 +1,5 @@
 #!/usr/local/bin/perl -w
-# $Id: Makefile.PL,v 1.52 1996/05/07 20:20:35 timbo Exp $
+# $Id: Makefile.PL,v 1.53 1996/06/16 22:58:05 timbo Exp $
 
 require 5.002;
 
@@ -37,6 +37,9 @@ warn <<EOT;
     Install DBI (using 'make install' before building DBD::* drivers.
 
 EOT
+
+warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
+	if ($Config{gccversion} and $Config{gccversion} =~ m/^(1|2\.[1-5])/);
 
 $Verbose = 1;
 WriteMakefile( %opts );

@@ -3,11 +3,11 @@ require 5.002;	# 5.002beta2 or later
 {
 package DBI;
 
-$VERSION = '0.69';
+$VERSION = '0.70';
 
-my $Revision = substr(q$Revision: 1.54 $, 10);
+my $Revision = substr(q$Revision: 1.56 $, 10);
 
-# $Id: DBI.pm,v 1.54 1996/05/07 21:06:02 timbo Exp $
+# $Id: DBI.pm,v 1.56 1996/06/16 23:01:32 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -470,7 +470,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     @ISA = qw(DBD::_::common);
     use strict;
 
-    sub quote	{ my $str=shift; $str=~s/'/''/g; "'$str'"; } # ISO SQL2
+    sub quote	{
+		my $self = shift;
+		my $str = shift;
+		$str=~s/'/''/g;		# ISO SQL2
+		"'$str'";
+	}
 
     sub rows	{ -1 }
 

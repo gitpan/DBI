@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.53 1996/05/07 20:20:00 timbo Exp $
+/* $Id: DBI.xs,v 1.55 1996/06/16 22:58:05 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -90,6 +90,7 @@ dbi_bootinit()
     /* to destroy it during global destruction. */
     dbi_last_h  = newRV(&sv_undef);
     SvROK_off(dbi_last_h);	/* so sv_clean_objs() won't destroy it	*/
+    DBI_UNSET_LAST_HANDLE;	/* ensure setup the correct way		*/
 
     imp_maxsize = sizeof(imp_sth_t);
     if (sizeof(imp_dbh_t) > imp_maxsize)
@@ -97,12 +98,12 @@ dbi_bootinit()
     if (sizeof(imp_drh_t) > imp_maxsize)
 	imp_maxsize = sizeof(imp_drh_t);
 
-	/* trick to avoid 'possible typo' warnings	*/
-	gv_fetchpv("DBI::state",  GV_ADDMULTI|0x4, SVt_PV);
-	gv_fetchpv("DBI::err",    GV_ADDMULTI|0x4, SVt_PV);
-	gv_fetchpv("DBI::errstr", GV_ADDMULTI|0x4, SVt_PV);
-	gv_fetchpv("DBI::lasth",  GV_ADDMULTI|0x4, SVt_PV);
-	gv_fetchpv("DBI::rows",   GV_ADDMULTI|0x4, SVt_PV);
+    /* trick to avoid 'possible typo' warnings	*/
+    gv_fetchpv("DBI::state",  GV_ADDMULTI|0x4, SVt_PV);
+    gv_fetchpv("DBI::err",    GV_ADDMULTI|0x4, SVt_PV);
+    gv_fetchpv("DBI::errstr", GV_ADDMULTI|0x4, SVt_PV);
+    gv_fetchpv("DBI::lasth",  GV_ADDMULTI|0x4, SVt_PV);
+    gv_fetchpv("DBI::rows",   GV_ADDMULTI|0x4, SVt_PV);
 }
 
 
@@ -183,13 +184,11 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     if (!SvROK(orv) || SvTYPE(SvRV(orv)) != SVt_PVHV) {
 	if (!what)
 	    return NULL;
-abort();
 	croak("%s handle '%s' is not a hash reference",
 		what, SvPV(orv,na));
     }
     if (!SvMAGICAL(SvRV(orv))) {
 	sv_dump(orv);
-	abort();
 	croak("%s handle '%s' is not a DBI handle (has no magic)",
 		what, SvPV(orv,na));
     }
@@ -227,7 +226,17 @@ dbih_getcom(hrv)	/* Get com struct for handle. Must be fast.	*/
     SV *hrv;
 {
     MAGIC *mg;
-    SV *sv = SvRV(hrv);
+    SV *sv;
+
+    /* important and quick sanity check (esp non-'safe' Oraperl)	*/
+    if (!SvROK(hrv)			/* must at least be a ref */
+	&& hrv != DBI_LAST_HANDLE	/* special for var::FETCH */) {
+	sv_dump(hrv);
+	abort();
+	croak("Invalid DBI handle %s", SvPV(hrv,na));
+    }
+
+    sv = SvRV(hrv);
 
     /* Short cut for common case. We assume that a magic var always	*/
     /* has magic and that DBI_MAGIC, if present, will be the first.	*/
@@ -438,7 +447,7 @@ dbih_clearcom(imp_xxh)
 	}
     }
 
-    if (dump && DBIS->debug < 3 /* already dumped */)
+    if (dump && DBIS->debug < 3 /* else was already dumped above */)
 	dbih_dumpcom(imp_xxh);
 
     /* --- pre-clearing adjustments --- */
@@ -575,7 +584,7 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
-	if (DBIc_NUM_FIELDS(imp_sth) >= 0)	/* don't change this!	*/
+	if (DBIc_NUM_FIELDS(imp_sth) >= 0)	/* don't change NUM_FIELDS! */
 	    croak("NUM_OF_FIELDS already set (%d)", DBIc_NUM_FIELDS(imp_sth));
 	DBIc_NUM_FIELDS(imp_sth) = SvIV(valuesv);
 	cacheit = 1;
@@ -590,7 +599,9 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
 		SvPV(h,na), SvPV(keysv,na));
     }
     if (cacheit) {
-	hv_store((HV*)SvRV(h), key, keylen, valuesv, 0);
+	SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, 1);
+	sv_free(*svp);
+	*svp = valuesv;
 	(void)SvREFCNT_inc(valuesv);	/* keep it around for cache	*/
     }
     return TRUE;
@@ -625,7 +636,9 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
 	    SvPV(h,na), SvPV(keysv,na));	/* XXX should be event?	*/
     }
     if (cacheit) {
-	hv_store((HV*)SvRV(h), key, keylen, valuesv, 0);
+	SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, 1);
+	sv_free(*svp);
+	*svp = valuesv;
 	(void)SvREFCNT_inc(valuesv);	/* keep it around for cache	*/
     }
     return sv_2mortal(valuesv);
