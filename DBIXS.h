@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.35 1997/06/11 23:03:50 timbo Exp $
+/* $Id: DBIXS.h,v 1.36 1997/06/20 17:18:01 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -145,10 +145,11 @@ typedef struct {		/* -- STATEMENT --			*/
 
 #define DBIcf_ChopBlanks 0x0040	/* rtrim spaces from fetch char columns	*/
 #define DBIcf_RaiseError 0x0080	/* throw exception (croak) on error	*/
+#define DBIcf_PrintError 0x0100	/* warn() on error			*/
 
 #define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
     (	DBIcf_WARN | DBIcf_COMPAT |		\
-	DBIcf_ChopBlanks | DBIcf_RaiseError	)
+	DBIcf_ChopBlanks | DBIcf_RaiseError | DBIcf_PrintError )
 
 /* general purpose flag setting and testing macros */
 #define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))

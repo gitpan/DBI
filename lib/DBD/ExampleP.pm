@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 1.3 1997/05/06 22:23:17 timbo Exp $
+#   $Id: ExampleP.pm,v 1.4 1997/06/20 17:18:01 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -28,7 +28,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 1.3 $',
+	    'Version' => '$Revision: 1.4 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -88,6 +88,8 @@
 	    'fields'        => \@fields,
 	    }, ['example implementors private data']);
 
+	$outer->{NAME} = \@fields;
+	$outer->{NULLABLE} = (0) x @fields;
 	$outer->{NUM_OF_FIELDS} = @fields;
 	$outer->{NUM_OF_PARAMS} = 1;
 
@@ -159,14 +161,16 @@
 	    return \@t;
 	}
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::FETCH($attrib);
+	return $sth->DBD::_::st::FETCH($attrib);
     }
 
     sub STORE {
 	my ($sth, $attrib, $value) = @_;
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::STORE($attrib, $value);
+	return $sth->{$attrib}=$value
+	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE';
+	return $sth->DBD::_::st::STORE($attrib, $value);
     }
 
     sub DESTROY { undef }

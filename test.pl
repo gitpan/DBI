@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.20 1997/05/07 15:55:58 timbo Exp $
+# $Id: test.pl,v 1.21 1997/06/20 17:18:01 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -12,7 +12,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.20 $}."\n";
+	print q{DBI test application $Revision: 1.21 $}."\n";
 	$| = 1;
 }
 
@@ -59,7 +59,7 @@ if ($::opt_m) {
 } else {
 
 	# new experimental connect_test_perf method
-    DBI->connect_test_perf('', '', '', $driver, {
+    DBI->connect_test_perf("dbi:$driver:", '', '', {
 	    dbi_loops=>2, dbi_par=>5, dbi_verb=>1
     });
 }

@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.83';
+$DBI::VERSION = '0.84';
 
 =head1 NAME
 
@@ -42,7 +42,7 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.72 $ dated $Date: 1997/06/11 23:20:25 $
+This documentation is a new draft $Revision: 1.73 $ dated $Date: 1997/06/20 17:18:01 $
 
 It is expected to evolve and expand quite quickly (relative to previous
 drafts :-) so it is important to check that you have the latest copy.
@@ -57,9 +57,9 @@ you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.72 $, 10);
+my $Revision = substr(q$Revision: 1.73 $, 10);
 
-# $Id: DBI.pm,v 1.72 1997/06/11 23:20:25 timbo Exp $
+# $Id: DBI.pm,v 1.73 1997/06/20 17:18:01 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -79,7 +79,7 @@ use Exporter ();
 use strict;
 
 $DBI::dbi_debug = $ENV{PERL_DBI_DEBUG} || 0;
-carp "Loaded DBI.pm (debug $DBI::dbi_debug)" if $DBI::dbi_debug;
+carp "Loaded DBI.pm (debug $DBI::dbi_debug)\n" if $DBI::dbi_debug;
 
 bootstrap DBI;
 
@@ -89,7 +89,7 @@ my $connect_via = "connect";
 my $GATEWAY_INTERFACE = $ENV{GATEWAY_INTERFACE} || '';
 if (substr($GATEWAY_INTERFACE,0,8) eq 'CGI-Perl' and $INC{'Apache/DBI.pm'}) {
     $connect_via = "Apache::DBI::connect";
-    carp "DBI connect via $INC{'Apache/DBI.pm'}" if $DBI::dbi_debug;
+    carp "DBI connect via $INC{'Apache/DBI.pm'}\n" if $DBI::dbi_debug;
 }
 
 
@@ -216,33 +216,39 @@ END {
 
 sub connect {
     my $class = shift;
-    my($data_source, $user, $passwd, $driver, $attr) = @_;
+    my($dsn, $user, $passwd, $attr, $driver) = @_;
+    my $dsn_driver;
 
-    $data_source ||= $ENV{DBI_DBNAME} || '';
-    $driver      ||= '';	# ENV default is in install_driver
+    # switch $driver<->$attr if called in old style
+    ($driver, $attr) = ($attr, $driver) if $attr and !ref($attr);
+
+    $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '';
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
-	Carp::carp "$class\->connect($data_source, $user, $passwd, $driver, $attr)"
+	Carp::carp "$class->connect($dsn, $user, $passwd, $driver, $attr)\n"
     }
-    die 'Usage: $class\->connect([$db [,$user [,$passwd [, $driver [,\%attr]]]]])'
-	    unless ($class eq 'DBI' && @_ <= 6);
+    die 'Usage: $class->connect([$dsn [,$user [,$passwd [, $driver [,\%attr]]]]])'
+	    if ( ($driver and ref $driver) or ($attr and not ref $attr));
 
-    warn "$class\->connect(@_): invalid attribute hash reference. See the DBI docs.\n"
-	if $attr and not ref $attr;
+    # get driver from dsn if possible
+    $dsn_driver = $1 if $dsn =~ s/^DBI:(.*?)://i;
 
-    # get driver from data_source if possible and driver arg not given
-    $driver = $1 if !$driver and $data_source =~ s/^DBI:(.*?)://i;
+    # set driver from dsn if possible and driver arg not given
+    $driver = $dsn_driver if $dsn_driver and !$driver;
 
-    # Note that the same $attr hash ref is passed to both
-    # install_driver and connect. Sad but true.
-    my $drh = $class->install_driver($driver, $attr)
-		or confess "$class\->install_driver($driver) failed";
+    my $drh = $class->install_driver($driver)
+		or confess "$class->install_driver($driver) failed";
+    warn "$class->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
 
-    warn "$class\->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
+    my $dbh = $drh->$connect_via($dsn, $user, $passwd, $attr);
+    warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
 
-    my $dbh = $drh->$connect_via($data_source, $user, $passwd, $attr);
-    warn "$class\->connect = $dbh\n" if $DBI::dbi_debug;
+    $dbh->{PrintError} = 1 if $dsn_driver;
+    if (ref $attr) {
+	$dbh->{PrintError} = $attr->{PrintError} if exists $attr->{PrintError};
+	$dbh->{RaiseError} = $attr->{RaiseError} if exists $attr->{RaiseError};
+    }
 
     $dbh;
 }
@@ -264,19 +270,19 @@ sub install_driver {
     my($driver, $attribs) = @_;
     my $drh;
 
-    $driver  ||= $ENV{DBI_DRIVER};
+    $driver  ||= $ENV{DBI_DRIVER} || '';
 
-    # if no driver specified and only one loaded then use that
-    ($driver) = keys %DBI::installed_drh
-	    if (!$driver and keys %DBI::installed_drh == 1);
+    # allow driver to be specified as a 'dbi:driver:' string
+    $driver = $1 if $driver =~ s/^DBI:(.*?)://i;
 
-    Carp::croak "DBD driver not specified.\n" unless $driver;
+    Carp::croak "DBI->install_driver: DBD driver not specified.\n"
+	unless $driver;
 
     # already installed
     return $drh if $drh = $DBI::installed_drh{$driver};
 
-    Carp::carp "$class->install_driver($driver)" if $DBI::dbi_debug;
-    die 'usage DBI->install_driver($driver [, \%attribs])'
+    Carp::carp "$class->install_driver($driver)\n" if $DBI::dbi_debug;
+    Carp::croak 'usage DBI->install_driver($driver [, \%attribs])'
 	unless ($class eq 'DBI' and $driver and @_<=3);
 
     # --- load the code
@@ -294,33 +300,30 @@ sub install_driver {
     _setup_driver($driver);
 
     # --- run the driver function
-    $drh = eval "DBD::${driver}->driver(\$attribs || {})";
-    croak "DBD::$driver initialisation failed: $@"
+    my $driver_class = "DBD::$driver";
+    $drh = eval { $driver_class->driver($attribs || {}) };
+    croak "$driver_class initialisation failed: $@"
 	unless $drh && ref $drh && !$@;
 
-    Carp::carp "DBI->install_driver($driver) = $drh\n" if $DBI::dbi_debug;
     $DBI::installed_drh{$driver} = $drh;
+    Carp::carp "DBI->install_driver($driver) = $drh\n" if $DBI::dbi_debug;
     $drh;
 }
 
 sub _setup_driver {
-    my($driver) = @_;
-
-    # --- do some behind-the-scenes checks and setups on the driver
-    foreach(qw(dr db st)){
+    my $driver = shift;
+    my $type;
+    foreach $type (qw(dr db st)){
+	my $class = "DBD::${driver}::$type";
 	no strict 'refs';
-	my $class = "DBD::${driver}::$_";
-	push(@{"${class}::ISA"},     "DBD::_::$_");
-	push(@{"${class}_mem::ISA"}, "DBD::_mem::$_");
-	Carp::carp "install_driver($driver): setup \@ISA for $class\n"
-	    if ($DBI::dbi_debug>=3);
+	push(@{"${class}::ISA"},     "DBD::_::$type");
+	push(@{"${class}_mem::ISA"}, "DBD::_mem::$type");
     }
 }
 
 
-sub internal {
-    &DBD::Switch::dr::driver;	# redirect with args
-}
+*internal = \&DBD::Switch::dr::driver;
+#sub internal { return DBD::Switch::dr::driver(@_); }
 
 
 sub available_drivers {
@@ -406,18 +409,18 @@ sub sql {		# a simple sql shell
 
 
 sub connect_test_perf {
-    my($class, $dbname,$dbuser,$dbpass, $driver, $attr) = @_;
-    $driver||= $ENV{DBI_DRIVER} || Carp::croak "No driver specified";
+    my($class, $dsn,$dbuser,$dbpass, $attr) = @_;
+	croak "connect_test_perf needs hash ref as fourth arg" unless ref $attr;
     # these are non standard attributes just for this special method
     my $loops ||= $attr->{dbi_loops} || 5;
     my $par   ||= $attr->{dbi_par}   || 1;	# parallelism
     my $verb  ||= $attr->{dbi_verb}  || 1;
-    print "$driver: testing $loops sets of $par connections:\n";
+    print "$dsn: testing $loops sets of $par connections:\n";
     require Benchmark;
     require FileHandle;
     $| = 1;
     my $t0 = new Benchmark;		# not currently used
-    my $drh = $class->install_driver($driver) or die "Can't install $driver driver\n";
+    my $drh = $class->install_driver($dsn) or die "Can't install $dsn driver\n";
     my $t1 = new Benchmark;
     my $loop;
     for $loop (1..$loops) {
@@ -425,7 +428,7 @@ sub connect_test_perf {
 	print "Connecting... " if $verb;
 	for (1..$par) {
 	    print "$_ ";
-	    push @cons, ($drh->connect($dbname,$dbuser,$dbpass)
+	    push @cons, ($drh->connect($dsn,$dbuser,$dbpass)
 		    or die "Can't connect # $_: $DBI::errstr\n");
 	}
 	print "\nDisconnecting...\n" if $verb;
@@ -604,27 +607,22 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 
     # methods common to all handle types:
 
-    *debug = \&DBI::_debug_handle;
-
     # generic TIEHASH default methods:
     sub FIRSTKEY { undef }
     sub NEXTKEY  { undef }
     sub EXISTS   { defined($_[0]->FETCH($_[1])) } # to be sure
     sub CLEAR    { Carp::carp "Can't CLEAR $_[0] (DBI)" }
-
-    sub DESTROY  { }
 }
 
 
 {   package DBD::_::dr;  # ====== DRIVER ======
     @ISA = qw(DBD::_::common);
     use strict;
-    use Carp;
 
     sub connect { # normally overridden, but a handy default
-	my($drh, $dbname, $user, $auth)= @_;
+	my($drh, $dsn, $user, $auth)= @_;
 	my($this) = DBI::_new_dbh($drh, {
-	    'Name' => $dbname,
+	    'Name' => $dsn,
 	    'User' => $user,
 	    });
 	$this;
@@ -654,8 +652,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 
     sub do {
 	my($dbh, $statement, $attribs, @params) = @_;
-	Carp::carp "\$h->do() attribs unused\n" if $attribs;
-	my $sth = $dbh->prepare($statement) or return undef;
+	my $sth = $dbh->prepare($statement, $attribs) or return undef;
 	$sth->execute(@params) or return undef;
 	my $rows = $sth->rows;
 	($rows == 0) ? "0E0" : $rows;
@@ -690,13 +687,13 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	# This implementation is just rather simple and not very optimised.
 	my $row = $sth->fetch or return undef;
 	my %hash;
-	@hash{ @{ $sth->{NAME} } } = @$row;
+	@hash{ @{ $sth->FETCH('NAME') } } = @$row;
 	return \%hash;
     }
 
     sub fetchall_arrayref {
 	my $sth = shift;
-	my $via = shift || 'fetch';
+	my $via = shift || 'fetch';	# XXX not documented: may change
 	my @rows;
 	my $row;
 	if ($via eq 'fetch') {
@@ -920,41 +917,45 @@ Typical method call sequence for a non-select statement:
 =item B<connect>
 
   $dbh = DBI->connect($data_source, $username, $password);
-  $dbh = DBI->connect($data_source, $username, $password, $driver);
-  $dbh = DBI->connect($data_source, $username, $password, $driver, \%attr);
+  $dbh = DBI->connect($data_source, $username, $password, \%attr);
 
 Establishes a database connection (session) to the requested data_source.
+Returns a database handle object.
 
-Returns a database handle object. DBI->connect installs the requested
-driver if it has not been installed yet. It then returns the result of
-$drh->connect. It is important to note that driver installation always
+The $data_source value should begin with 'dbi:driver_name:'. That
+prefix will be stripped off and the driver_name part is used to specify
+the driver.  As a convenience, if the $data_source field is undefined
+or empty the DBI will substitute the value of the environment variable
+DBI_DSN if any.
+
+If driver is not specified, the environment variable DBI_DRIVER is
+used. If that variable is not set then the connect dies.
+
+DBI->connect automatically installs the driver if it has not been
+installed yet. It is important to note that driver installation always
 returns a valid driver handle or it I<dies> with an error message which
 includes the string 'install_driver' and the underlying problem. So,
 DBI->connect will die on a driver installation failure and will only
 return undef on a connect failure, for which $DBI::errstr will hold the
 error.
 
-As a convenience, if the $data_source field is undefined or empty the
-DBI will substitute the value of the environment variable DBI_DBNAME
-if any.
-
-If the $data_source value begings with 'dbi:driver_name:' then that
-prefix will be stripped off and the driver_name part used to specify
-the driver (unless an explicit $driver parameter is given).
-
-If driver is not specified, the environment variable DBI_DRIVER is
-used. If that variable is not set and the DBI has more than one
-driver loaded then the connect fails and undef is returned.
-
-The $data_source, $username and $password arguments are then passed to
-the driver for processing. The DBI does not define I<any> interpretation
-for the contents of these fields.
+The $data_source argument (with the 'dbi:...:' prefix removed) and the
+$username and $password arguments are then passed to the driver for
+processing. The DBI does not define I<any> interpretation for the
+contents of these fields.
 
 The driver is free to interpret the data_source, username and password
 fields in any way and supply whatever defaults are appropriate for the
-engine being accessed. The attribute hash is only intended to supply
-hints to the driver (for both installation and connection) and should
-not be used to carry the data_source, username and password information.
+engine being accessed (Oracle, for example, uses the ORACLE_SID and
+TWO_TASK env vars if no data_source is specified).
+
+By default the PrintError attribute is I<on> for each connection (see
+L</PrintError> for more information). To turn PrintError off you can do:
+
+  DBI->connect($data_source, $user, $pass, { PrintError => 0 });
+
+The RaiseError attribute can also be specified in the same way.  These
+are currently the I<only> defined uses for the DBI->connect \%attr.
 
 Portable applications should not assume that a single driver will be
 able to support multiple simultaneous sessions and also should check
@@ -965,6 +966,15 @@ in other sessions. This is useful where you need to hold cursors open
 across transactions, e.g., use one session for your long lifespan
 cursors (typically read-only) and another for your short update
 transactions.
+
+For compatibility with old DBI scripts the driver can be specified by
+passing it's name as the fourth argument to connect (instead of \%attr):
+
+  $dbh = DBI->connect($data_source, $user, $pass, $driver);
+
+in this case the $data_source doesn't need to start with 'dbi:driver_name:'
+and, even if it does, the embedded driver_name will be ignored. Also
+the DBI_DBNAME env var is checked if DBI_DSN is not defined.
 
 
 =item B<available_drivers>
@@ -1063,26 +1073,47 @@ Equivalent to $h->rows.
 
 =item B<err>
 
-  $rv = $dbh->err;
+  $rv = $h->err;
 
 Returns the native database engine error code from the last driver
 function called.
 
 =item B<errstr>
 
-  $str = $dbh->errstr;
+  $str = $h->errstr;
 
 Returns the native database engine error message from the last driver
 function called.
 
 =item B<state>
 
-  $rv  = $dbh->state;
+  $str = $h->state;
 
 Returns an error code in the standard SQLSTATE five character format.
 Note that the specific success code C<00000> is translated to C<0>
 (false). If the driver does not support SQLSTATE then state will
 return C<S1000> (General Error) for all errors.
+
+=item B<trace>
+
+  $h->trace($trace_level);
+  $h->trace($trace_level, $trace_filename);
+
+DBI trace information can be enabled for a specific handle (and any
+future children of that handle) by setting the trace level using the
+trace method.
+
+Use $trace_level 2 to see detailed call trace information including
+parameters and return values.  The trace output is detailed and
+typically I<very> useful.
+
+Use $trace_level 0 to disable the trace.
+
+If $trace_filename is specified then the file is opened in append
+mode and I<all> trace output (including that from other handles)
+is redirected to that file.
+
+See also L</DEBUGGING> and the PERL_DBI_DEBUG environment variable.
 
 =back
 
@@ -1129,12 +1160,29 @@ database etc). It is specifically designed for use in unix applications
 which 'fork' child processes. Either the parent or the child process,
 but not both, should set InactiveDestroy on all their handles.
 
+=item B<PrintError> (inherited)
+
+  $h->{PrintError}
+
+This attribute can be used to force errors to generate warnings (using
+warn) in addition to returning error codes in the normal way.  When set
+on, any method which results in an error occuring ($DBI::err being set
+true) will cause the DBI to effectively do warn("$DBI::errstr").  Note
+that the contents of the warning are currently just $DBI::errstr but
+that may change and should not be relied upon.
+
+By default DBI->connect sets PrintError on (except for old-style connect
+usage, see connect for more details).
+
+If desired, the warnings can be caught and processed using $SIG{__WARN__}
+handler or modules like CGI::ErrorWrap.
+
 =item B<RaiseError> (inherited)
 
   $h->{RaiseError}
 
 This attribute can be used to force errors to raise exceptions rather
-than simply return errors codes in the normal way. It defaults to off.
+than simply return error codes in the normal way. It defaults to off.
 When set on, any method which results in an error occuring ($DBI::err
 being set true) will cause the DBI to effectively do die("$DBI::errstr").
 
@@ -1168,8 +1216,8 @@ does not must arrange to return undef as the attribute value.
 
 =item B<prepare>
 
-  $sth = $dbh->prepare($statement);
-  $sth = $dbh->prepare($statement, \%attr);
+  $sth = $dbh->prepare($statement)           || die $dbh->errstr;
+  $sth = $dbh->prepare($statement, \%attr)   || die $dbh->errstr;
 
 Prepare a single statement for execution by the database engine and
 return a  reference to a statement handle object which can be used to
@@ -1187,20 +1235,40 @@ likely to be unable to give much useful information about the
 statement, such as $sth->{NUM_OF_FIELDS}, until after $sth->execute
 has been called. Portable applications should take this into account.
 
+
 =item B<do>
 
-  $rc  = $dbh->do($statement);
-  $rc  = $dbh->do($statement, \%attr);
+  $rc  = $dbh->do($statement)           || die $dbh->errstr;
+  $rc  = $dbh->do($statement, \%attr)   || die $dbh->errstr;
 
-Prepare and execute a statement.  This method is typically most useful
-for non-select statements which either cannot be prepared in advance
-(due to a limitation in the driver) or which do not need to be executed
-repeatedly.
+Prepare and execute a statement. Returns the number of rows affected
+(-1 if not known or not available) or undef on error.
+
+This method is typically most useful for non-select statements which
+either cannot be prepared in advance (due to a limitation in the
+driver) or which do not need to be executed repeatedly.
+
+The default do method is similar to:
+
+  sub do {
+      my($dbh, $statement) = @_;
+      my $sth = $dbh->prepare($statement) or return undef;
+      $sth->execute() or return undef;
+      my $rows = $sth->rows;
+      ($rows == 0) ? "0E0" : $rows;
+  }
+
+Example:
+
+  my $rows_deleted = $dbh->do(q{
+      delete from table
+      where status = 'DONE'
+  }) || die $dbh->errstr;
 
 
 =item B<commit>
 
-  $rc  = $dbh->commit;
+  $rc  = $dbh->commit     || die $dbh->errstr;
 
 Commit (make permanent) the most recent series of database changes
 if the database supports transactions.
@@ -1208,7 +1276,7 @@ if the database supports transactions.
 
 =item B<rollback>
 
-  $rc  = $dbh->rollback;
+  $rc  = $dbh->rollback   || die $dbh->errstr;
 
 Roll-back (undo) the most recent series of uncommited database
 changes if the database supports transactions.
@@ -1216,7 +1284,7 @@ changes if the database supports transactions.
 
 =item B<disconnect>
 
-  $rc  = $dbh->disconnect;
+  $rc  = $dbh->disconnect   || warn $dbh->errstr;
 
 Disconnects the database from the database handle. Typically only used
 before exiting the program. The handle is of little use after disconnecting.
@@ -1234,11 +1302,12 @@ undo any uncommited changes. This is I<vital> behaviour to ensure that
 incomplete transactions don't get commited simply because Perl calls
 DESTROY on every object before exiting.
 
+
 =item B<ping>
 
   $rc = $dbh->ping;
 
-Attempts to determine, in the most efficient way, if the database
+Attempts to determine, in a reasonably efficient way, if the database
 server is still running and the connection to it is still working.
 The default implementation currently always returns true without
 actually doing anything. Individual drivers should implement this
@@ -1246,6 +1315,7 @@ function in the most suitable manner for their database engine.
 
 Very few applications would have any use for this method. See the
 specialist Apache::DBI module for one example usage.
+
 
 =item B<quote>
 
@@ -1258,8 +1328,8 @@ string and adding the required type of outer quotation marks.
   $sql = sprintf "select foo from bar where baz = %s",
                 $dbh->quote("Don't\n");
 
-For Oracle quote would return C<'Don''t'> and for Ingres it would return
-C<'Don'+X'27+'t'> (including the outer quotation marks).
+For most database types quote would return C<'Don''t'> (including the
+outer quotation marks).
 
 An undefined $string value will be returned as NULL (without quotation
 marks).
@@ -1298,20 +1368,26 @@ AutoCommit mode.
 
 =item B<execute>
 
-  $rc  = $sth->execute;
+  $rc  = $sth->execute   || die $sth->errstr;
 
 Perform whatever processing is necessary to execute the prepared
-statement.  An undef is returned if an error occurs.
+statement.  An undef is returned if an error occurs, a successful
+execute always returns true (see below). It is always important to
+check the return status of execute (and most other DBI methods).
 
 For a non-select statement execute returns the number of rows affected
-(if available).  Zero rows is returned as "0E0" which Perl will treat
-as 0 but will regard as true.
+(if known). Zero rows is returned as "0E0" which Perl will treat
+as 0 but will regard as true. If the number of rows affected is not
+known then execute returns -1.
 
 For select statements execute simply 'starts' the query within the
-Engine. Use one of the fetch methods to retreive the data. Note that
-the execute method does I<not> return the number of rows that will be
-returned by the query (because for most Engines it can't tell in
+Engine. Use one of the fetch methods to retreive the data after
+calling execute.
+
+Note that the execute method does I<not> return the number of rows that
+will be returned by the query (because most Engines can't tell in
 advance).
+
 
 =item B<fetchrow_arrayref>
 
@@ -1345,10 +1421,11 @@ The keys of the hash are the same names returned by $sth->{NAME}. If
 more than one field has the same name there will only be one entry in
 the returned hash.
 
-Because of the extra work fetchrow_hashref and Perl have to perform it is not
-as efficient as fetch or fetchrow and not recommended where performance
-is very important. Currently a new hash reference is returned for each row.
-This may change in the future.
+Because of the extra work fetchrow_hashref and Perl have to perform it
+is not as efficient as fetch or fetchrow and not recommended where
+performance is very important. Currently a new hash reference is
+returned for each row.  This is likely to change in the future so don't
+rely on it.
 
 
 =item B<fetchall_arrayref>
@@ -1368,28 +1445,28 @@ empty array.
   $rc  = $sth->finish;
 
 Indicates that no more data will be fetched from this statement before
-it is either prepared again via C<prepare> or destroyed.  It is helpful
-to call this method where appropriate in order to allow the server to
-free off any internal resources (such as read locks) currently being
-held. It does not affect the transaction status of the session in any
-way.
+it is either prepared again or destroyed.  It is helpful to call this
+method where appropriate in order to allow the server to free off any
+internal resources (such as read locks) currently being held. It does
+not affect the transaction status of the session in any way.
+
 
 =item B<rows>
 
   $rv = $sth->rows;
 
 Returns the number of rows affected by the last database altering
-command, or -1 if not known or available.
+command, or -1 if not known or not available.
 
 Generally you can only rely on a row count after a do() or non-select
 execute().  Some drivers only offer a row count after executing some
 specific operations (e.g., update and delete).
 
-It is generally not possible to know how many rows will be returned
-from an arbitrary select statement except by fetching and counting
-them. Also note that some drivers, such as DBD::Oracle, implement
-read-ahead row caches for select statements which means that the row
-count may be incorrect while there are still more records to fetch.
+It is generally not possible to know how many rows will be returned from
+an arbitrary select statement except by fetching and counting them all.
+Also note that some drivers, such as DBD::Oracle, implement read-ahead
+row caches for select statements which means that the row count may
+appear to be incorrect while there are still more records to fetch.
 
 
 =item B<bind_col>
@@ -1406,7 +1483,7 @@ up from 1.
 
 The binding is performed at a very low level using perl aliasing so
 there is no extra copying taking place. So long as the driver uses the
-correct internal DBI call to get the array the fetch function returns
+correct internal DBI call to get the array the fetch function returns,
 it will automatically support column binding.
 
 =item B<bind_columns>
@@ -1496,15 +1573,15 @@ This section has not yet been formalised.
 =head1 SIMPLE EXAMPLE
 
   my $dbh = DBI->connect($data_source, $user, $password, 'Oracle')
-      or die "Can't connect to $data_source: $DBI::errstr";
+      || die "Can't connect to $data_source: $DBI::errstr";
 
   my $sth = $dbh->prepare( q{
           SELECT name, phone
           FROM mytelbook
-  }) or die "Can't prepare statement: $DBI::errstr";
+  }) || die "Can't prepare statement: $DBI::errstr";
 
   my $rc = $sth->execute
-      or die "Can't execute statement: $DBI::errstr";
+      || die "Can't execute statement: $DBI::errstr";
 
   print "Query will return $sth->{NUM_FIELDS} fields.\n\n";
 
@@ -1520,20 +1597,20 @@ This section has not yet been formalised.
 
 =head1 DEBUGGING
 
-Detailed debugging can be enabled for a specific handle (and any future children
-of that handle) by executing
+In addition to the L</trace> method you can enable the same trace
+information by setting the PERL_DBI_DEBUG environment variable
+before starting perl.
 
-  $h->debug($level);
-
-Where $level is at least 2 (recommended). Disable with $level==0;
-
-You can also enable debugging by setting the PERL_DBI_DEBUG environment
-variable to the same values. On unix-like systems using a bourne-like
-shell you can do this easily for a single command:
+On unix-like systems using a bourne-like shell you can do this easily
+for a single command:
 
   PERL_DBI_DEBUG=2 perl your_test_script.pl
 
-The debugging output is detailed and typically very useful.
+If PERL_DBI_DEBUG is set to a non-numeric value then it is assumed to
+be a file name and the trace level will be set to 2 with all trace
+output will be appended to that file.
+
+See also the L</trace> method.
 
 
 =head1 WARNINGS
@@ -1595,17 +1672,6 @@ you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop and
 others.  Perl by Larry Wall and the perl5-porters.
 
-=head1 ACKNOWLEDGEMENTS
-
-I would like to acknowledge the valuable contributions of the many
-people I have worked with on the DBI project, especially in the early
-years (1992-1994): Kevin Stock, Buzz Moschetti, Kurt Andersen, Ted
-Lemon, William Hails, Garth Kennedy, Michael Peppler, Neil S. Briscoe,
-David J. Hughes, Jeff Stander, Forrest D Whitcher, Larry Wall, Jeff
-Fried, Roy Johnson, Paul Hudson, Georg Rehfeld, Steve Sizemore, Ron
-Pool, Jon Meek, Tom Christiansen, Steve Baumgarten, Randal Schwartz,
-and a whole lot more.
-
 =head1 COPYRIGHT
 
 The DBI module is Copyright (c) 1995,1996,1997 Tim Bunce. England.
@@ -1621,6 +1687,17 @@ Requests for other distribution rights, including incorporation in
 commercial products, such as books, magazine articles, or CD-ROMs
 should be made to Tim.Bunce@ig.co.uk (please I<don't> use this mail
 address for other DBI related mail - use the dbi-users mailing list).
+
+=head1 ACKNOWLEDGEMENTS
+
+I would like to acknowledge the valuable contributions of the many
+people I have worked with on the DBI project, especially in the early
+years (1992-1994): Kevin Stock, Buzz Moschetti, Kurt Andersen, Ted Lemon,
+William Hails, Garth Kennedy, Michael Peppler, Neil S. Briscoe,
+David J. Hughes, Jeff Stander, Forrest D Whitcher, Larry Wall, Jeff Fried,
+Roy Johnson, Paul Hudson, Georg Rehfeld, Steve Sizemore, Ron Pool,
+Jon Meek, Tom Christiansen, Steve Baumgarten, Randal Schwartz,
+and a whole lot more.
 
 =head1 SUPPORT / WARRANTY
 

@@ -73,16 +73,33 @@ ok(0, "@row_a" ne "@row_b");
 ok(0, $csr_a->finish);
 ok(0, $csr_b->finish);
 
+ok(0, $csr_b->execute());
+my $row_b = $csr_b->fetchrow_hashref;
+ok(0, $row_b);
+ok(0, $row_b->{mode} == $row_a[0]);
+ok(0, $row_b->{size} == $row_a[1]);
+ok(0, $row_b->{name} eq $row_a[2]);
+
 $csr_a = undef;	# force destructin of this cursor now
-ok(38, 1);
+ok(43, 1);
 
 my $csr_c;
-$csr_c = $dbh->prepare("select unknown_field_name from ?");
+$csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
-ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name/);
+ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/);
 
 $dbh->{RaiseError} = 1;
-ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name from ?"); 1; });
-ok(0, $@ =~ m/Unknown field names: unknown_field_name/);
+ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; });
+ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
+$dbh->{RaiseError} = 0;
 
-BEGIN { $tests = 42; }
+{
+  my @warn;
+  local($SIG{__WARN__}) = sub { push @warn, @_ };
+  $dbh->{PrintError} = 1;
+  ok(0, ! $dbh->prepare("select unknown_field_name3 from ?"));
+  ok(0, "@warn" =~ m/Unknown field names: unknown_field_name3/);
+  $dbh->{PrintError} = 0;
+}
+
+BEGIN { $tests = 49; }

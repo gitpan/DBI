@@ -1,9 +1,14 @@
-Current DBI Implementation Notes:
 
-	$ary_ref = $sth->fetch; currently always returns the same array ref.
-	This may be a feature that stays, then again it may not.
+Changes in DBI 0.84,	20th June 1997
 
-	THINGS MAY CHANGE. See the README file and DBI pod text.
+	Added $h->{PrintError} attribute which, if set true, causes all errors to
+	trigger a warn().
+	New-style DBI->connect call now automatically sets PrintError=1 unless
+	{ PrintError => 0 } specified in the connect attributes. See the docs.
+	The old-style connect with a separate driver parameter is deprecated.
+	Fixed fetchrow_hashref.
+	Renamed $h->debug to $h->trace() and added a trace filename arg.
+	Assorted other minor tidy-ups.
 
 Changes in DBI 0.83,	11th June 1997
 

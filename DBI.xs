@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.68 1997/06/11 23:03:50 timbo Exp $
+/* $Id: DBI.xs,v 1.69 1997/06/20 17:18:01 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -108,7 +108,7 @@ dbi_bootinit()
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
     /* We want a handle reference but we don't want to increment	*/
     /* the handle's reference count and we don't want perl to try	*/
-    /* to destroy it during global destruction. */
+    /* to destroy it during global destruction. Take care!		*/
     dbi_last_h  = newRV(&sv_undef);
     SvROK_off(dbi_last_h);	/* so sv_clean_objs() won't destroy it	*/
     DBI_UNSET_LAST_HANDLE;	/* ensure setup the correct way		*/
@@ -193,6 +193,24 @@ mkvname(stash, item, uplevel)	/* construct a variable name	*/
     return SvPV(sv, na);
 }
 
+
+static void
+set_trace_file(filename)
+    char *filename;
+{
+    FILE *fp;
+    if (!filename)
+	return;
+    fp = fopen(filename, "a+");
+    if (fp == Nullfp)
+	fprintf(DBILOGFP,"Can't open trace file %s: %s", filename, Strerror(errno));
+    else {
+	if (DBILOGFP != stderr)
+	    fclose(DBILOGFP);
+	DBILOGFP = fp;
+	PerlIO_setlinebuf(fp);	/* force line buffered output */
+    }
+}
 
 
 static SV *
@@ -425,6 +443,7 @@ dbih_dumpcom(imp_xxh, msg)
     if (DBIc_COMPAT(imp_xxh))			sv_catpv(flags,"COMPAT ");
     if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
     if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
+    if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
     fprintf(DBILOGFP,"    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
     fprintf(DBILOGFP,"    TYPE %d\n",	DBIc_TYPE(imp_xxh));
     fprintf(DBILOGFP,"    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
@@ -624,6 +643,9 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "RaiseError")) {
 	(on) ? DBIc_on(imp_xxh,DBIcf_RaiseError) : DBIc_off(imp_xxh,DBIcf_RaiseError);
     }
+    else if (strEQ(key, "PrintError")) {
+	(on) ? DBIc_on(imp_xxh,DBIcf_PrintError) : DBIc_off(imp_xxh,DBIcf_PrintError);
+    }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
@@ -690,6 +712,9 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     }
     else if (keylen==10 && strEQ(key, "RaiseError")) {
 	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_RaiseError));
+    }
+    else if (keylen==10 && strEQ(key, "PrintError")) {
+	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_PrintError));
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -1069,10 +1094,15 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     }
 
     if (   !keep_error				/* so would be a new error	*/
-	&& SvTRUE(DBIc_ERR(imp_xxh))		/* an error exists		*/
-	&& DBIc_has(imp_xxh, DBIcf_RaiseError)	/* report errors via croak()	*/
+	&& SvTRUE(DBIc_ERR(imp_xxh))		/* and an error exists		*/
     ) {
-	croak(SvPV(DBIc_ERRSTR(imp_xxh),na));	/* contents of msg may change	*/
+	/* Note that the contents of these messages may change in future	*/
+	/* PrintError = report errors via warn()	*/
+	if (DBIc_has(imp_xxh, DBIcf_PrintError))
+	    warn(SvPV(DBIc_ERRSTR(imp_xxh),na));
+	/* RaiseError = report errors via croak()	*/
+	if (DBIc_has(imp_xxh, DBIcf_RaiseError))
+	    croak(SvPV(DBIc_ERRSTR(imp_xxh),na));
     }
 
     XSRETURN(outitems);
@@ -1203,6 +1233,7 @@ _install_method(class, meth_name, file, attribs=Nullsv)
     ST(0) = &sv_yes;
     }
 
+
 int
 _debug_dispatch(sv, level=dbis->debug, file=Nullch)
     SV *	sv
@@ -1211,18 +1242,8 @@ _debug_dispatch(sv, level=dbis->debug, file=Nullch)
     CODE:
     sv = sv;	/* avoid 'unused variable' warning'			*/
     /* Return old/current value. No change if new value not given.	*/
-    if (file) {	/* should really be (and may become) a separate function */
-	FILE *fp = fopen(file, "a+");
-	if (fp == Nullfp)
-	    fprintf(DBILOGFP,"Can't open %s: %s", file, Strerror(errno));
-	else {
-	    if (DBILOGFP != stderr)
-		fclose(DBILOGFP);
-	    PerlIO_setlinebuf(fp);	/* force line buffered output */
-	    DBILOGFP = fp;
-	}
-    }
     RETVAL = dbis->debug;
+    set_trace_file(file);
     if (level != dbis->debug && level >= 0) {
 	fprintf(DBILOGFP,"    DBI dispatch debug level set to %d\n", level);
 	dbis->debug = level;
@@ -1232,24 +1253,6 @@ _debug_dispatch(sv, level=dbis->debug, file=Nullch)
     OUTPUT:
     RETVAL
 
-
-int
-_debug_handle(sv, level=0)
-    SV *	sv
-    int	level
-    CODE:
-    {
-    D_imp_xxh(sv);
-    SV *dsv = DBIc_ATTR(imp_xxh, Debug);
-    /* Return old/current value. No change if new value not given */
-    RETVAL=SvIV(dsv);
-    if (items == 2 && level != RETVAL) { /* set value */
-	sv_setiv(dsv, level);
-	fprintf(DBILOGFP,"    %s debug level set to %d\n", SvPV(sv,na), level);
-    }
-    }
-    OUTPUT:
-    RETVAL
 
 
 void
@@ -1345,9 +1348,8 @@ FETCH(sv)
 	fprintf(DBILOGFP,"%s::%s\n", HvNAME(imp_stash), meth);
     ST(0) = DBI_LAST_HANDLE;
     if ((imp_gv = gv_fetchmethod(imp_stash,meth)) == NULL) {
-	warn("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",
+	croak("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",
 	    meth, meth, HvNAME(imp_stash));
-	XSRETURN_UNDEF;
     }
 /* something here is not quite right ! (wrong number of args to method for example) XXX? */
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
@@ -1443,7 +1445,7 @@ fetch(sth)
     PUSHMARK(sp);
     XPUSHs(sth);
     PUTBACK;
-    num_fields = perl_call_method("fetchrow", G_ARRAY);
+    num_fields = perl_call_method("fetchrow", G_ARRAY);	/* XXX change the name later */
     if (num_fields == 0) {
 	ST(0) = &sv_undef;
     } else {
@@ -1462,6 +1464,13 @@ fetch(sth)
 
 
 MODULE = DBI   PACKAGE = DBD::_::common
+
+
+void
+DESTROY()
+    CODE:
+    /* the interesting stuff happens in DBD::_mem::common::DESTROY */
+    ST(0) = &sv_undef;
 
 
 void
@@ -1531,6 +1540,27 @@ errstr(h)
 	    errstr = err;
     ST(0) = sv_mortalcopy(errstr);
 
+int
+trace(sv, level=0, file=Nullch)
+    SV *	sv
+    int	level
+    char *file
+    ALIAS:
+    debug = 1
+    CODE:
+    {
+    D_imp_xxh(sv);
+    SV *dsv = DBIc_ATTR(imp_xxh, Debug);
+    /* Return old/current value. No change if new value not given */
+    RETVAL=SvIV(dsv);
+    set_trace_file(file);
+    if (items >= 2 && level != RETVAL) { /* set value */
+	sv_setiv(dsv, level);
+	fprintf(DBILOGFP,"    %s debug level set to %d\n", SvPV(sv,na), level);
+    }
+    }
+    OUTPUT:
+    RETVAL
 
 MODULE = DBI   PACKAGE = DBD::_mem::common
 
