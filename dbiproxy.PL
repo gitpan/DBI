@@ -7,6 +7,9 @@ my $script = <<'SCRIPT';
 
 use strict;
 
+my $arg_test    = shift(@ARGV)		if $ARGV[0] eq '--test';
+$ENV{DBI_TRACE} = shift(@ARGV) || 2	if $ARGV[0] =~ s/^--dbitrace=?//;
+
 require DBI::ProxyServer;
 
 # XXX these should probably be moved into DBI::ProxyServer
@@ -15,13 +18,13 @@ delete $ENV{CDPATH};
 delete $ENV{ENV};
 delete $ENV{BASH_ENV};
 
-if ($ARGV[0] eq '--test') {
+if ($arg_test) {
     require RPC::PlServer::Test;
-    shift @ARGV;
     @DBI::ProxyServer::ISA = qw(RPC::PlServer::Test DBI);
 }
 
 DBI::ProxyServer::main(@ARGV);
+
 exit(0);
 
 

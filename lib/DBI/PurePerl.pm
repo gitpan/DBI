@@ -14,25 +14,25 @@ package DBI;
 # Jeff Zucker <jeff@vpservices.com>  with cc to <dbi-dev@perl.org>
 #
 ########################################################################
-#
-# Comments starting with '#z' are Jeff's (as are all mistakes :-)
-#
-########################################################################
+
+# TODO:
+#	recheck code against DBI
+#	support TraceLevel and other attributes
 
 use strict;
 use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.4 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.8 $, 10);
+$DBI::neat_maxlen ||= 400;
 
-my $trace = $ENV{DBI_TRACE} || 0;
-my $tfh = Symbol::gensym();
-open $tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
+$DBI::tfh = Symbol::gensym();
+open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
 
-warn __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n" if $trace;
+warn __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n" if $DBI::dbi_debug;
 
-my %last_method_except = map { $_=>1 } qw(FETCH STORE DESTROY _set_fbav set_err);
+%DBI::last_method_except = map { $_=>1 } qw(DESTROY _set_fbav set_err);
 
 use constant SQL_ALL_TYPES => 0;
 use constant SQL_ARRAY => 50;
@@ -103,12 +103,40 @@ use constant IMA_END_WORK	=> 0x0080; #/* set on commit & rollback	*/
 use constant IMA_STUB		=> 0x0100; #/* donothing eg $dbh->connected */
 
 my %is_valid_attribute = map {$_ =>1 } qw(
-    CompatMode  Warn  Active  InactiveDestroy  FetchHashKeyName  RootClass
-    RowCacheSize  ChopBlanks  LongReadLen  LongTruncOk  RaiseError  PrintError
-    HandleError  ShowErrorStatement  MultiThread  Taint  CachedKids  AutoCommit
-    BegunWork  TraceLevel  NUM_OF_FIELDS  NUM_OF_PARAMS Attribution Version
-    ImplementorClass Kids ActiveKids DebugDispatch Driver Statement Database
-    Name Provider
+	Active
+	ActiveKids
+	Attribution
+	AutoCommit
+	BegunWork
+	CachedKids
+	ChopBlanks
+	CompatMode
+	Database
+	DebugDispatch
+	Driver
+	FetchHashKeyName
+	HandleError
+	ImplementorClass
+	InactiveDestroy
+	Kids
+	LongReadLen
+	LongTruncOk
+	MultiThread
+	NAME NAME_uc NAME_lc NAME_uc_hash NAME_lc_hash
+	NUM_OF_FIELDS
+	NUM_OF_PARAMS
+	Name
+	PrintError
+	Provider
+	RaiseError
+	RootClass
+	RowCacheSize
+	ShowErrorStatement
+	Statement
+	Taint
+	TraceLevel
+	Version
+	Warn
 );
 
 sub valid_attribute {
@@ -134,162 +162,148 @@ sub  _install_method {
 
     my ($class, $method_name) = $method =~ /^[^:]+::(.+)::(.+)$/;
     my $bitmask = $param_hash->{'O'} || 0;
-    my @code_frag;
+    my @pre_call_frag;
 
-    push @code_frag, q{
-	return $h->{$_[1]} if exists $h->{$_[1]};
+    push @pre_call_frag, q{
+	return $h->{$_[0]} if exists $h->{$_[0]};
     } if $method_name eq 'FETCH';
-    push @code_frag, q{
-	$h->{BegunWork} = 1;
-	$h->{AutoCommit} = -900;
-    } if $method_name eq 'begin_work';
 
-    push @code_frag, "return;"		if IMA_STUB & $bitmask;
-    push @code_frag, q{
-	++$keep_err;
-    } if IMA_KEEP_ERR & $bitmask;
-    push @code_frag, q{
+    push @pre_call_frag, "return;"
+	if IMA_STUB & $bitmask;
+
+    push @pre_call_frag, q{
 	$imp =~ s/^(.*)::[^:]+$/$1/;
 	$method_name = $imp.'::db::'. pop @_;
     } if IMA_FUNC_REDIRECT & $bitmask;
-    push @code_frag, q{
-	$h->{Database}->STORE('Statement',$h->{Statement});
-    } if IMA_COPY_STMT & $bitmask;
-    push @code_frag, q{
-	$h->{'BegunWork'}=0;
-	$h->{'AutoCommit'}=-900;
-    } if IMA_END_WORK & $bitmask;
 
-    push @code_frag, q{
+    push @pre_call_frag, q{
+	my $dbh = $h->{Database};
+	warn "No Database set for $h on $method_name!" unless $dbh; # eg proxy problems
+	$dbh->{Statement} = $h->{Statement} if $dbh;
+    } if IMA_COPY_STMT & $bitmask;
+
+    push @pre_call_frag, q{
 	$h->{err} = 0;
 	$h->{errstr} = $DBI::state = '';
     } unless IMA_KEEP_ERR & $bitmask;	# see above
 
-    my $method_code = q[ sub {
-        my $h = $_[0];
-        my $imp = $h->{"ImplementorClass"};
-	my $keep_err;
+    push @pre_call_frag, q{
+        if ($DBI::dbi_debug >= 2) {
+	    local $^W;
+	    my $args = join " ", map { DBI::neat($_) } ($h, @_);
+	    printf $DBI::tfh "    > $method_name in $imp ($args)\n";
+	}
+    } if exists $ENV{DBI_TRACE};	# note use of 'exists'
 
-        if ( $method_name eq 'STORE' and ($class eq 'db' or $class eq 'dr')) {
-            my($h,$key,$value)=@_;
-	    # bypass method call for private attributes
-	    #return $h->{$key}=$value if $key =~ m/^[a-z]/; # XXX probably wrong
+    push @pre_call_frag, q{
+        $h->{'_last_method'} = $method_name;
+    } unless exists $DBI::last_method_except{$method_name};
 
-	    if ($key =~ /^[A-Z]/ and !valid_attribute($key)){
-               croak sprintf "Can't set %s->{%s}: unrecognised attribute or invalid value %s",
-		    $h,$key,$value;
-            }
-  	    if ( $key eq 'AutoCommit' ) {
-              #z catch the DBD's failure on AutoCommit=0
-              #  failure to do this was not caught by DBI/t*
-	      if ($value == 0 and my $tmp=$imp->can('STORE')) {
-                    eval { &$tmp($h,$key,$value); };
-                    croak $@ if $@;
-                    $h->{$key}=0 if $h->{$key}==-900;
-                    return $value;
-	      }
-              return $h->{$key}=$value;
+
+    # --- post method call code fragments ---
+    my @post_call_frag;
+
+    push @post_call_frag, q{
+        if ($DBI::dbi_debug) {
+	    if ($h->{err}) {
+		printf $DBI::tfh "    !! ERROR: %s %s\n", $h->{err}, $h->{errstr};
 	    }
-        }
+	    my $ret = join " ", map { DBI::neat($_) } @ret;
+	    printf $DBI::tfh "    < $method_name= %s\n", $ret;
+	}
+    } if exists $ENV{DBI_TRACE}; # note use of exists
 
-	]
-	. join("\n", @code_frag)
-	. q[
+    push @post_call_frag, q{
+	if ($h->{BegunWork}) {;
+	    $h->{BegunWork}  = 0;
+	    $h->{AutoCommit} = 1;
+	}
+    } if IMA_END_WORK & $bitmask;
 
-        if ($trace) { local $^W; printf $tfh "    > $method_name(@_)\n"; }
-
-        my $sub = $imp->can($method_name)
-            or croak "Can't find $method_name method for $h";
-
-	my @ret;
-
-        #z HANDLE NESTED METHODS
-        #  sort of what class_depth does in DBI.xs
-        #
-        $DBI::PurePerl::var->{'last_method'} = $method_name
-             unless exists $last_method_except{$method_name};
-
-        (wantarray) ? (@ret = &$sub(@_)) : (@ret = scalar &$sub(@_));
-
-        if ($h->{'err'} and !$keep_err ) {
-
-            my $mimp = $method_name;
-
-            #z HANDLE NESTED METHOD FAILURES
-            my $last = $DBI::PurePerl::var->{'last_method'};
-            $mimp =~ s/STORE/$last/ if $last;
-
-            my $estr = $h->{'errstr'}  || $DBI::errstr || $DBI::err || 'No Message :-(';
-            my $msg = sprintf "%s %s failed: %s\n", $imp, $mimp, $estr;
+    push @post_call_frag, q{
+        if ($h->{err} && $call_depth <= 1) {
+            my $last = ($DBI::last_method_except{$method_name})
+		? ($h->{'_last_method'}||$method_name) : $method_name;
+            my $errstr = $h->{errstr} || $DBI::errstr || $DBI::err || '';
+            my $msg = sprintf "%s %s failed: %s\n", $imp, $last, $errstr;
             if ($h->{'ShowErrorStatement'} && $h->{'Statement'}) {
                $msg .= " for [\"".$h->{'Statement'}."\"]";
 	    }
-            my $do_croak=1;
+            my $do_croak = 1;
             if (my $subsub = $h->{'HandleError'}) {
-                my @hret;
-                my $first_val = $ret[0];
-                (wantarray)
-		    ? (@hret = &$subsub($msg,$h,$first_val))
-		    : (@hret = scalar &$subsub($msg,$h,$first_val));
- 	        if (@hret > 1 or $hret[0]) {
-                    @ret = ($first_val);
-                    $do_croak=0;
-                }
+		$do_croak = 0 if &$subsub($msg,$h,$ret[0]);
             }
 	    if ($do_croak) {
   	        carp  $msg if $h->{PrintError};
 	        croak $msg if $h->{RaiseError};
 	    }
 	}
+    } unless IMA_KEEP_ERR & $bitmask;
+
+
+    my $method_code = q[
+      sub {
+        my $h = shift;
+	my $h_inner = tied(%$h);
+
+	]
+	. ($method_name eq 'DESTROY' ? "return if \$h_inner;\n" : "")
+	. q[
+
+	$h = $h_inner if $h_inner;
+	# XXX this eval isn't good because it overwrites $@
+        my $imp = eval { $h->{"ImplementorClass"} } or return; # probably global destruction
+
+	] . join("\n", '', @pre_call_frag, '') . q[
+
+	my $call_depth = $h->{'_call_depth'} + 1;
+	local ($h->{'_call_depth'}) = $call_depth;
+
+        my $sub = $imp->can($method_name) or croak "Can't find $method_name method for $h";
+
+	my @ret;
+        (wantarray) ? (@ret = &$sub($h,@_)) : (@ret = scalar &$sub($h,@_));
+
+	] . join("\n", '', @post_call_frag, '') . q[
+
 	return (wantarray) ? @ret : $ret[0];
-    } ];
+      }
+    ];
     no strict qw(refs);
     my $code_ref = eval $method_code;
-    *$method = eval $method_code;
+    *$method = eval qq{#line 1 "$method"\n$method_code};
     die "$@\n$method_code\n" if $@;
+    if (0 && $method =~ 'set_err') { # debuging tool
+	my $l=0; # show line-numbered code for method
+	warn join("\n", map { ++$l.": $_" } split/\n/,$method_code);
+    }
 }
 
 sub _setup_handle {
     my($h, $imp_class, $parent, $imp_data) = @_;
-
+    my $h_inner = tied(%$h) || $h;
+    warn "\n_setup_handle(@_)" if $DBI::dbi_debug >= 4;
     if (ref($parent) =~ /^[^:]+::dr/){
-        $h->STORE($_,$parent->{$_}) foreach (qw(Name Version Attribution));
+        $h_inner->{$_} = $parent->{$_} foreach (qw(Name Version Attribution));
+        $h_inner->{Driver} = $parent;
     }
-    #z SAVE DRIVER ATTRIBS FROM $drh
-    if (0 and ref($h) =~ /^[^:]+::dr/ ) {
-        for (qw(Name Version Attribution)) {
-            $DBI::PurePerl::var->{Driver}->{$_} = $h->{$_} ;
-        }
-    }
-    #z ADD DRIVER ATTRIBS TO $dbh
-    if (0 and $DBI::PurePerl::var->{'Driver'} and ref($h) =~ /^[^:]+::db/ ){
-        for (qw(Name Version Attribution)) {
-            $h->{'Driver'}->{$_} = $DBI::PurePerl::var->{'Driver'}->{$_};
-        }
-        delete $DBI::PurePerl::var->{Driver};
-    }
-    $h->{"imp_data"} = $imp_data;
-    $h->{"ImplementorClass"} = $imp_class;
-    $h->{"Kids"} = $h->{"ActiveKids"} = 0;	# XXX not maintained
-    $h->{"Active"} = 1;
-    $h->{"FetchHashKeyName"} ||= $parent->{"FetchHashKeyName"} if $parent;
-    $h->{"FetchHashKeyName"} ||= 'NAME';
-    $h->{"PrintError"}=1 unless defined $h->{"PrintError"};
-    $h->{"Taint"}=1 unless defined $h->{"Taint"};
-    $h->{"Warn"} = 1 unless defined $h->{"Warn"};
+    $h_inner->{"_call_depth"} = 0;
+    $h_inner->{"imp_data"} = $imp_data;
+    $h_inner->{"ImplementorClass"} = $imp_class;
+    $h_inner->{"Kids"} = $h_inner->{"ActiveKids"} = 0;	# XXX not maintained
+    $h_inner->{"Active"} = 1;
+    $h_inner->{"FetchHashKeyName"} ||= $parent->{"FetchHashKeyName"} || 'NAME';
+    $h_inner->{"Taint"}= 0 unless defined $h_inner->{"Taint"};
+    $h_inner->{"Warn"} = 1 unless defined $h_inner->{"Warn"};
     if (ref($parent) =~ /^[^:]+::db/){
-        $h->STORE('RaiseError',$parent->{'RaiseError'});
-        $h->STORE('PrintError',$parent->{'PrintError'});
-        $h->STORE('HandleError',$parent->{'HandleError'});
-        $h->STORE('Database',$parent);
-        $parent->STORE('Statement',$h->{'Statement'}); #z but change on execute
+        $h_inner->{'Database'}    = $parent;
+        $h_inner->{'RaiseError'}  = $parent->{'RaiseError'};
+        $h_inner->{'PrintError'}  = $parent->{'PrintError'};
+        $h_inner->{'HandleError'} = $parent->{'HandleError'};
+        $parent->{Statement} = $h_inner->{Statement};
+	#use Data::Dumper; $Data::Dumper::Indent=1;
+	#warn Dumper([ "$h_inner, $parent", $h_inner->{Database}]);
     }
-    #z
-    #  THIS LINE DOES NOTHING EXCEPT KEEP THE HANDLE ALIVE.
-    #  THERE IS NO OTHER REFERENCE TO frump  BUT IF YOU
-    #  REMOVE IT examp.t ERRORS WILL NOT PROPOGATE TO $@
-    #
-    $DBI::PurePerl::frump = $h;
 }
 sub constant {
     warn "constant @_"; return;
@@ -299,10 +313,10 @@ sub trace {
     my $old_level = $level;
     _set_trace_file($file);# if defined $file;
     if (defined $level) {
-	$trace = $level;
-	print $tfh "    DBI $DBI::VERSION (PurePerl) "
+	$DBI::dbi_debug = $level;
+	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
                 . "dispatch trace level set to $level\n" if $level;
-        if ($level==0 and fileno($tfh)) {
+        if ($level==0 and fileno($DBI::tfh)) {
 	    return _set_trace_file("");
         }
     }
@@ -312,17 +326,30 @@ sub _set_trace_file {
     my ($file) = @_;
     return unless defined $file;
     unless ($file) {
-	open $tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
+	open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
 	return 1;
     }
-    open $tfh, ">>$file" or carp "Can't open $file: $!";
-    select((select($tfh), $| = 1)[0]);
+    open $DBI::tfh, ">>$file" or carp "Can't open $file: $!";
+    select((select($DBI::tfh), $| = 1)[0]);
     return 1;
 }
 sub _get_imp_data {  shift->{"imp_data"}; }
-sub _handles      {  my $h = shift;   return ($h,$h); }  #z :-)
 sub _svdump       { }
 sub dump_handle   { my $h = shift; warn join "\n", %$h; }
+
+sub _handles {
+    my $h = shift;
+    my $h_inner = tied %$h;
+    if ($h_inner) {	# this is okay
+	return $h unless wantarray;
+	return ($h, $h_inner);
+    }
+    # XXX this isn't... we have an inner handle but
+    # currently have no way to get at the outer handle
+    # so we just return the inner one for both
+    return $h unless wantarray;
+    return ($h,$h);
+}
 
 sub hash {
     my ($key, $type) = @_;
@@ -366,7 +393,7 @@ sub looks_like_number {
         if (!defined $thing or $thing eq '') {
             push @new, undef;
         }
-	elsif ( ($thing & ~ $thing) eq "0") { #z magic from Randal
+	elsif ( ($thing & ~ $thing) eq "0") { # magic from Randal
             push @new, 1;
 	}
         else {
@@ -379,8 +406,8 @@ sub neat {
     my $v = shift;
     return "undef" unless defined $v;
     return $v      if looks_like_number($v);
-    my $maxlen = shift;
-    if ($maxlen < length($v) + 2) {
+    my $maxlen = shift || $DBI::neat_maxlen;
+    if ($maxlen && $maxlen < length($v) + 2) {
 	$v = substr($v,0,$maxlen-5);
 	$v .= '...';
     }
@@ -394,6 +421,7 @@ sub FETCH {
     return $DBI::err     if $$key eq '*err';
     return $DBI::errstr  if $$key eq '&errstr';
     if ($$key eq '"state'){
+die; # XXX
         my $state = $DBI::state;
         return $state if $state;
         return '' unless defined $state;
@@ -409,8 +437,8 @@ sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;
     my $old_level = $level;
     if (defined $level) {
-	$trace = $level;
-	printf $tfh
+	$DBI::dbi_debug = $level;
+	printf $DBI::tfh
             "    %s trace level set to %d in DBI $DBI::VERSION (PurePerl)\n",
 	    $h, $level if $file;
     }
@@ -439,58 +467,60 @@ sub FETCH {
             $i++;
         }
     }
-    return $h->{$key};
+    my $v = $h->{$key};
+    if (!defined $v && !exists $h->{$key}) {
+	Carp::croak( sprintf "Can't get %s->{%s}: unrecognised attribute (@{[ %$h ]})",$h,$key)
+	    if !$is_valid_attribute{$key} and $key =~ m/^[A-Z]/;
+    }
+    return $v;
 }
 sub STORE {
-    my ($h,$key,$value)= @_;
+    my ($h,$key,$value) = @_;
+    if ($key eq 'AutoCommit') {
+	croak("DBD driver has not implemented the AutoCommit attribute")
+	    unless $value == -900 || $value == -901;
+	$value = ($value == -901);
+    }
+    elsif (!$is_valid_attribute{$key} && $key =~ /^[A-Z]/ && !exists $h->{$key}) {
+       Carp::croak(sprintf "Can't set %s->{%s}: unrecognised attribute or invalid value %s",
+	    $h,$key,$value);
+    }
     $h->{$key} = $value;
+    return 1;
 }
 sub err {
     my $h = shift;
-    # XXX need to be shared between dbh and sth
+    # XXX need to be shared between dbh and sth?
     my $err = $h->{'err'} || $h->{'errstr'};
-    $h->{'Database'}->{'err'} = $err if $h->{'Database'};
     return $err;
 }
 sub errstr {
     my $h = shift;
     my $errstr = $h->{'errstr'} || '';   # $h->{'err'}; caught in DBD-CSV
-    $h->{'Database'}->{'errstr'} = $errstr if $h->{'Database'};
     return $errstr;
 }
 sub state {
-    #z DOESN'T SEEM TO EVER BE CALLED
-    my $h = shift;
-    my $state = $h->{'state'};
-    return $state if defined $state and $state eq '' and !$h->err;
-    if (!$state) {
-        $state= ($h->err) ? "S1000" : "00000";
-    }
-    $h->{'Database'}->{'state'} = $state if $h->{'Database'};
-    return $state;
+    return shift->{state};
 }
-sub event {
-    # do nothing
-}
+sub event { }
 sub set_err {
-    my($h,$errnum,$msg,$state,$method, $rv)=@_;
+    my ($h, $errnum,$msg,$state, $method, $rv) = @_;
+    $h = tied(%$h) || $h; # for code that calls $h->DBI::set_err(...)
     $msg = $errnum unless defined $msg;
-    if (my $dbh = $h->{'Database'}) {
-	$dbh->{err} = $errnum;
+    $h->{'_last_method'} = $method if $method;
+    $h->{errstr} = $DBI::errstr = $msg;
+    $h->{state}  = $DBI::state  = (defined $state) ? ($state eq "00000" ? "" : $state) : ($errnum ? "S1000" : "");
+    $h->{err}    = $DBI::err    = $errnum;
+    if (my $dbh = $h->{Database}) {
 	$dbh->{errstr} = $msg;
+	$dbh->{err} = $errnum;
     }
-    $DBI::errstr = $h->{errstr} = $msg;
-    $DBI::state  = (defined $state) ? ($state eq "00000" ? "" : $state) : ($errnum ? "S1000" : "");
-    $DBI::err    = $h->{err}    = $errnum;
-    return $rv if $rv;
-    return undef;
+    return $rv; # usually undef
 }
 sub trace_msg {
     my($h,$msg,$minlevel)=@_;
-    $minlevel = 1 unless defined $minlevel;
-    $trace    = 0 unless defined $trace;
-    return if $trace < $minlevel;
-    print $tfh $msg;
+    return if $DBI::dbi_debug < ($minlevel||1);
+    print $DBI::tfh $msg;
     return 1;
 }
 sub private_data {
@@ -499,7 +529,8 @@ sub private_data {
 sub rows {
     return -1; # always returns -1 here, see DBD::_::st::rows below
 }
-sub DESTROY {}
+sub DESTROY {
+}
 
 package DBD::_::st;		# ============ DBD::_::st
 
@@ -520,8 +551,6 @@ sub fetchrow_array	{
     my $row = $h->fetch or return;
     return @$row;
 }
-#z The DBI/t/* tests missed a typo on fetchrow
-# twice to avoid typo warning
 *fetchrow = \&fetchrow_array; *fetchrow = \&fetchrow_array;
 
 sub fetchrow_hashref {
@@ -529,9 +558,10 @@ sub fetchrow_hashref {
     my $row       = $h->fetch or return;
     my $FetchCase = shift;
     my $FetchHashKeyName = $FetchCase || $h->{'FetchHashKeyName'} || 'NAME';
-    my $rowhash;
-    @$rowhash{ @{$h->{$FetchHashKeyName}} } = @$row;
-    return $rowhash;
+    my $FetchHashKeys    = $h->FETCH($FetchHashKeyName);
+    my %rowhash;
+    @rowhash{ @$FetchHashKeys } = @$row;
+    return \%rowhash;
 }
 sub dbih_setup_fbav {
     my $h = shift;
@@ -551,7 +581,13 @@ sub _get_fbav {
 }
 sub _set_fbav {
     my $h = shift;
-    my $fbav = $h->{'_fbav'} ||= dbih_setup_fbav($h);
+    my $fbav = $h->{'_fbav'};
+    if ($fbav) {
+	++$h->{'_rows'};
+    }
+    else {
+	$fbav = $h->_get_fbav;
+    }
     my $row = shift;
     if (my $bc = $h->{'_bound_cols'}) {
         for my $i (0..@$row-1) {
@@ -566,7 +602,7 @@ sub _set_fbav {
 }
 sub bind_col {
     my ($h, $col, $value_ref,$from_bind_columns) = @_;
-    $col-- unless $from_bind_columns; #z fix later
+    $col-- unless $from_bind_columns; # XXX fix later
     DBI::croak("bind_col($col,$value_ref) needs a reference to a scalar")
 	unless ref $value_ref eq 'SCALAR';
     my $fbav = $h->_get_fbav;
@@ -581,12 +617,11 @@ sub bind_columns {
 	if @_ != @$fbav;
     foreach (0..@_-1) {
         $h->bind_col($_, $_[$_],'from_bind_columns')
-      }
+    }
     return 1;
 }
 sub finish {
     my $h = shift;
-    $h->{'_rows'} = undef;
     $h->{'_fbav'} = undef;
     $h->{'Active'} = 0;
     return 1;
@@ -597,6 +632,7 @@ sub rows {
     return -1 unless defined $rows;
     return $rows;
 }
+
 1;
 __END__
 
@@ -615,12 +651,20 @@ __END__
 
 This is a pure perl emulation of the DBI internals.  In almost all
 cases you will be better off using standard DBI since the portions
-of the standard version written in C make it *much* *much* faster.
+of the standard version written in C make it *much* faster.
 
 However, if you are in a situation where it isn't possible to install
-a compiled version of standard DBI, and you're using pure-perl DBD drivers
-then this module allows you to use most features of DBI without
-needing any changes in your scripts.
+a compiled version of standard DBI, and you're using pure-perl DBD
+drivers, then this module allows you to use most common features
+of DBI without needing any changes in your scripts.
+
+=head1 EXPERIMENTAL STATUS
+
+DBI::PurePerl is very new so please treat it as experimental pending
+more extensive testing.  So far it has passed all tests with DBD::CSV,
+DBD::AnyData, DBD::XBase, DBD::Sprite, DBD::mysqlPP.  Please send
+bug reports to Jeff Zucker at <jeff@vpservices.com> with a cc to
+<dbi-dev@perl.org>.
 
 =head1 USAGE
 
@@ -660,7 +704,7 @@ For example:
 Then add this to the top of scripts:
 
  BEGIN {
-   $ENV{DBI_PUREPERL}=1;
+   $ENV{DBI_PUREPERL} = 1;	# or =2
    unshift @INC, '/usr/jdoe/mylibs';
  }
 
@@ -670,7 +714,34 @@ and the files are installed automatically?)
 
 =head1 DIFFERENCES BETWEEN DBI AND DBI::PurePerl
 
-=head2 Speed.  Speed.  Speed.  Did we mention speed?
+=head2 Attributes
+
+Some handle attributes are either not supported or have very limited
+functionality:
+
+  ActiveKids
+  InactiveDestroy
+  Kids
+  Taint
+  TraceLevel
+
+(and probably others)
+
+=head2 Tracing
+
+Trace functionality is more limited and the code to handle tracing is
+only embeded into DBI:PurePerl if the DBI_TRACE environment variable
+is defined.  To enable total tracing you can set the DBI_TRACE
+environment variable as usual.  But to enable individual handle
+tracing using the trace() method you also need to set the DBI_TRACE
+environment variable, but set it to 0.
+ 
+=head2 Parameter Usage Checking
+
+The DBI does some basic parameter count checking on method calls.
+DBI::PurePerl doesn't.
+
+=head2 Speed
 
 DBI::PurePerl is slower. Although, with some drivers in some
 contexts this may not be very significant for you.
@@ -684,11 +755,8 @@ distribution has a simple benchmark that just does:
 
 In other words just prepares a statement, creating and destroying
 a statement handle, over and over again.  Using the real DBI this
-runs at ~4550 handles per second but DBI::PurePerl can only manage
-~230 per second on the same machine.
-
-I'm sure we can improve the performance with more work, but we'll
-be lucky to more than double it.
+runs at ~4550 handles per second whereas DBI::PurePerl manages
+~2800 per second on the same machine (not too bad really).
 
 =head2 May not fully support hash()
 
@@ -700,27 +768,28 @@ DBI::PurePerl, you'll need version 1.56 or higher of Math::BigInt
 
 The DBI->preparse() method isn't supported in DBI::PurePerl.
 
+=head2 Doesn't support DBD::Proxy
+
+There's a subtle problem somewhere I've not been able to identify.
+DBI::ProxyServer seem to work fine with DBI::PurePerl but DBD::Proxy
+does not work 100% (which is sad because that would be far more useful :)
+Try re-enabling t/80proxy.t for DBI::PurePerl to see if the problem
+that remains will affect you're usage.
+
 =head2 Undoubtedly Others
 
 Please let us know if you find any other differences between DBI
 and DBI::PurePerl.
 
-=head1 EXPERIMENTAL NATURE OF THIS RELEASE
-
-This is the first CPAN release of DBI::PurePerl so please treat
-it as experimental pending more extensive testing.  So far it
-has passed all tests with DBD::CSV, DBD::AnyData, DBD::XBase,
-DBD::Sprite, DBD::mysqlPP.  Please send bug reports to Jeff
-Zucker at <jeff@vpservices.com> with a cc to <dbi-dev@perl.org>.
-
 =head1 AUTHORS
 
 Tim Bunce and Jeff Zucker.
 
-Tim provided the direction and basis for the port as well as
-cleaning things up.  The original idea for the module and most
-of the brute force porting from C to perl were by Jeff.  Thanks
-to Randal Schwartz and John Tobey for patches.
+Tim provided the direction and basis for the code.  The original
+idea for the module and most of the brute force porting from C to
+Perl was by Jeff. Tim then reworked some core parts to boost the
+performance and accuracy of the emulation. Thanks also to Randal
+Schwartz and John Tobey for patches.
 
 =head1 COPYRIGHT
 

@@ -18,7 +18,7 @@ print "1..$tests\n";
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.3 $',
+		'Version' => '$Revision: 11.4 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -46,18 +46,18 @@ $drh = DBI->install_driver('Test');
 
 foreach (5..9) { print "ok $_\n"; }
 
-DBI::set_err($drh, "99", "foo");
+$drh->set_err("99", "foo");
 ($DBI::err == 99)        ? print "ok 10\n" : print "not ok 10\n";
 ($DBI::errstr eq "foo")  ? print "ok 11\n" : print "not ok 11\n";
 
-DBI::set_err($drh, 0, "00000");
+$drh->set_err(0, "00000");
 ($DBI::state eq "")      ? print "ok 12\n" : print "not ok 12\n";
 
-DBI::set_err($drh, 1, "test error");
-($DBI::state eq "S1000") ? print "ok 13\n" : print "not ok 13\n";
+$drh->set_err(1, "test error");
+($DBI::state eq "S1000") ? print "ok 13\n" : print "not ok 13 # $DBI::state\n";
 
-DBI::set_err($drh, 1, "test error", "IM999");
-($DBI::state eq "IM999") ? print "ok 14\n" : print "not ok 14\n";
+$drh->set_err(1, "test error", "IM999");
+($DBI::state eq "IM999") ? print "ok 14\n" : print "not ok 14 # $DBI::state\n";
 
 eval { $DBI::rows = 1 };
 ($@ =~ m/Can't modify/)  ? print "ok 15\n" : print "not ok 15\n";

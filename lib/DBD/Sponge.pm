@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.4 2002/05/22 13:14:13 timbo Exp $
+#   $Id: Sponge.pm,v 11.5 2002/05/25 17:36:13 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -163,7 +163,7 @@
 	    my $NUM_OF_PARAMS = $sth->{NUM_OF_PARAMS};
 	    return $sth->set_err(1, @$row." values bound (@$row) but $NUM_OF_PARAMS expected")
 		if @$row != $NUM_OF_PARAMS;
-	    $sth->trace_msg("inserting (@$row)\n");
+	    { local $^W; $sth->trace_msg("inserting (@$row)\n"); }
 	    push @{ $sth->{rows} }, $row;
 	}
 	# else do nothing for select as data is already in $sth->{rows}

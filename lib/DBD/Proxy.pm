@@ -176,7 +176,9 @@ use vars qw(%ATTR $AUTOLOAD);
     'PrintError' => 'local',
     'RaiseError' => 'local',
     'RowCacheSize' => 'inherited',
-    'AutoCommit' => 'cached'
+    'AutoCommit' => 'cached',
+    'Database' => 'cached',
+    'Statement' => 'local',
 );
 
 sub AUTOLOAD {
@@ -527,7 +529,7 @@ sub FETCH ($$) {
     }
 
     if ($type eq 'cache_only'  &&
-	exists($sth->{'proxy_attr_cache'}->{$attr})) {
+	    exists($sth->{'proxy_attr_cache'}->{$attr})) {
 	return $sth->{'proxy_attr_cache'}->{$attr};
     }
 
@@ -536,10 +538,12 @@ sub FETCH ($$) {
 	my $result = eval { $rsth->FETCH($attr) };
 	return DBI::set_err($sth, 1, $@) if $@;
 	return $result;
-    } elsif ($attr eq 'RowsInCache') {
+    }
+    elsif ($attr eq 'RowsInCache') {
 	my $data = $sth->{'proxy_data'};
 	$data ? @$data : 0;
-    } else {
+    }
+    else {
 	$sth->SUPER::FETCH($attr);
     }
 }

@@ -16,7 +16,7 @@ require VMS::Filespec if $^O eq 'VMS';
 
 sub ok ($$;$) {
     my($n, $ok, $msg) = @_;
-	$msg = ($msg) ? " ($msg)" : "";
+    $msg = (defined $msg) ? " ($msg)" : "";
     ++$t;
     die "sequence error, expected $n but actually $t at line ".(caller)[2]."\n"
 		if $n and $n != $t;
@@ -63,11 +63,14 @@ ok(0, $dbh3 eq $dbh4);
 my $dbh5 = DBI->connect_cached('dbi:ExampleP:', '', '', { foo=>1 });
 ok(0, $dbh5 ne $dbh4);
 
+#$dbh->trace(2);
 $dbh->{AutoCommit} = 1;
 $dbh->{PrintError} = 0;
 ok(0, $dbh->{Taint}      == 1);
 ok(0, $dbh->{AutoCommit} == 1);
 ok(0, $dbh->{PrintError} == 0);
+#$dbh->trace(0); die;
+
 ok(0, $dbh->{FetchHashKeyName} eq 'NAME');
 ok(0, $dbh->{example_driver_path} =~ m:DBD/ExampleP.pm$:, $dbh->{example_driver_path});
 #$dbh->trace(2);
@@ -92,7 +95,8 @@ ok(0, $dbh->quote_identifier('foo',undef,'bar') eq '"bar"@"foo"', $dbh->quote_id
 
 print "others\n";
 eval { $dbh->commit('dummy') };
-ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/);
+ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/)
+	unless $DBI::PurePerl && ok(0,1);
 
 DBI->trace(0, undef);
 if ($^O =~ /cygwin/i) { # cygwin has buffer flushing bug
@@ -128,7 +132,8 @@ ok(0, ref $csr_b);
 ok(0, $csr_a != $csr_b);
 ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
 ok(0, $csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'ExampleP');
-ok(0, $csr_a->{'Database'} eq $dbh);
+ok(0, $csr_a->{'Database'} eq $dbh, "$csr_a->{'Database'} ne $dbh")
+    unless $DBI::PurePerl && ok(0,1);
 
 ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");	# before NAME
 ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
@@ -262,6 +267,7 @@ ok(0, "@{$r->[0]}{qw(MODE SIZE NAME)}" eq "@row_a", "'@{$r->[0]}{qw(MODE SIZE NA
 $rows = $csr_b->rows;
 ok(0, $rows > 0, "row count $rows");
 ok(0, $rows == @$r, "$rows vs ".@$r);
+#$csr_b->trace(0);
 
 # ---
 
@@ -310,9 +316,9 @@ ok(0, @$r == $rows);
 
 print "selectall_hashref\n";
 $r = $dbh->selectall_hashref($std_sql, 'NAME', undef, $dir);
-ok(0, $r);
-ok(0, ref $r eq 'HASH');
-ok(0, keys %$r == $rows);
+ok(0, $r, $r);
+ok(0, ref $r eq 'HASH', ref $r);
+ok(0, keys %$r == $rows, scalar keys %$r);
 ok(0, $r->{ $row_a[2] }{SIZE} eq $row_a[1], qq{$r->{ $row_a[2] }{SIZE} eq $row_a[1]});
 
 print "selectall_hashref by column number\n";

@@ -1,3 +1,5 @@
+#!perl -w
+
 use strict;
 use Test;
 
@@ -22,7 +24,12 @@ my $sth = $dbh->prepare("insert", {
 	rows => $rows,		# where to 'insert' (push) the rows
 	NUM_OF_PARAMS => 4,
 	# DBD::Sponge hook to make certain data trigger an error for that row
-	execute_hook => sub { return $_[0]->set_err(1,"errmsg") if grep { $_ eq "B" } @_; 1 },
+	execute_hook => sub {
+	    local $^W;
+	    return $_[0]->set_err(1,"errmsg")
+		if grep { $_ and $_ eq "B" } @_;
+	    return 1;
+	},
 });
 ok($sth);
 

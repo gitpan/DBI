@@ -20,7 +20,7 @@ sub ok ($$;$) {
 
 use DBI qw(:sql_types :utils);
 
-warn " Using DBI::PurePerl ($DBI::PurePerl)\n" if $DBI::PurePerl;
+warn " \tUsing DBI::PurePerl (DBI_PUREPERL=$DBI::PurePerl)\n" if $DBI::PurePerl;
 
 if (-f "/dev/null") {
     DBI->trace(42,"/dev/null");
@@ -41,26 +41,28 @@ ok(0, @drivers);
 ok(0, "@drivers" =~ m/ExampleP/i);	# ignore case for VMS & Win32
 
 $switch->debug(0);
-$switch->{DebugDispatch} = 0;	# handled by Switch
-$switch->{Warn} = 1;			# handled by DBI core
-
 ok(0, 1);
-ok(7, $switch->{'Attribution'} =~ m/DBI.*? by Tim Bunce/);
-ok(8, $switch->{'Version'} > 0);
+$switch->{DebugDispatch} = 0;	# handled by Switch
+ok(0, 1);
+$switch->{Warn} = 1;			# handled by DBI core
+ok(0, 1);
+
+ok(0, $switch->{'Attribution'} =~ m/DBI.*? by Tim Bunce/);
+ok(0, $switch->{'Version'} > 0);
 
 eval { $switch->{FooBarUnknown} = 1 };
-ok(9,  $@ =~ /Can't set.*FooBarUnknown/);
+ok(0,  $@ =~ /Can't set.*FooBarUnknown/);
 
 eval { $_=$switch->{BarFooUnknown} };
-ok(10, $@ =~ /Can't get.*BarFooUnknown/);
+ok(0, $@ =~ /Can't get.*BarFooUnknown/);
 
-ok(11, $switch->{private_test1} = 1);
-ok(12, $switch->{private_test1} == 1);
+ok(0, $switch->{private_test1} = 1);
+ok(0, $switch->{private_test1} == 1);
 
-ok(13, !defined $switch->{CachedKids});
-ok(14, $switch->{CachedKids} = { });
-ok(15, ref $switch->{CachedKids} eq 'HASH');
-ok(16, ref $switch->{CachedKids} eq 'HASH');
+ok(0, !defined $switch->{CachedKids});
+ok(0, $switch->{CachedKids} = { });
+ok(0, ref $switch->{CachedKids} eq 'HASH');
+ok(0, ref $switch->{CachedKids} eq 'HASH');
 
 ok(0, $switch->{Kids} == 0);
 ok(0, $switch->{ActiveKids} == 0);
@@ -98,5 +100,5 @@ else {
   ok(0, DBI::hash("foo2",1) == -1263462437,  DBI::hash("foo2",1));
 }
 
-BEGIN { $tests = 36 }
+BEGIN { $tests = 38 }
 exit 0;

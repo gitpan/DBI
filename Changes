@@ -10,6 +10,12 @@ Move FIRSTKEY/NEXTKEY/EXISTS/DELETE? to XS (and pureperl)
 
 =head1 CHANGES
 
+=head2 Changes in DBI 1.23,    23nd May 2002
+
+  Greatly improved DBI::PurePerl in performance and accuracy.
+  Added more detail to DBI::PurePerl docs about what's not supported.
+  Fixed undef warnings from t/15array.t and DBD::Sponge.
+
 =head2 Changes in DBI 1.22,    22nd May 2002
 
   Added execute_array() and bind_param_array() with special thanks

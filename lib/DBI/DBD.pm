@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 11.4 2002/05/22 13:23:57 timbo Exp $
+# $Id: DBD.pm,v 11.5 2002/05/25 17:36:13 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 11.4 $
-  $Date: 2002/05/22 13:23:57 $
+  $Revision: 11.5 $
+  $Date: 2002/05/25 17:36:13 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -1754,7 +1754,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
@@ -1786,14 +1786,14 @@ sub dbd_edit_mm_attribs {
 	opendir DIR, 't';
 	my @tests = grep { /\.t$/ } readdir DIR;
 	closedir DIR;
-	foreach my $test (@tests) {
+	foreach my $test (sort @tests) {
 	    next if $test =~ /^zz_.*_pp\.t$/;
 	    $test =~ s/\.t$//;
 	    my $pp_test = "t/zz_${test}_pp.t";
 	    print "Creating extra DBI::PurePerl test: $pp_test\n";
 	    open PPT, ">$pp_test" or warn "Can't create $pp_test: $!";
 	    print PPT "#!perl -w\n";
-	    print PPT "\$ENV{DBI_PUREPERL}=0;\n";
+	    print PPT "\$ENV{DBI_PUREPERL}=2;\n";
 	    print PPT "do 't/$test.t';\n";
 	    print PPT "exit 0\n";
 	    close PPT or warn "Error writing $pp_test: $!";

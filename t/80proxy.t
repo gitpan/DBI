@@ -4,19 +4,17 @@ require 5.004;
 use strict;
 
 
-require DBI;
+use DBI;
 require Config;
 require VMS::Filespec if $^O eq 'VMS';
 require Cwd;
 
 my $haveFileSpec = eval { require File::Spec };
 
-
 $| = 1;
 $^W = 1;
 
 # $\ = "\n"; # XXX Triggers bug, check this later (JW, 1998-12-28)
-
 
 # Can we load the modules? If not, exit the test immediately:
 # Reason is most probable a missing prerequisite.
@@ -31,6 +29,7 @@ eval {
 };
 if ($@) { print "1..0\n"; print $@; exit 0; }
 
+if ($DBI::PurePerl) { print "1..0\n"; print $@; exit 0; } # XXX temporary I hope
 
 {
     my $numTest = 0;
@@ -41,7 +40,7 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
     }
     sub Test ($;$) {
 	my($ok, $msg) = @_;
-	    $msg = ($msg) ? " ($msg)" : "";
+	$msg = ($msg) ? " ($msg)" : "";
 	my $line = (caller)[2];
 	++$numTest;
 	($ok) ? print "ok $numTest at line $line\n" : print "not ok $numTest\n";
@@ -53,11 +52,8 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
 
 # Create an empty config file to make sure that settings aren't
 # overloaded by /etc/dbiproxy.conf
-my $i = 0;
-while (-f "dbiproxy$i.conf") {
-    ++$i;
-}
-my $config_file = "dbiproxy$i.conf";
+my $config_file = "dbiproxytst.conf";
+unlink $config_file;
 (open(FILE, ">$config_file")  and
  (print FILE "{}\n")          and
  close(FILE))
@@ -68,13 +64,29 @@ my $numTests = 117;
 if (@ARGV) {
     $port = $ARGV[0];
 } else {
+
+    # set DBI_TRACE to 0 to just get dbiproxy.log DBI trace for server
+    # set DBI_TRACE > 0 to also get DBD::Proxy trace
+    unlink "dbiproxy.log";
+    unlink "dbiproxy.truss";
+
+    # Uncommentand adjust this to isolate pure-perl client from server settings:
+    # local $ENV{DBI_PUREPERL} = 0;
+
+    # If desperate uncomment this and add '-d' after $^X below:
+    # local $ENV{PERLDB_OPTS} = "AutoTrace NonStop=1 LineInfo=dbiproxy.dbg";
+
     ($handle, $port) = Net::Daemon::Test->Child($numTests,
-						$^X, '-Iblib/lib',
-						'-Iblib/arch', 
-						'dbiproxy', '--test',
-						'--configfile', $config_file,
-						'--mode=single',
-						'--debug', '--timeout=60');
+	#'truss', '-o', 'dbiproxy.truss',
+	$^X, '-Iblib/lib', '-Iblib/arch', 
+	'dbiproxy', '--test', # --test must be first command line arg
+	(exists $ENV{DBI_TRACE} ? ('--dbitrace=dbiproxy.log') : ()),
+	'--configfile', $config_file,
+	(($ENV{DBI_TRACE}) ? ('--logfile=1') : ()),
+	'--mode=single',
+	'--debug',
+	'--timeout=60'
+    );
 }
 
 my @opts = ('peeraddr' => '127.0.0.1', 'peerport' => $port, 'debug' => 1);
@@ -119,15 +131,17 @@ Test($dbh->quote_identifier(undef,undef,'bar') eq '"bar"');
 
 print "Trying commit with invalid number of parameters.\n";
 eval { $dbh->commit('dummy') };
-Test($@ =~ m/^DBI commit: invalid number of parameters: handle \+ 1/);
+Test($@ =~ m/^DBI commit: invalid number of parameters: handle \+ 1/)
+    unless $DBI::PurePerl && Test(1);
 
 print "Trying select with unknown field name.\n";
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 Test(defined $cursor_e);
 Test(!$cursor_e->execute('a'));
 Test($DBI::err);
-Test($DBI::errstr =~ m/unknown_field_name/);
-Test($DBI::err    == $dbh->err);
+Test($DBI::err == $dbh->err);
+Test($DBI::errstr =~ m/unknown_field_name/, $DBI::errstr);
+
 Test($DBI::errstr eq $dbh->errstr);
 Test($dbh->errstr eq $dbh->func('errstr'));
 
@@ -146,7 +160,13 @@ Test(ref $csr_b);
 Test($csr_b->execute($dir));
 Test($csr_a != $csr_b);
 Test($csr_a->{NUM_OF_FIELDS} == 3);
-Test($csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'Proxy');
+if ($DBI::PurePerl) { 
+    $csr_a->trace(2);
+    use Data::Dumper;
+    warn Dumper($csr_a->{Database});
+}
+Test($csr_a->{Database}->{Driver}->{Name} eq 'Proxy', "Name=$csr_a->{Database}->{Driver}->{Name}");
+$csr_a->trace(0), die if $DBI::PurePerl;
 
 my($col0, $col1, $col2);
 my(@row_a, @row_b);

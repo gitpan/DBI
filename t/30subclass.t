@@ -43,7 +43,7 @@ sub fetch {
 	$row->[1] = lc($row->[1]);
 
 	# also demonstrate calling set_err()
-	return $sth->set_err(1,"Don't be so negative",undef,"fetch")
+	return $sth->set_err(1,"Don't be so negative",undef,"fetch(test)")
 		if $row->[0] < 0;
 	# ... and providing alternate results
 	# (although typically would trap and hide and error from SUPER::fetch)
@@ -68,8 +68,8 @@ sub ok ($$$) {
     return print "ok $t at $line\n"
 	if(	( defined($got) && defined($want) && $got eq $want)
 	||	(!defined($got) && !defined($want)) );
-    warn "Test $n: wanted '$want', got '$got'\n";
-    print "not ok $t at $line\n";
+    warn "Test $t: wanted '$want', got '$got' at line $line\n";
+    print "not ok $t\n";
 }
 
 
@@ -107,10 +107,12 @@ $row = $sth->fetch;
 ok(0, $calls, 3);
 ok(0, $row->[1], "bb");
 
+#$sth->trace(2);
 ok(0, $DBI::err, undef);
 $row = eval { $sth->fetch };
 ok(0, !defined $row, 1);
-ok(0, substr($@,0,50), "DBD::Sponge::st fetch failed: Don't be so negative");
+ok(0, substr($@,0,56), "DBD::Sponge::st fetch(test) failed: Don't be so negative");
+#$sth->trace(0);
 
 #$sth->trace(5);
 #$sth->{PrintError} = 1;

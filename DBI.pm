@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.9 2002/05/22 13:14:13 timbo Exp $
+# $Id: DBI.pm,v 11.10 2002/05/25 17:36:13 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.22; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.23; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -41,12 +41,16 @@ DBI - Database independent interface for Perl
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare_cached($statement);
 
-  $rv = $sth->bind_param($p_num, $bind_value);
-  $rv = $sth->bind_param($p_num, $bind_value, $bind_type);
-  $rv = $sth->bind_param($p_num, $bind_value, \%attr);
+  $rc = $sth->bind_param($p_num, $bind_value);
+  $rc = $sth->bind_param($p_num, $bind_value, $bind_type);
+  $rc = $sth->bind_param($p_num, $bind_value, \%attr);
 
   $rv = $sth->execute;
   $rv = $sth->execute(@bind_values);
+
+  $rc = $sth->bind_param_array($p_num, $bind_values, \%attr);
+  $rv = $sth->execute_array(\%attr);
+  $rv = $sth->execute_array(\%attr, @bind_values);
 
   $rc = $sth->bind_col($col_num, \$col_variable);
   $rc = $sth->bind_columns(@list_of_refs_to_vars_to_bind);
@@ -104,14 +108,14 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.22
-(C<$Date: 2002/05/22 13:14:13 $>).
+This is the DBI specification that corresponds to the DBI version 1.23
+(C<$Date: 2002/05/25 17:36:13 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
 
 The significant user-visible changes in each release are documented
-in the L<DBI::FAQ> module so you can read them by executing
+in the L<DBI::Changes> module so you can read them by executing
 C<perldoc DBI::Changes>.
 
 Note also that whenever the DBI changes, the drivers take some time to
@@ -119,8 +123,8 @@ catch up. Recent versions of the DBI have added new features
 (generally marked I<NEW> in the text) that may not yet be supported by the drivers
 you use. Talk to the authors of those drivers if you need the new features.
 
-Extensions to the DBI use the C<DBIx::*>
-namespace. See L</Naming Conventions and Name Space> and:
+Extensions to the DBI often use the C<DBIx::*> namespace.
+See L</Naming Conventions and Name Space> and:
 
   http://search.cpan.org/search?mode=module&query=DBIx%3A%3A
 
@@ -132,7 +136,7 @@ namespace. See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.9 $, 10);
+my $Revision = substr(q$Revision: 11.10 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -361,7 +365,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	execute		=> { U =>[1,0,'[@args]'], O=>0x40 },
 
 	bind_param_array  => { U =>[3,4,'$parameter, $var [, \%attr]'] },
-#	bind_param_inout_array => { U =>[4,5,'$parameter, \\@var, $maxlen, [, \%attr]'] },
+	bind_param_inout_array => { U =>[4,5,'$parameter, \\@var, $maxlen, [, \%attr]'] },
 	execute_array     => { U =>[2,0,'\\%attribs [, @args]'] },
 
 	fetch    	  => undef, # alias for fetchrow_arrayref
@@ -766,7 +770,6 @@ sub init_rootclass {	# deprecated
 
 
 *internal = \&DBD::Switch::dr::driver;
-#sub internal { return DBD::Switch::dr::driver(@_); }
 
 
 sub available_drivers {
@@ -896,7 +899,7 @@ sub _new_handle {
 	if $DBI::dbi_debug >= 3;
 
     # This is how we create a DBI style Object:
-    my(%hash, $i, $h);
+    my (%hash, $i, $h);
     $i = tie    %hash, $class, $attr;  # ref to inner hash (for driver)
     $h = bless \%hash, $class;         # ref to outer hash (for application)
     # The above tie and bless may migrate down into _setup_handle()...
@@ -1447,13 +1450,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     }
 
     sub bind_param_inout_array { 
-	die "bind_param_inout_array not yet supported";
-	#	just throw to regular case, binding is same here
 	my $sth = shift;
+	# XXX not supported so we just call bind_param_array instead
+	# and then return an error
 	my ($p_num, $value_array, $attr) = @_;
 	$sth->bind_param_array($p_num, $value_array, $attr);
-	$sth->{ParamArraysInOut} = 1;
-	1;
+	return $sth->DBI::set_err(1, "bind_param_inout_array not supported");
     }
 
     sub execute_array {
@@ -1556,9 +1558,8 @@ use Data::Dumper;
     sub fetchall_hashref {
 	my ($sth, $key_field) = @_;
 
-	my ($sth_outer) = DBI::_handles($sth); # get outer handle for magic FETCH
 	my $hash_key_name = $sth->{FetchHashKeyName};
-	my $names_hash = $sth_outer->{"${hash_key_name}_hash"};
+	my $names_hash = $sth->FETCH("${hash_key_name}_hash");
 	my $index = $names_hash->{$key_field};	# perl index not column number
 	++$index if defined $index;		# convert to column number
 	$index ||= $key_field if DBI::looks_like_number($key_field) && $key_field>=1;
