@@ -20,4 +20,5 @@ lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
 t/basics.t	Test script for very basic DBI functionality
 t/dbidrv.t	Test script for loading drivers and using DBI vars
 t/examp.t	Test script for the DBI using the ExampleP driver
+t/subclass.t	Test script for subclassing the DBI
 test.pl	A very simple test harness using ExampleP.pm

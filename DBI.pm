@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 1.85 1998/02/04 17:35:24 timbo Exp $
+# $Id: DBI.pm,v 1.86 1998/02/13 14:27:16 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -7,7 +7,7 @@
 
 require 5.003;
 
-$DBI::VERSION = '0.92'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '0.93'; # ==> ALSO update the version in the pod text below!
 
 =head1 NAME
 
@@ -60,8 +60,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 0.92
-($Date: 1998/02/04 17:35:24 $).
+This is the DBI specification that corresponds to the DBI version 0.93
+($Date: 1998/02/13 14:27:16 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -142,7 +142,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.85 $, 10);
+my $Revision = substr(q$Revision: 1.86 $, 10);
 
 
 use Carp;
@@ -152,8 +152,8 @@ use Exporter ();
 @ISA = qw(Exporter DynaLoader);
 
 # Make some utility functions available if asked for
-@EXPORT    = (); # we export nothing by default
-@EXPORT_OK = (); # populated by export_ok_tags:
+@EXPORT    = ();		# we export nothing by default
+@EXPORT_OK = ('%DBI');	# populated by export_ok_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(
     SQL_ALL_TYPES
@@ -212,6 +212,13 @@ tie $DBI::rows,   'DBI::var', '&rows';   # call &rows   in last used pkg
 sub DBI::var::TIESCALAR{ my $var = $_[1]; bless \$var, 'DBI::var'; }
 sub DBI::var::STORE    { Carp::croak "Can't modify \$DBI::${$_[0]} special variable" }
 sub DBI::var::DESTROY  { }
+
+{   package DBI::DBI_tie;	# used to catch DBI->{Attrib} mistake
+    sub TIEHASH { bless {} }
+    sub STORE   { Carp::carp("DBI->{$_[1]} is invalid syntax (you probably want \$h->{$_[1]})");}
+    *FETCH = \&STORE;
+}
+tie %DBI::DBI => 'DBI::DBI_tie';
 
 
 # --- Dynamically create the DBI Standard Interface
@@ -2244,11 +2251,41 @@ output will be appended to that file.
 See also the L</trace> method.
 
 
-=head1 WARNINGS
+=head1 WARNING AND ERROR MESSAGES
 
-The DBI is I<alpha> software. It is I<only> 'alpha' because the
-interface (api) is not finalised. The alpha status does not reflect
-code quality.
+(This section needs more words about causes and remedies.)
+
+=head2 Fatal Errors
+
+=over 4
+
+=item DBI/DBD internal version mismatch
+(DBI is v%d/s%d, DBD %s expected v%d/s%d)
+you need to rebuild either the DBD driver or the DBI
+
+=item DBD driver has not implemented the AutoCommit attribute
+
+=item Can't [sg]et %s->{%s}: unrecognised attribute
+
+=item panic: DBI active kids (%d) > kids (%d)
+
+=item panic: DBI active kids (%d) < 0 or > kids (%d)
+
+=back
+
+=head2 Warnings
+
+=over 4
+
+=item DBI Handle cleared whilst still holding %d cached kids!
+
+=item DBI Handle cleared whilst still active!
+
+=item DBI Handle has uncleared implementors data
+
+=item DBI Handle has %d uncleared child handles
+
+=back
 
 =head1 SEE ALSO
 

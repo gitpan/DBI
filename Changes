@@ -1,5 +1,12 @@
 
-Changes in DBI 0.92,	3rd December 1998
+Changes in DBI 0.92,	13th February 1998
+
+  Fixed DBI::DBD::dbd_postamble bug causing 'Driver.xsi not found' errors.
+  Changes to handling of 'magic' values in neatsvpv (used by trace).
+  execute (in Driver.xst) stops binding after first bind error.
+  This release requires drivers to be rebuilt.
+
+Changes in DBI 0.92,	3rd February 1998
 
   Fixed per-handle memory leak (with many thanks to Irving Reid).
   Added $dbh->prepare_cached() caching variant of $dbh->prepare.

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.80 1998/02/04 17:35:24 timbo Exp $
+/* $Id: DBI.xs,v 1.81 1998/02/13 14:27:16 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -92,15 +92,22 @@ typedef struct dbi_ima_st {
 
 
 static void
-check_version(name, dbis_cv, dbis_cs, need_dbixs_cv)
+check_version(name, dbis_cv, dbis_cs, need_dbixs_cv, drc_s, dbc_s, stc_s, fdc_s)
     char *name;
     int dbis_cv, dbis_cs, need_dbixs_cv;
+    int drc_s, dbc_s, stc_s, fdc_s;
 {
+    char *msg = "you probably need to rebuild the DBD driver (or possibly the DBI)";
     if (dbis_cv != DBISTATE_VERSION || dbis_cs != sizeof(*DBIS))
 	croak("DBI/DBD internal version mismatch (DBI is v%d/s%d, DBD %s expected v%d/s%d) %s.\n",
-	    DBISTATE_VERSION, sizeof(*DBIS), name, dbis_cv, dbis_cs,
-		"you need to rebuild either the DBD driver or the DBI");
+	    DBISTATE_VERSION, sizeof(*DBIS), name, dbis_cv, dbis_cs, msg);
+    /* Catch structure size changes - We should probably force a recompile if the DBI	*/
+    /* runtime version is different from the build time. That would be harsh but safe.	*/
+    if (drc_s != sizeof(dbih_drc_t) || dbc_s != sizeof(dbih_dbc_t) ||
+	stc_s != sizeof(dbih_stc_t) || fdc_s != sizeof(dbih_fdc_t) )
+	croak("DBI/DBD internal structure mismatch, %s.\n", msg);
 }
+
 
 static void
 dbi_bootinit()
@@ -165,41 +172,66 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     STRLEN maxlen;
 {
     STRLEN len;
-    SV *nsv = NULL;
+    SV *nsv = Nullsv;
+    SV *infosv = Nullsv;
     char *v;
 
-    /* We take care not to alter the supplied sv in _any_ way at all.		*/
-    /* First we deal with the common cases fast and efficiently.		*/
+    /* We take care not to alter the supplied sv in any way at all.		*/
+
     if (!sv)
-	return "NULL";
-    if (SvGMAGICAL(sv))		/* one small step in this direction:		*/
-	return "magical";	/* will probably just be: mg_get(sv); */
-    if (!SvOK(sv))
-	return "undef";
-    if (SvNIOK(sv)) {	 /* is a numeric value - so no surrounding quotes	*/
+	return "Null!";					/* should never happen	*/
+
+    /* try to do the right thing with magical values				*/
+    if (SvGMAGICAL(sv)) {
+	mg_get(sv);			/* trigger magic to FETCH the value	*/
+	if (DBIS->debug >= 3) {		/* add magic details to help debugging	*/
+	    MAGIC* mg;
+	    infosv = sv_2mortal(newSVpv(" (magic:",0));
+	    for (mg = SvMAGIC(sv); mg; mg = mg->mg_moremagic)
+		sv_catpvn(infosv, &mg->mg_type, 1);
+	    sv_catpvn(infosv, ")", 1);
+	}
+    }
+
+    if (!SvOK(sv)) {
+	if (!infosv)
+	    return "undef";
+	sv_insert(infosv, 0,0, "undef",5);
+	return SvPVX(infosv);
+    }
+
+    if (SvNIOK(sv)) {	  /* is a numeric value - so no surrounding quotes	*/
 	char buf[48];
-	if (SvPOK(sv)) { /* already has string version of the value, so use it	*/
+	if (SvPOK(sv)) {  /* already has string version of the value, so use it	*/
 	    v = SvPV(sv,len);
-	    return (len) ? v : "''";	/* catch &sv_no style special case	*/
+	    if (len == 0) { v="''"; len=2; } /* catch &sv_no style special case	*/
+	    if (!infosv)
+		return v;
+	    sv_insert(infosv, 0,0, v, len);
+	    return SvPVX(infosv);
 	}
 	/* we don't use SvPV here since we don't want to alter sv in _any_ way	*/
 	if (SvIOK(sv))
-	     sprintf(buf, "%ld", (long)SvIV(sv));
-	else sprintf(buf, "%g",  (double)SvNV(sv));
+	     sprintf(buf, "%ld", (long)SvIVX(sv));
+	else sprintf(buf, "%g",  (double)SvNVX(sv));
 	nsv = sv_2mortal(newSVpv(buf, 0));
+	if (infosv)
+	    sv_catsv(nsv, infosv);
 	return SvPVX(nsv);
     }
 
-    if (SvROK(sv) && SvAMAGIC(sv)) {	/* handle Overload magic refs */
-	SvAMAGIC_off(sv);	/* should really be done via local scoping */
-	v = SvPV(sv,len);
+    if (SvROK(sv)) {
+	if (!SvAMAGIC(sv))	/* (un-amagic'd) refs get no special treatment	*/
+	    return SvPV(sv,len);
+	/* handle Overload magic refs */
+	SvAMAGIC_off(sv);	/* should really be done via local scoping	*/
+	v = SvPV(sv,len);	/* XXX how does this relate to SvGMAGIC?	*/
 	SvAMAGIC_on(sv);
     }
-    else	/* handles all else, including non AMAGIC refs	*/
+    else if (SvPOK(sv))		/* usual simple string case			*/
 	v = SvPV(sv,len);
-    /* (un-amagic'd) refs get no special treatment */
-    if (SvROK(sv))
-	return v;
+    else			/* handles all else via sv_2pv()		*/
+	v = SvPV(sv,len);	/* XXX how does this relate to SvGMAGIC?	*/
 
     /* for strings we limit the length and translate codes	*/
     nsv = sv_newmortal();
@@ -214,12 +246,14 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 	sv_setpvn(nsv, "'", 1);
 	sv_catpvn(nsv, v, maxlen-3);	/* account for three dots */
 	sv_catpvn(nsv, "...'", 4);
-    }else{
+    } else {
 	SvGROW(nsv, (int)(1+len+1+1));
 	sv_setpvn(nsv, "'", 1);
 	sv_catpvn(nsv, v, len);
 	sv_catpvn(nsv, "'", 1);
     }
+    if (infosv)
+	sv_catsv(nsv, infosv);
     v = SvPV(nsv, len);
     while(len-- > 0) { /* cleanup string (map control chars to ascii etc) */
 	if (!isPRINT(v[len]) && !isSPACE(v[len]))
@@ -951,7 +985,6 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     else if (htype<=DBIt_DB && keylen==10  && strEQ(key, "CachedKids")) {
 	D_imp_dbh(h);
 	HV *hv = DBIc_CACHED_KIDS(imp_dbh);
-/*dbih_dumpcom(imp_dbh, "CK:"); warn("CachedKids=0x%lx (imp_dbh=0x%lx)", hv, imp_dbh);*/
 	valuesv = (hv) ? newRV((SV*)hv) : &sv_undef;
     }
     else if (keylen==10 && strEQ(key, "CompatMode")) {

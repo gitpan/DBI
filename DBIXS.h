@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.45 1998/02/04 17:35:24 timbo Exp $
+/* $Id: DBIXS.h,v 1.46 1998/02/13 14:27:16 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
@@ -36,7 +36,7 @@
  * DBISTATE_VERSION macro below. You can think of DBIXS_VERSION as
  * being a compile time check and DBISTATE_VERSION as a runtime check.
  */
-#define DBIXS_VERSION 10
+#define DBIXS_VERSION 93
 
 #ifdef NEED_DBIXS_VERSION
 #if NEED_DBIXS_VERSION > DBIXS_VERSION
@@ -301,10 +301,11 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 typedef struct {
 
-#define DBISTATE_VERSION  10	/* Must change whenever dbistate_t does	*/
+#define DBISTATE_VERSION  93	/* Must change whenever dbistate_t does	*/
 
     /* this must be the first member in structure			*/
-    void (*check_version) _((char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv));
+    void (*check_version) _((char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv,
+				int drc_s, int dbc_s, int stc_s, int fdc_s));
 
     /* version and size are used to check for DBI/DBD version mis-match	*/
     U16 version;	/* version of this structure			*/
@@ -348,7 +349,9 @@ typedef struct {
     DBISTATE_INIT_DBIS;	\
     if (DBIS == NULL)	\
 	croak("Unable to get DBI state. DBI not loaded.");	\
-    DBIS->check_version(__FILE__, DBISTATE_VERSION, sizeof(*DBIS), NEED_DBIXS_VERSION); \
+    DBIS->check_version(__FILE__, DBISTATE_VERSION, sizeof(*DBIS), NEED_DBIXS_VERSION, \
+		sizeof(dbih_drc_t), sizeof(dbih_dbc_t), sizeof(dbih_stc_t), sizeof(dbih_fdc_t) \
+	); \
 }
 
 #define DBILOGFP	(DBIS->logfp)

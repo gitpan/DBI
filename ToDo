@@ -9,6 +9,10 @@ $dbh->quote($value, [ $field_type_num_to_quote_for ]) ? (int=none, date=?)
 
 Shared error codes between all handles!
 
+Add problem reporting info to DBI.pm
+
+Check with threaded perl again.
+
 Metadata
 
 For DBD's in perl allow write access to some attrs if CALL_DEPTH > 1
