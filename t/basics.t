@@ -24,8 +24,8 @@ ok(0, ref $switch eq 'DBI::dr');
 
 @drivers = DBI->available_drivers(); # at least 'ExampleP' should be installed
 ok(0, @drivers);
-ok(0, "@drivers" =~ m/ExampleP/);
-ok(0, "@drivers" =~ m/Sponge/);
+ok(0, "@drivers" =~ m/ExampleP/i);	# ignore case for VMS & Win32
+ok(0, "@drivers" =~ m/Sponge/i);	# ignore case for VMS & Win32
 
 $switch->debug(0);
 $switch->{DebugDispatch} = 0;	# handled by Switch

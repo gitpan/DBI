@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.81';
+$DBI::VERSION = '0.82';
 
 =head1 NAME
 
@@ -10,6 +10,8 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
   use DBI;
  
+  @databases = DBI->data_sources($driver);
+
   $dbh = DBI->connect($database, $username, $auth);
   $dbh = DBI->connect($database, $username, $auth, $driver);
   $dbh = DBI->connect($database, $username, $auth, $driver, \%attr);
@@ -42,7 +44,7 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.69 $ dated $Date: 1997/05/07 15:55:58 $
+This documentation is a new draft $Revision: 1.70 $ dated $Date: 1997/05/23 17:38:31 $
 
 It is expected to evolve and expand quite quickly (relative to previous
 drafts :-) so it is important to check that you have the latest copy.
@@ -54,9 +56,9 @@ drafts :-) so it is important to check that you have the latest copy.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.69 $, 10);
+my $Revision = substr(q$Revision: 1.70 $, 10);
 
-# $Id: DBI.pm,v 1.69 1997/05/07 15:55:58 timbo Exp $
+# $Id: DBI.pm,v 1.70 1997/05/23 17:38:31 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -147,7 +149,7 @@ my %DBI_IF = (	# Define the DBI Interface:
     dr => {		# Database Driver Interface
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'] },
 	'disconnect_all'=>{ U =>[1,1] },
-	data_sources => { U =>[1,1] },
+	data_sources => { U =>[1,2] },
 	@Common_IF,
 	@TieHash_IF,
     },
@@ -210,28 +212,27 @@ sub connect {
     my($database, $user, $passwd, $driver, $attr) = @_;
 
     $database ||= $ENV{DBI_DBNAME} || '';
-    $driver   ||= $ENV{DBI_DRIVER} || '';
+    $driver   ||= '';
 
-    Carp::carp "DBI->connect($database, $user, $passwd, $driver, $attr)"
-	    if $DBI::dbi_debug;
+    if ($DBI::dbi_debug) {
+	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
+	Carp::carp "DBI->connect($database, $user, $passwd, $driver, $attr)"
+    }
     die 'Usage: DBI->connect([$db [,$user [,$passwd [, $driver [,\%attr]]]]])'
 	    unless ($class eq 'DBI' && @_ <= 6);
 
     # Experimental hook
     return DBIODBC->connect(@_) if $database =~ m/^[A-Z]+=/; # DSN= etc
 
-    confess "DBI->connect() currently needs a driver" unless $driver;
-
     # Note that the same $attr hash ref is passed to both
     # install_driver and connect. Sad but true.
-
-    my $drh = DBI->install_driver($driver, $attr)
+    my $drh = $class->install_driver($driver, $attr)
 		or confess "DBI->install_driver($driver) failed";
 
-    warn "DBI->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
+    warn "$class\->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
 
     my $dbh = $drh->$connect_via($database, $user, $passwd, $attr);
-    warn "DBI->connect = $dbh\n" if $DBI::dbi_debug;
+    warn "$class\->connect = $dbh\n" if $DBI::dbi_debug;
 
     $dbh;
 }
@@ -249,51 +250,59 @@ sub disconnect_all {
 
 
 sub install_driver {
-    my($class, $driver_name, $install_attributes) = @_;
+    my $class = shift;
+    my($driver, $attribs) = @_;
     my $drh;
 
-    # already installed
-    return $drh if $drh = $DBI::installed_drh{$driver_name};
+    $driver  ||= $ENV{DBI_DRIVER};
 
-    Carp::carp "DBI->install_driver @_" if $DBI::dbi_debug;
-    die 'usage DBI->install_driver($driver_name [, \%attribs])'
-	unless ($class eq 'DBI' and $driver_name and @_<=3);
+    # if no driver specified and only one loaded then use that
+    ($driver) = keys %DBI::installed_drh
+	    if (!$driver and keys %DBI::installed_drh == 1);
+
+    Carp::croak "DBD driver not specified.\n" unless $driver;
+
+    # already installed
+    return $drh if $drh = $DBI::installed_drh{$driver};
+
+    Carp::carp "$class->install_driver($driver)" if $DBI::dbi_debug;
+    die 'usage DBI->install_driver($driver [, \%attribs])'
+	unless ($class eq 'DBI' and $driver and @_<=3);
 
     # --- load the code
-    eval "package DBI::_firesafe; require DBD::$driver_name";
+    eval "package DBI::_firesafe; require DBD::$driver";
     if ($@) {
 	my $advice = "";
-	$advice = "\nPerhaps DBD::$driver_name was statically linked into a new perl binary."
+	$advice = "\nPerhaps DBD::$driver was statically linked into a new perl binary."
 		 ."\nIn which case you need to use that new perl binary."
 	    if $@ =~ /Can't find loadable object/;
-	confess "install_driver($driver_name) failed: $@$advice\n"
+	confess "install_driver($driver) failed: $@$advice\n"
     }
-    Carp::carp "DBI->install_driver($driver_name) loaded\n" if $DBI::dbi_debug;
+    Carp::carp "DBI->install_driver($driver) loaded\n" if $DBI::dbi_debug;
 
     # --- do some behind-the-scenes checks and setups on the driver
-    _setup_driver($driver_name);
+    _setup_driver($driver);
 
     # --- run the driver function
-    $install_attributes = {} unless $install_attributes;
-    $drh = eval "DBD::${driver_name}->driver(\$install_attributes)";
-    croak "DBD::$driver_name initialisation failed: $@"
+    $drh = eval "DBD::${driver}->driver(\$attribs || {})";
+    croak "DBD::$driver initialisation failed: $@"
 	unless $drh && ref $drh && !$@;
 
-    Carp::carp "DBI->install_driver($driver_name) = $drh\n" if $DBI::dbi_debug;
-    $DBI::installed_drh{$driver_name} = $drh;
+    Carp::carp "DBI->install_driver($driver) = $drh\n" if $DBI::dbi_debug;
+    $DBI::installed_drh{$driver} = $drh;
     $drh;
 }
 
 sub _setup_driver {
-    my($driver_name) = @_;
+    my($driver) = @_;
 
     # --- do some behind-the-scenes checks and setups on the driver
     foreach(qw(dr db st)){
 	no strict 'refs';
-	my $class = "DBD::${driver_name}::$_";
+	my $class = "DBD::${driver}::$_";
 	push(@{"${class}::ISA"},     "DBD::_::$_");
 	push(@{"${class}_mem::ISA"}, "DBD::_mem::$_");
-	Carp::carp "install_driver($driver_name): setup \@ISA for $class\n"
+	Carp::carp "install_driver($driver): setup \@ISA for $class\n"
 	    if ($DBI::dbi_debug>=3);
     }
 }
@@ -330,6 +339,11 @@ sub available_drivers {
     @drivers;
 }
 
+sub data_sources {
+    my($class, $driver) = @_;
+    my $drh = $class->install_driver($driver);
+    return $drh->data_sources;
+}
 
 sub neat_list {
     my($listref, $maxlen, $sep) = @_;
@@ -393,7 +407,7 @@ sub connect_test_perf {
     require FileHandle;
     STDOUT->autoflush(1);
     my $t0 = new Benchmark;		# not currently used
-    my $drh = DBI->install_driver($driver) or die "Can't install $driver driver\n";
+    my $drh = $class->install_driver($driver) or die "Can't install $driver driver\n";
     my $t1 = new Benchmark;
     my $loop;
     for $loop (1..$loops) {
@@ -608,6 +622,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub disconnect_all {	# Driver must take responsibility for this
 	Carp::confess "Driver has not implemented disconnect_all for @_";
     }
+    sub data_sources {
+	return ();
+    }
 }
 
 
@@ -618,6 +635,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub quote	{
 		my $self = shift;
 		my $str = shift;
+		return "NULL" unless defined $str;
 		$str=~s/'/''/g;		# ISO SQL2
 		"'$str'";
 	}
@@ -882,6 +900,7 @@ Typical method call sequence for a non-select statement:
 
 =item B<connect>
 
+  $dbh = DBI->connect($database, $username, $password);
   $dbh = DBI->connect($database, $username, $password, $driver);
   $dbh = DBI->connect($database, $username, $password, $driver, \%attr);
 
@@ -930,6 +949,19 @@ Returns a list of all available drivers by searching for DBD::* modules
 through the directories in @INC. By default a warning will be given if
 some drivers are hidden by others of the same name in earlier
 directories. Passing a true value for $quiet will inhibit the warning.
+
+
+=item B<data_sources>
+
+  @ary = DBI->data_sources($driver);
+
+Returns a list of all data sources (databases) available via the named
+driver. The driver will be loaded if not already. If $driver is empty
+or undef then the value of the DBI_DRIVER environment variable will be
+used.
+
+Note that many drivers have no way of knowing what data sources might
+be available for it and thus, typically, return an empty list.
 
 =back
 
@@ -1066,6 +1098,18 @@ database etc). It is specifically designed for use in unix applications
 which 'fork' child processes. Either the parent or the child process,
 but not both, should set InactiveDestroy on all their handles.
 
+=item B<RaiseError> (inherited)
+
+  $h->{RaiseError}
+
+This attribute can be used to force errors to raise exceptions rather
+than simply return errors codes in the normal way. It defaults to off.
+When set on, any method which results in an error occuring ($DBI::err
+being set true) will cause the DBI to effectively do die("$DBI::errstr").
+
+Note that the contents of $@ are currently just $DBI::errstr but that
+may change and should not be relied upon.
+
 =item B<ChopBlanks> (inherited)
 
   $h->{ChopBlanks}
@@ -1175,6 +1219,9 @@ string and adding the required type of outer quotation marks.
 
 For Oracle quote would return C<'Don''t'> and for Ingres it would return
 C<'Don'+X'27+'t'> (including the outer quotation marks).
+
+An undefined $string value will be returned as NULL (without quotation
+marks).
 
 =back
 
@@ -1551,6 +1598,11 @@ CGI related questions to the dbi-users mailing list (or to me).
  http://www.boutell.com/faq/
  http://www.perl.com/perl/faq/
 
+General problems and good ideas:
+
+ Use the CGI::ErrorWrap module.
+ Remember that many env vars won't be set for CGI scripts
+
 =head2 How can I maintain a WWW connection to a database?
 
 For information on the Apache httpd server and the mod_perl module see
@@ -1635,10 +1687,13 @@ comunicate via the JDBC API with any database that has a DBI driver installed.
 The URL used is in the form jdbc:dbi://host.domain.etc:999/Driver/DBName.
 It seems to be very similar to some commercial products, such as jdbcKona.
 
-=item Remote Proxy DBD support by Carl Declerck <carl@miskatonic.inbe.net>
+=item Remote Proxy DBD support
+
+  Carl Declerck <carl@miskatonic.inbe.net>
+  Terry Greenlaw <z50816@mip.mar.lmco.com>
 
 Carl is developing a generic proxy object module which could form the basis
-of a DBD::Proxy driver in the future.
+of a DBD::Proxy driver in the future. Terry is doing something similar.
 
 =back
 

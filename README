@@ -1,14 +1,31 @@
-DBI - The Perl5 Database Interface by Tim Bunce.
+DBI - The Perl Database Interface by Tim Bunce.
 
 Copyright (c) 1995,1996,1997 Tim Bunce
 
 You may distribute under the terms of either the GNU General Public
 License or the Artistic License, as specified in the Perl README file.
 
+WARNING:
 
-WARNING: THIS IS ALPHA SOFTWARE. It is *only* 'Alpha' because the
-         interface (api) is not finalised. The Alpha status does
-         not reflect code quality or stability.
+    THIS IS ALPHA SOFTWARE. It is *only* 'Alpha' because the
+    interface (api) is not finalised. The Alpha status does
+    not reflect code quality or stability.
+
+QUICK START GUIDE:
+
+    The DBI requires one or more 'driver' modules to talk to databases.
+    Check that a DBD::* module exists for the database you wish to use.
+    Read the DBI README then Build/test/install the DBI by doing
+	perl Makefile.PL
+	make
+	make test
+	make install
+    Then delete the source directory tree since it's no longer needed.
+    Use the 'perldoc DBI' command to read the DBI documentation.
+    Fetch the DBD::* driver module you wish to use and unpack it.
+    It is often important to read the driver README file carefully.
+    Generally the build/test/install/delete sequence is the same
+    as for the DBI module.
 
 
 This DBI interface is not yet fully specified. The current development
@@ -39,7 +56,7 @@ See also ftp.demon.co.uk:/pub/perl/db and "CPAN" ftp sites.
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
 
     Build, test and install Perl 5 (at least version 5.003).
-    It is very important to test it and install it!
+    It is very important to test it and actually install it!
 
 BUILDING
 
@@ -60,15 +77,16 @@ know so that I can try to make it automatic in a later release.
 
 IF YOU HAVE PROBLEMS:
 
-Please post details to dbi-users@fugue.com and CC them to me at
-Tim.Bunce@ig.co.uk.  Please include:
+Please post details to dbi-users@fugue.com. You can CC them to me at
+Tim.Bunce@ig.co.uk but please don't send them just to me.
+Please include:
 
 1. A complete log of a complete build, e.g.:
 
     perl Makefile.PL           (do a make realclean first)
     make
     make test
-    make test TEST_VERBOSE=1   (if any tests fail)
+    make test TEST_VERBOSE=1   (if any of the t/* tests fail)
 
 2. The output of perl -V
 

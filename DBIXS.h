@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.33 1997/05/06 22:23:17 timbo Exp $
+/* $Id: DBIXS.h,v 1.34 1997/05/23 17:38:31 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -22,11 +22,11 @@
  * DBISTATE_VERSION macro below. You can think of DBIXS_VERSION as
  * being a compile time check and DBISTATE_VERSION as a runtime check.
  */
-#define DBIXS_VERSION 7
+#define DBIXS_VERSION 8
 
 #ifdef NEED_DBIXS_VERSION
 #if NEED_DBIXS_VERSION > DBIXS_VERSION
-error You need to upgrade your DBI module before building this driver.
+error You_need_to_upgrade_your_DBI_module_before_building_this_driver.
 #endif
 #endif
 
@@ -144,12 +144,15 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIcf_COMPAT  	 0x0020	/* compat/emulation mode (eg oraperl)	*/
 
 #define DBIcf_ChopBlanks 0x0040	/* rtrim spaces from fetch char columns	*/
+#define DBIcf_RaiseError 0x0080	/* throw exception (croak) on error	*/
 
 #define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
-	(DBIcf_WARN | DBIcf_COMPAT | DBIcf_ChopBlanks)
+    (	DBIcf_WARN | DBIcf_COMPAT |		\
+	DBIcf_ChopBlanks | DBIcf_RaiseError	)
 
 /* general purpose flag setting and testing macros */
 #define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
+#define DBIc_has(imp, flag)	(DBIc_FLAGS(imp) &   (flag)) /* alias for _is */
 #define DBIc_on(imp, flag)	(DBIc_FLAGS(imp) |=  (flag))
 #define DBIc_off(imp,flag)	(DBIc_FLAGS(imp) &= ~(flag))
 
@@ -196,6 +199,7 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIh_COM(h)         	(dbih_getcom(h))
 #else
 #define DBIh_COM(h)         	(DBIS->getcom(h))
+#define neatsvpv(sv,len)       	(DBIS->neatsvpv(sv,len))
 #endif
 
 
@@ -239,7 +243,7 @@ typedef struct {		/* -- STATEMENT --			*/
 
 typedef struct {
 
-#define DBISTATE_VERSION  7	/* Must change whenever dbistate_t does	*/
+#define DBISTATE_VERSION  8	/* Must change whenever dbistate_t does	*/
 
     /* version and size are used to check for DBI/DBD version mis-match	*/
     U16 version;	/* version of this structure			*/
@@ -257,8 +261,8 @@ typedef struct {
     int          (*set_attr) _((SV *h, SV *keysv, SV *valuesv));
     SV         * (*get_attr) _((SV *h, SV *keysv));
     AV         * (*get_fbav) _((imp_sth_t *imp_sth));
+    char       * (*neatsvpv) _((SV *sv, STRLEN maxlen));
 
-    SV *pad1;
     SV *pad2;
 
 } dbistate_t;
@@ -304,8 +308,8 @@ typedef struct {
 	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvIV(*svp)
 
-#ifndef SV_YES_NO
-#define SV_YES_NO(bool) ((bool) ? &sv_yes : &sv_no) 
+#ifndef boolSV	/* added in Perl5.004 */
+#define boolSV(bool) ((bool) ? &sv_yes : &sv_no) 
 #endif
 
 /* end of DBIXS.h */

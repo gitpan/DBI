@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.66 1997/05/06 22:23:17 timbo Exp $
+/* $Id: DBI.xs,v 1.67 1997/05/23 17:38:31 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -39,6 +39,7 @@ static SV	 *dbi_last_h;
 static int        dbih_set_attr  _((SV *h, SV *keysv, SV *valuesv));
 static SV        *dbih_get_attr  _((SV *h, SV *keysv));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
+char *neatsvpv _((SV *sv, STRLEN maxlen));
 
 int imp_maxsize;
 int imp_minsize;
@@ -102,6 +103,7 @@ dbi_bootinit()
     dbis->set_attr = dbih_set_attr;
     dbis->get_attr = dbih_get_attr;
     dbis->get_fbav = dbih_get_fbav;
+    dbis->neatsvpv = neatsvpv;
 
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
     /* We want a handle reference but we don't want to increment	*/
@@ -130,7 +132,7 @@ dbi_bootinit()
 /* Utility functions                                                 */
 
 
-static char *
+char *
 neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     SV * sv;
     STRLEN maxlen;
@@ -413,25 +415,28 @@ dbih_dumpcom(imp_xxh, msg)
     SV *flags = newSVpv("",0);
     if (!msg)
 	msg = "dbih_dumpcom";
-    warn("%s 0x%lx (com 0x%lx)\n", msg, (IV)imp_xxh->com.std.my_h, (IV)imp_xxh);
+#define x fprintf(DBILOGFP,
+    fprintf(DBILOGFP,"%s 0x%lx (com 0x%lx)\n", msg,
+	(IV)imp_xxh->com.std.my_h, (IV)imp_xxh);
     if (DBIc_COMSET(imp_xxh))			sv_catpv(flags,"COMSET ");
     if (DBIc_IMPSET(imp_xxh))			sv_catpv(flags,"IMPSET ");
     if (DBIc_ACTIVE(imp_xxh))			sv_catpv(flags,"ACTIVE ");
     if (DBIc_WARN(imp_xxh))			sv_catpv(flags,"WARN ");
     if (DBIc_COMPAT(imp_xxh))			sv_catpv(flags,"COMPAT ");
     if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
-    warn("    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
-    warn("    TYPE %d\n",	DBIc_TYPE(imp_xxh));
-    warn("    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
-    warn("    KIDS %ld (%ld active)\n",
+    if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
+    fprintf(DBILOGFP,"    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
+    fprintf(DBILOGFP,"    TYPE %d\n",	DBIc_TYPE(imp_xxh));
+    fprintf(DBILOGFP,"    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
+    fprintf(DBILOGFP,"    KIDS %ld (%ld active)\n",
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
-    warn("    IMP_DATA %s in '%s'\n",
+    fprintf(DBILOGFP,"    IMP_DATA %s in '%s'\n",
 	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
 
     if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
 	imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
-	warn("    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
-	warn("    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
+	fprintf(DBILOGFP,"    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
+	fprintf(DBILOGFP,"    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
     }
 }
 
@@ -476,7 +481,7 @@ dbih_clearcom(imp_xxh)
     }
 
     if (dump && DBIS->debug < 3 /* else was already dumped above */)
-	dbih_dumpcom(imp_xxh);
+	dbih_dumpcom(imp_xxh, "dbih_clearcom");
 
     /* --- pre-clearing adjustments --- */
 
@@ -616,6 +621,9 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "ChopBlanks")) {
 	(on) ? DBIc_on(imp_xxh,DBIcf_ChopBlanks) : DBIc_off(imp_xxh,DBIcf_ChopBlanks);
     }
+    else if (strEQ(key, "RaiseError")) {
+	(on) ? DBIc_on(imp_xxh,DBIcf_RaiseError) : DBIc_off(imp_xxh,DBIcf_RaiseError);
+    }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
@@ -667,16 +675,19 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
 	cacheit = TRUE;	/* can't change */
     }
     else if (keylen==4  && strEQ(key, "Warn")) {
-	valuesv = DBIc_WARN(imp_xxh)		? &sv_yes : &sv_no;
+	valuesv = boolSV(DBIc_WARN(imp_xxh));
     }
     else if (keylen==10 && strEQ(key, "CompatMode")) {
-	valuesv = DBIc_COMPAT(imp_xxh)		? &sv_yes : &sv_no;
+	valuesv = boolSV(DBIc_COMPAT(imp_xxh));
     }
     else if (keylen==15 && strEQ(key, "InactiveDestroy")) {
-	valuesv = DBIc_IADESTROY(imp_xxh)	? &sv_yes : &sv_no;
+	valuesv = boolSV(DBIc_IADESTROY(imp_xxh));
     }
     else if (keylen==10 && strEQ(key, "ChopBlanks")) {
-	valuesv = DBIc_on(imp_xxh,DBIcf_ChopBlanks)	? &sv_yes : &sv_no;
+	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_ChopBlanks));
+    }
+    else if (keylen==10 && strEQ(key, "RaiseError")) {
+	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_RaiseError));
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -750,12 +761,12 @@ dbih_event(hrv, evtype, a1, a2)
 
     if (dbis->debug)
 	fprintf(DBILOGFP,"    %s EVENT %s %s (Handlers: %s)\n",
-	    evtype, neatsvpv(a1,0), neatsvpv(a2,0), neatsvpv(handlers_av,0));
+	    evtype, neatsvpv(a1,0), neatsvpv(a2,0), neatsvpv((SV*)handlers_av,0));
 
     if (SvTYPE(handlers_av) != SVt_PVAV) {	/* must be \@ or undef	*/
 	if (SvOK(handlers_av))
 	    warn("%s->{Handlers} (%s) is not an array reference or undef",
-		neatsvpv(DBIc_MY_H(imp_xxh),0), neatsvpv(handlers_av,0));
+		neatsvpv(DBIc_MY_H(imp_xxh),0), neatsvpv((SV*)handlers_av,0));
 	return &sv_undef;
     }
 
@@ -845,6 +856,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     int gimme = GIMME;
     int debug = dbis->debug;	/* local, may change during dispatch	*/
     int is_destroy = FALSE;
+    int keep_error = FALSE;
     int i, outitems;
 
     char	*meth_name = GvNAME(CvGV(cv));
@@ -877,6 +889,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 			SvPV(h,na), meth_name, SvPV(meth_name_sv, na));
 	    meth_name = SvPV(meth_name_sv, na);
 	}
+    	if (ima->flags & IMA_KEEP_ERR)
+	    keep_error = TRUE;
 
 	if (ima->flags & IMA_HAS_USAGE) {
 	    char *err = NULL;
@@ -943,9 +957,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     }
     else DBI_SET_LAST_HANDLE(h);
 
-    if (!ima || !(ima->flags & IMA_KEEP_ERR)) {
+    if (!keep_error)
 	DBIh_CLEAR_ERROR(imp_xxh);
-    }
 
     if ( (i = DBIc_DEBUGIV(imp_xxh)) > debug) {
 	/* bump up debugging if handle wants it	*/
@@ -1046,6 +1059,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
 	    fprintf(logfp," QUICK (%s)", neatsvpv(ST(1),0));
 	fprintf(logfp,"\n");
+    }
+
+    if (   !keep_error				/* so would be a new error	*/
+	&& SvTRUE(DBIc_ERR(imp_xxh))		/* an error exists		*/
+	&& DBIc_has(imp_xxh, DBIcf_RaiseError)	/* report errors via croak()	*/
+    ) {
+	croak(SvPV(DBIc_ERRSTR(imp_xxh),na));	/* contents of msg may change	*/
     }
 
     XSRETURN(outitems);
@@ -1338,7 +1358,7 @@ bind_col(sth, col, ref, attribs=Nullsv)
     SV *	attribs
     CODE:
     DBD_ATTRIBS_CHECK("bind_col", sth, attribs);
-    ST(0) = dbih_sth_bind_col(sth, col, ref, attribs) ? &sv_yes : &sv_no;
+    ST(0) = boolSV(dbih_sth_bind_col(sth, col, ref, attribs));
 
 void
 bind_columns(sth, attribs, ...)

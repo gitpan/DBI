@@ -15,7 +15,7 @@ print "1..$tests\n";
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 1.1 $',
+		'Version' => '$Revision: 1.2 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -34,6 +34,8 @@ print "1..$tests\n";
 
 $INC{'DBD/Test.pm'} = 'dummy';	# fool require in install_driver()
 
+# Note that install_driver should *not* normally be called directly.
+# This test does so only because it's a test of install_driver!
 $drh = DBI->install_driver('Test');
 ($drh) ? print "ok 3\n" : print "not ok 3\n";
 
