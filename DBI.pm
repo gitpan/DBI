@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.82';
+$DBI::VERSION = '0.83';
 
 =head1 NAME
 
@@ -10,11 +10,11 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
   use DBI;
  
-  @databases = DBI->data_sources($driver);
+  @data_source = DBI->data_sources($driver);
 
-  $dbh = DBI->connect($database, $username, $auth);
-  $dbh = DBI->connect($database, $username, $auth, $driver);
-  $dbh = DBI->connect($database, $username, $auth, $driver, \%attr);
+  $dbh = DBI->connect($data_source, $username, $auth);
+  $dbh = DBI->connect($data_source, $username, $auth, $driver);
+  $dbh = DBI->connect($data_source, $username, $auth, $driver, \%attr);
  
   $rc  = $dbh->disconnect;
  
@@ -26,11 +26,9 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
  
   $rv = $sth->execute;
  
-  $ary_ref  = $sth->fetch;
-  @row_ary  = $sth->fetchrow;
-  $hash_ref = $sth->fetchhash;
- 
-  $tbl_ary_ref  = $sth->fetch_all;
+  @row_ary  = $sth->fetchrow_array;
+  $ary_ref  = $sth->fetchrow_arrayref;
+  $hash_ref = $sth->fetchrow_hashref;
  
   $rc = $sth->finish;
  
@@ -44,10 +42,13 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.70 $ dated $Date: 1997/05/23 17:38:31 $
+This documentation is a new draft $Revision: 1.72 $ dated $Date: 1997/06/11 23:20:25 $
 
 It is expected to evolve and expand quite quickly (relative to previous
 drafts :-) so it is important to check that you have the latest copy.
+
+Please also read the DBI FAQ which is installed as a DBI::FAQ module so
+you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 
 =cut
 
@@ -56,9 +57,9 @@ drafts :-) so it is important to check that you have the latest copy.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.70 $, 10);
+my $Revision = substr(q$Revision: 1.72 $, 10);
 
-# $Id: DBI.pm,v 1.70 1997/05/23 17:38:31 timbo Exp $
+# $Id: DBI.pm,v 1.72 1997/06/11 23:20:25 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -141,7 +142,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	private_data =>	{ U =>[1,1],			O=>0x04 },
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
-	rows    =>	$keeperr,
+	state   =>	{ U =>[1,1], O=>0x04 },
 );
 
 my %DBI_IF = (	# Define the DBI Interface:
@@ -159,11 +160,11 @@ my %DBI_IF = (	# Define the DBI Interface:
 	'do'       =>	{ U =>[2,0,'$statement [, \%attribs [, @bind_params ] ]'] },
 	prepare    =>	{ U =>[2,3,'$statement [, \%attribs]'] },
 	handler    =>	{ U =>[2,2,'\&handler'] },
-	state      =>	{ U =>[1,1], O=>0x04 },
 	ping       =>	{ U =>[1,1] },
 	disconnect =>	{ U =>[1,1] },
 	tables     =>	{ U =>[1,1] },
 	quote      =>	{ U =>[2,2, '$str'] },
+	rows       =>	$keeperr,
 	@Common_IF,
 	@TieHash_IF,
     },
@@ -173,11 +174,17 @@ my %DBI_IF = (	# Define the DBI Interface:
 	bind_param =>	{ U =>[3,4,'$parameter, $var [, \%attribs]'] },
 	bind_param_inout => { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attribs]'] },
 	execute    =>	{ U =>[1,0,'[@args]'] },
-	fetch      =>	undef, # no checks, no args, max speed
-	fetchrow   =>	undef, # no checks, no args, max speed
+
+	fetch    	  =>	undef, # alias for fetchrow_arrayref
+	fetchrow_arrayref =>	undef,
+	fetchrow_hashref  =>	undef,
+	fetchrow_array    =>	undef,
+	fetchrow   	  =>	undef, # old alias for fetchrow_array
+
 	blob_read  =>	{ U =>[4,5,'$field, $offset, $len [, \\$buf [, $bufoffset]]'] },
 	blob_copy_to_file => { U =>[3,3,'$field, $filename_or_handleref'] },
 	finish     => 	{ U =>[1,1] },
+	rows       =>	$keeperr,
 	@Common_IF,
 	@TieHash_IF,
     },
@@ -209,29 +216,32 @@ END {
 
 sub connect {
     my $class = shift;
-    my($database, $user, $passwd, $driver, $attr) = @_;
+    my($data_source, $user, $passwd, $driver, $attr) = @_;
 
-    $database ||= $ENV{DBI_DBNAME} || '';
-    $driver   ||= '';
+    $data_source ||= $ENV{DBI_DBNAME} || '';
+    $driver      ||= '';	# ENV default is in install_driver
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
-	Carp::carp "DBI->connect($database, $user, $passwd, $driver, $attr)"
+	Carp::carp "$class\->connect($data_source, $user, $passwd, $driver, $attr)"
     }
-    die 'Usage: DBI->connect([$db [,$user [,$passwd [, $driver [,\%attr]]]]])'
+    die 'Usage: $class\->connect([$db [,$user [,$passwd [, $driver [,\%attr]]]]])'
 	    unless ($class eq 'DBI' && @_ <= 6);
 
-    # Experimental hook
-    return DBIODBC->connect(@_) if $database =~ m/^[A-Z]+=/; # DSN= etc
+    warn "$class\->connect(@_): invalid attribute hash reference. See the DBI docs.\n"
+	if $attr and not ref $attr;
+
+    # get driver from data_source if possible and driver arg not given
+    $driver = $1 if !$driver and $data_source =~ s/^DBI:(.*?)://i;
 
     # Note that the same $attr hash ref is passed to both
     # install_driver and connect. Sad but true.
     my $drh = $class->install_driver($driver, $attr)
-		or confess "DBI->install_driver($driver) failed";
+		or confess "$class\->install_driver($driver) failed";
 
     warn "$class\->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
 
-    my $dbh = $drh->$connect_via($database, $user, $passwd, $attr);
+    my $dbh = $drh->$connect_via($data_source, $user, $passwd, $attr);
     warn "$class\->connect = $dbh\n" if $DBI::dbi_debug;
 
     $dbh;
@@ -405,7 +415,7 @@ sub connect_test_perf {
     print "$driver: testing $loops sets of $par connections:\n";
     require Benchmark;
     require FileHandle;
-    STDOUT->autoflush(1);
+    $| = 1;
     my $t0 = new Benchmark;		# not currently used
     my $drh = $class->install_driver($driver) or die "Can't install $driver driver\n";
     my $t1 = new Benchmark;
@@ -620,10 +630,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	$this;
     }
     sub disconnect_all {	# Driver must take responsibility for this
-	Carp::confess "Driver has not implemented disconnect_all for @_";
+	Carp::confess "Driver has not implemented the disconnect_all method.";
     }
     sub data_sources {
-	return ();
+	Carp::confess "Driver has not implemented the data_sources method.";
     }
 }
 
@@ -632,15 +642,15 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     @ISA = qw(DBD::_::common);
     use strict;
 
-    sub quote	{
-		my $self = shift;
-		my $str = shift;
-		return "NULL" unless defined $str;
-		$str=~s/'/''/g;		# ISO SQL2
-		"'$str'";
-	}
+    sub quote {
+	my $self = shift;
+	my $str  = shift;
+	return "NULL" unless defined $str;
+	$str=~s/'/''/g;		# ISO SQL2
+	"'$str'";
+    }
 
-    sub rows	{ -1 }
+    sub rows { -1 }
 
     sub do {
 	my($dbh, $statement, $attribs, @params) = @_;
@@ -672,31 +682,40 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub rows	{ -1 }
     # bind_param => not implemented - fail
 
-    sub fetchhash {
+    sub fetchrow_hashref {
 	my $sth = shift;
 	# This may be recoded in XS. It could work with fb_av and bind_col.
 	# Probably best to add an AV*fields_hvav to dbih_stc_t and set it up
 	# on the first call to fetchhash which alternate name/value pairs.
-	# This implementation is just simple rather and not very optimised.
-	my @names = @{ $sth->{NAME} };
+	# This implementation is just rather simple and not very optimised.
 	my $row = $sth->fetch or return undef;
 	my %hash;
-	@hash{@names} = @$row;
+	@hash{ @{ $sth->{NAME} } } = @$row;
 	return \%hash;
     }
 
-    sub fetch_all {
+    sub fetchall_arrayref {
 	my $sth = shift;
+	my $via = shift || 'fetch';
 	my @rows;
 	my $row;
-	while( $row = $sth->fetch ) {
-	    # we copy the array here because fetch (currently) always
-	    # returns the same array ref. Eventually scrolling cursors
-	    # will be added to the DBI.
-	    push @rows, [ @$row ];
+	if ($via eq 'fetch') {
+	    while( $row = $sth->fetch ) {
+		# we copy the array here because fetch (currently) always
+		# returns the same array ref. Eventually scrolling cursors
+		# will be added to the DBI.
+		push @rows, [ @$row ];
+	    }
 	}
+	elsif ($via eq 'fetchhash') {
+	    while( $row = $sth->fetchhash ) {
+		push @rows, $row;
+	    }
+	}
+	else { Carp::croak "fetchall($via) invalid" }
 	return \@rows;
     }
+    BEGIN { *fetch_all = \&fetchall_arrayref }
 
     sub blob_copy_to_file {	# returns length or undef on error
 	my($self, $field, $filename_or_handleref, $blocksize) = @_;
@@ -764,10 +783,10 @@ The API is the Application Perl-script (or Programming) Interface.  The
 call interface and variables provided by DBI to perl scripts. The API
 is implemented by the DBI Perl extension.
 
-The Switch is the code that 'dispatches' the DBI method calls to the
+The 'Switch' is the code that 'dispatches' the DBI method calls to the
 appropriate Driver for actual execution.  The Switch is also
 responsible for the dynamic loading of Drivers, error checking/handling
-and other general duties.
+and other duties. The DBI and Switch are generally synonymous.
 
 The Drivers implement support for a given type of Engine (database).
 Drivers contain implementations of the DBI methods written using the
@@ -852,8 +871,8 @@ the application to do that.
 
 The DBI package and all packages below it (DBI::*) are are reserved for
 use by the DBI. Package names begining with DBD:: are reserved for use
-by DBI database drivers.  All environment variables used by the DBperl
-Switch or Adaptors begin with 'DBI_'.
+by DBI database drivers.  All environment variables used by the DBI
+or DBD's begin with 'DBI_' or 'DBD_'.
 
 The letter case used for attribute names is significant and plays an
 important part in the portability of DBI scripts.  The case of the
@@ -900,11 +919,11 @@ Typical method call sequence for a non-select statement:
 
 =item B<connect>
 
-  $dbh = DBI->connect($database, $username, $password);
-  $dbh = DBI->connect($database, $username, $password, $driver);
-  $dbh = DBI->connect($database, $username, $password, $driver, \%attr);
+  $dbh = DBI->connect($data_source, $username, $password);
+  $dbh = DBI->connect($data_source, $username, $password, $driver);
+  $dbh = DBI->connect($data_source, $username, $password, $driver, \%attr);
 
-Establishes a database connection (session) to the requested database.
+Establishes a database connection (session) to the requested data_source.
 
 Returns a database handle object. DBI->connect installs the requested
 driver if it has not been installed yet. It then returns the result of
@@ -915,23 +934,31 @@ DBI->connect will die on a driver installation failure and will only
 return undef on a connect failure, for which $DBI::errstr will hold the
 error.
 
-The $database, $username and $password arguments are passed to the
-driver for processing. The DBI does not define ANY interpretation for
-the contents of these fields. As a convenience, if the $database field
-is undefined or empty the Switch will substitute the value of the
-environment variable DBI_DBNAME if any.
+As a convenience, if the $data_source field is undefined or empty the
+DBI will substitute the value of the environment variable DBI_DBNAME
+if any.
 
-If $driver is not specified, the environment variable DBI_DRIVER is
-used. If that variable is not set and the Switch has more than one
+If the $data_source value begings with 'dbi:driver_name:' then that
+prefix will be stripped off and the driver_name part used to specify
+the driver (unless an explicit $driver parameter is given).
+
+If driver is not specified, the environment variable DBI_DRIVER is
+used. If that variable is not set and the DBI has more than one
 driver loaded then the connect fails and undef is returned.
 
-The driver is free to interpret the database, username and password
-fields in any way and supply whatever defaults are appropriate for
-the engine being accessed.
+The $data_source, $username and $password arguments are then passed to
+the driver for processing. The DBI does not define I<any> interpretation
+for the contents of these fields.
+
+The driver is free to interpret the data_source, username and password
+fields in any way and supply whatever defaults are appropriate for the
+engine being accessed. The attribute hash is only intended to supply
+hints to the driver (for both installation and connection) and should
+not be used to carry the data_source, username and password information.
 
 Portable applications should not assume that a single driver will be
 able to support multiple simultaneous sessions and also should check
-the value of C<$dbh->{AutoCommit}>.
+the value of $dbh->{AutoCommit} (see AutoCommit below).
 
 Where possible each session ($dbh) is independent from the transactions
 in other sessions. This is useful where you need to hold cursors open
@@ -1071,6 +1098,10 @@ in the new statement handle do not affect the parent database handle
 and changes to the database handle do not affect I<existing> statement
 handles, only future ones.
 
+Attempting to set of get the value of an undefined attribute is fatal
+(except for private driver specific attributes which all have names
+starting with a lowercase letter).
+
 =over 4
 
 =item B<Warn> (inherited)
@@ -1137,20 +1168,24 @@ does not must arrange to return undef as the attribute value.
 
 =item B<prepare>
 
+  $sth = $dbh->prepare($statement);
+  $sth = $dbh->prepare($statement, \%attr);
+
 Prepare a single statement for execution by the database engine and
 return a  reference to a statement handle object which can be used to
 get attributes of the statement and invoke the $sth->execute method.
 
-  $sth = $dbh->prepare($statement);
-  $sth = $dbh->prepare($statement, \%attr);
+Note that prepare I<never> executes a statement, even if it is not a
+select statement, it only prepares it for execution. It is not
+possible, for example, to know in advance how many rows will be
+returned from a select statement.
 
 Drivers for engines which don't have the concept of preparing a
 statement will typically just store the statement in the returned
 handle and process it when $sth->execute is called. Such drivers are
 likely to be unable to give much useful information about the
 statement, such as $sth->{NUM_OF_FIELDS}, until after $sth->execute
-has been called. Prepare I<never> executes the statement, even if it
-is not a select statement.
+has been called. Portable applications should take this into account.
 
 =item B<do>
 
@@ -1186,8 +1221,11 @@ changes if the database supports transactions.
 Disconnects the database from the database handle. Typically only used
 before exiting the program. The handle is of little use after disconnecting.
 
-The transaction behaviour is of disconnect is undefined. Applications
-should explicitly call commit or rollback before calling disconnect.
+The transaction behaviour is of disconnect is undefined.  Some database
+systems (such as Oracle and Ingres) will automatically commit any
+outstanding changes, but others (such as Informix) will rollback any
+outstanding changes.  Applications should explicitly call commit or
+rollback before calling disconnect.
 
 The database is automatically disconnected (by the DESTROY method) if
 still connected when there are no longer any references to the handle.
@@ -1205,6 +1243,9 @@ server is still running and the connection to it is still working.
 The default implementation currently always returns true without
 actually doing anything. Individual drivers should implement this
 function in the most suitable manner for their database engine.
+
+Very few applications would have any use for this method. See the
+specialist Apache::DBI module for one example usage.
 
 =item B<quote>
 
@@ -1272,49 +1313,53 @@ the execute method does I<not> return the number of rows that will be
 returned by the query (because for most Engines it can't tell in
 advance).
 
-=item B<fetch>
+=item B<fetchrow_arrayref>
 
-  $ary_ref = $sth->fetch;
+  $ary_ref = $sth->fetchrow_arrayref;
+  $ary_ref = $sth->fetch;    # alias
 
 Fetches the next row of data and returns a reference to an array
 holding the field values. If there are no more rows fetch returns
-undef.  Null values are returned as undef.
+undef.  Null values are returned as undef. This is the fastest
+way to fetch data, particularly if used with $sth->bind_columns.
 
-=item B<fetchrow>
+=item B<fetchrow_array>
 
- @ary = $sth->fetchrow;
+ @ary = $sth->fetchrow_array;
 
-An alternative to C<fetch>. Fetches the next row of data and returns it
-as an array holding the field values. If there are no more rows
-fetchrow returns an empty list.  Null values are returned as undef.
+An alternative to C<fetchrow_arrayref>. Fetches the next row of data
+and returns it as an array holding the field values. If there are no
+more rows fetchrow returns an empty list.  Null values are returned as
+undef.
 
-=item B<fetchhash>
+=item B<fetchrow_hashref>
 
- $hash_ref = $sth->fetchhash;
+ $hash_ref = $sth->fetchrow_hashref;
 
-An alternative to C<fetchrow>. Fetches the next row of data and returns
-it as a reference to a hash containing field name and field value
-pairs.  Null values are returned as undef.  If there are no more rows
-fetchhash returns undef.
+An alternative to C<fetchrow_arrayref>. Fetches the next row of data
+and returns it as a reference to a hash containing field name and field
+value pairs.  Null values are returned as undef.  If there are no more
+rows fetchhash returns undef.
 
 The keys of the hash are the same names returned by $sth->{NAME}. If
-more than one field has the same name only one will be returned. For this
-reason fetchhash should not be used to fetch data from such queries.
+more than one field has the same name there will only be one entry in
+the returned hash.
 
-Because of the extra work fetchhash and Perl have to perform it is not
+Because of the extra work fetchrow_hashref and Perl have to perform it is not
 as efficient as fetch or fetchrow and not recommended where performance
-is very important.
+is very important. Currently a new hash reference is returned for each row.
+This may change in the future.
 
 
-=item B<fetch_all>
+=item B<fetchall_arrayref>
 
-  $tbl_ary_ref = $sth->fetch_all;
+  $tbl_ary_ref = $sth->fetchall_arrayref;
 
-The C<fetch_all> method can be used to fetch all the data to be
+The C<fetchall_arrayref> method can be used to fetch all the data to be
 returned from a prepared statement. It returns a reference to an array
 which contains one array reference per row (as returned by C<fetch>).
 
-If there are no rows to return, fetch_all returns a reference to an
+If there are no rows to return, fetchall_arrayref returns a reference to an
 empty array.
 
 
@@ -1352,11 +1397,12 @@ count may be incorrect while there are still more records to fetch.
   $rv = $sth->bind_col($column_number, \$var_to_bind);
   $rv = $sth->bind_col($column_number, \$var_to_bind, \%attr);
 
-Binds a column (field) of a select statement to a perl variable. Whenever
-a row is fetched from the database the corresponding perl variable is
-automatically updated. There is no need to fetch and assign the values
-manually.  See bind_columns below for an example.  Note that column
-numbers count up from 1.
+Binds a column (field) of a select statement to a perl variable.
+Whenever a row is fetched from the database the corresponding perl
+variable is automatically updated. There is no need to fetch and assign
+the values manually. This makes using bound variables very efficient.
+See bind_columns below for an example.  Note that column numbers count
+up from 1.
 
 The binding is performed at a very low level using perl aliasing so
 there is no extra copying taking place. So long as the driver uses the
@@ -1365,14 +1411,16 @@ it will automatically support column binding.
 
 =item B<bind_columns>
 
-  $rv = $sth->bind_columns(\%attr, @refs_to_vars_to_bind);
+  $rv = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
 
 e.g.
 
   $sth->prepare(q{ select region, sales from sales_by_region }) or die ...;
   my($region, $sales);
-  # Bind perl variables to columns. Note use of perl's handy \(...) syntax.
-  $rv = $sth->bind_columns(undef, \($region, $sales));
+  # Bind perl variables to columns.
+  $rv = $sth->bind_columns(undef, \$region, \$sales);
+  # you can also use perl's \(...) syntax (see perlref docs):
+  #     $sth->bind_columns(undef, \($region, $sales));
   # Column binding is the most eficient way to fetch data
   while($sth->fetch) {
       print "$region: $sales\n";
@@ -1385,6 +1433,9 @@ croak if the number of references does not match the number of fields.
 
 
 =head2 Statement Handle Attributes
+
+Note that some drivers cannot provide valid values for some or all of
+these attributes until after $sth->execute has been called.
 
 =over 4
 
@@ -1444,8 +1495,8 @@ This section has not yet been formalised.
 
 =head1 SIMPLE EXAMPLE
 
-  my $dbh = DBI->connect($database, $user, $password, 'Oracle')
-      or die "Can't connect to $database: $DBI::errstr";
+  my $dbh = DBI->connect($data_source, $user, $password, 'Oracle')
+      or die "Can't connect to $data_source: $DBI::errstr";
 
   my $sth = $dbh->prepare( q{
           SELECT name, phone
@@ -1458,7 +1509,7 @@ This section has not yet been formalised.
   print "Query will return $sth->{NUM_FIELDS} fields.\n\n";
 
   print "$sth->{NAME}->[0]: $sth->{NAME}->[1]\n";
-  while (($name, $phone) = $sth->fetchrow()) {
+  while (($name, $phone) = $sth->fetchrow_array) {
       print "$name: $phone\n";
   }
   # check for problems which may have terminated the fetch early
@@ -1534,6 +1585,11 @@ Other related links:
  http://www.jcc.com/sql_stnd.html
  ftp://alpha.gnu.ai.mit.edu/gnu/gnusql-0.7b3.tar.gz
 
+=head2 FAQ
+
+Please also read the DBI FAQ which is installed as a DBI::FAQ module so
+you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
+
 =head1 AUTHORS
 
 DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop and
@@ -1574,11 +1630,12 @@ Commercial support agreements for Perl and the DBI, DBD::Oracle and
 Oraperl modules can be arranged via The Perl Clinic. See
 http://www.perl.co.uk/tpc for more details.
 
-=head1 OUTSTANDING ISSUES
+=head1 OUTSTANDING ISSUES TO DO
 
-	bind variables
+	bind variables (and 'in (:1)' issues)
 	blob_read
 	error handling
+	data types (ISO type numbers and type name conversions)
 	portability
 	data dictionary methods
 	test harness support methods
@@ -1645,6 +1702,9 @@ See the statement and following notes in the DBI README file.
 
 =item Ingres - DBD::Ingres
 
+ Author:  Henrik Tougaard
+ Email:   ht@datani.dk,  dbi-users@fugue.com
+
 =item mSQL - DBD::mSQL
 
 =item DB2 - DBD::DB2
@@ -1654,7 +1714,7 @@ See the statement and following notes in the DBI README file.
 =item Informix - DBD::Informix
 
  Author:  Jonathan Leffler
- Email:   dbi-users@fugue.com
+ Email:   johnl@informix.com, dbi-users@fugue.com
 
 =item Solid - DBD::Solid
 
@@ -1665,6 +1725,11 @@ See the statement and following notes in the DBI README file.
 
  Author:  Edmund Mergl
  Email:   mergl@nadia.s.bawue.de, dbi-users@fugue.com
+
+=item Fulcrum SearchServer - DBD::Fulcrum
+
+ Author:  Davide Migliavacca
+ Email:   davide.migliavacca@inferentia.it
 
 =back
 
@@ -1694,6 +1759,10 @@ It seems to be very similar to some commercial products, such as jdbcKona.
 
 Carl is developing a generic proxy object module which could form the basis
 of a DBD::Proxy driver in the future. Terry is doing something similar.
+
+=item SQL Parser - Stephen Zander <stephen.zander@mckesson.com>
+
+Based on the O'Reilly lex/yacc book examples and byacc.
 
 =back
 

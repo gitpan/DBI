@@ -34,5 +34,11 @@ $switch->{Warn} = 1;			# handled by DBI core
 ok(7, $switch->{'Attribution'} =~ m/DBI.*? Switch by Tim Bunce/);
 ok(8, $switch->{'Version'} > 0);
 
-BEGIN { $tests = 8 }
+eval { $switch->{FooBarUnknown} = 1 };
+ok(9,  $@ =~ /Can't set/);
+
+eval { $_=$switch->{BarFooUnknown} };
+ok(10, $@ =~ /Can't get/);
+
+BEGIN { $tests = 10 }
 exit 0;

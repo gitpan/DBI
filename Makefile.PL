@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.58 1997/05/07 13:17:23 timbo Exp $
+# $Id: Makefile.PL,v 1.59 1997/06/11 23:03:50 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -40,6 +40,9 @@ EOT
 
 warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
 	if ($Config{gccversion} and $Config{gccversion} =~ m/^(1|2\.[1-5])/);
+
+$opts{'OPTIMIZE'} = '-Od'
+    if ($Config{cc} eq 'cc' && $Config{osname} eq 'sco');
 
 $Verbose = 1;
 WriteMakefile( %opts );

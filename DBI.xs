@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.67 1997/05/23 17:38:31 timbo Exp $
+/* $Id: DBI.xs,v 1.68 1997/06/11 23:03:50 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -97,13 +97,13 @@ dbi_bootinit()
     dbis->debug	= 0;
     dbis->debugpvlen = 400;
     /* store some function pointers so DBD's can call our functions	*/
-    dbis->getcom   = dbih_getcom;
-    dbis->clearcom = dbih_clearcom;
-    dbis->event    = dbih_event;
-    dbis->set_attr = dbih_set_attr;
-    dbis->get_attr = dbih_get_attr;
-    dbis->get_fbav = dbih_get_fbav;
-    dbis->neatsvpv = neatsvpv;
+    dbis->getcom    = dbih_getcom;
+    dbis->clearcom  = dbih_clearcom;
+    dbis->event     = dbih_event;
+    dbis->set_attr  = dbih_set_attr;
+    dbis->get_attr  = dbih_get_attr;
+    dbis->get_fbav  = dbih_get_fbav;
+    dbis->neat_svpv = neatsvpv;
 
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
     /* We want a handle reference but we don't want to increment	*/
@@ -637,8 +637,10 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
 	cacheit = 1;
     }
     else {	/* XXX should really be an event	*/
-	croak("Can't set %s->{%s}: unrecognised attribute",
-		SvPV(h,na), SvPV(keysv,na));
+	if (isUPPER(*key))
+	    croak("Can't set %s->{%s}: unrecognised attribute",
+		    SvPV(h,na), key);
+	return FALSE;
     }
     if (cacheit) {
 	SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, 1);
@@ -691,9 +693,12 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
-	if (!svp)
-	    croak("Can't get %s->{%s}: unrecognised attribute",
-		SvPV(h,na), SvPV(keysv,na));	/* XXX should be event?	*/
+	if (!svp) {
+	    if (isUPPER(*key))
+		croak("Can't get %s->{%s}: unrecognised attribute",
+		    SvPV(h,na), key);	/* XXX should be event?	*/
+	    else return &sv_undef;
+	}
 	valuesv = *svp;
     }
     if (cacheit) {
@@ -1058,6 +1063,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    fprintf(logfp," ) [%d items]", outitems);
 	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
 	    fprintf(logfp," QUICK (%s)", neatsvpv(ST(1),0));
+	if (!keep_error && SvTRUE(DBIc_ERR(imp_xxh)))
+	    fprintf(logfp,"\n    !! ERROR: %s", neatsvpv(DBIc_ERRSTR(imp_xxh),0));
 	fprintf(logfp,"\n");
     }
 
@@ -1384,8 +1391,10 @@ bind_columns(sth, attribs, ...)
 
 
 void
-fetchrow(sth)
+fetchrow_array(sth)
     SV *	sth
+    ALIAS:
+    fetchrow = 1
     PPCODE:
     SV *retsv;
     if (CvDEPTH(cv) == 99)
@@ -1425,6 +1434,8 @@ fetchrow(sth)
 void
 fetch(sth)
     SV *	sth
+    ALIAS:
+    fetchrow_arrayref = 1
     CODE:
     int num_fields;
     if (CvDEPTH(cv) == 99)

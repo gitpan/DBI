@@ -1,6 +1,7 @@
 
 use DBI;
 use Config;
+use Cwd;
 $|=1;
 
 print "1..$tests\n";
@@ -46,14 +47,14 @@ ok(0, $csr_a != $csr_b);
 ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
 ok(0, $csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'ExampleP');
 
-my $dir = "/";	# a dir always readable on all platforms
-$dir = unixify($dir) if $^O eq 'VMS';
+my $dir = cwd();	# a dir always readable on all platforms
+$dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
 my($col0, $col1, $col2);
 my(@row_a, @row_b);
 
 ok(25, $csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
 ok(0, $csr_a->execute( $dir ));
-@row_a = $csr_a->fetchrow;
+@row_a = $csr_a->fetchrow_array;
 ok(0, @row_a);
 # check bind_columns
 ok(0, $row_a[0] eq $col0);
@@ -62,11 +63,11 @@ ok(0, $row_a[2] eq $col2);
 
 ok(0, $csr_b->bind_param(1, $dir));
 ok(0, $csr_b->execute());
-@row_b = $csr_b->fetchrow;
+@row_b = @{ $csr_b->fetchrow_arrayref };
 ok(0, @row_b);
 
 ok(0, "@row_a" eq "@row_b");
-@row_b = $csr_b->fetchrow;
+@row_b = $csr_b->fetchrow_array;
 ok(0, "@row_a" ne "@row_b");
 
 ok(0, $csr_a->finish);

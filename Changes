@@ -5,6 +5,28 @@ Current DBI Implementation Notes:
 
 	THINGS MAY CHANGE. See the README file and DBI pod text.
 
+Changes in DBI 0.83,	11th June 1997
+
+	Added driver specification syntax to DBI->connect data_source
+	parameter: DBI->connect('dbi:driver:...', $user, $passwd);
+	The DBI->data_sources method should return data_source
+	names with the appropriate 'dbi:driver:' prefix.
+	DBI->connect will warn if \%attr is true but not a hash ref.
+	Added the new fetchrow methods:
+	  @row_ary  = $sth->fetchrow_array;
+	  $ary_ref  = $sth->fetchrow_arrayref;
+	  $hash_ref = $sth->fetchrow_hashref;
+	The old fetch and fetchrow methods still work.
+	Driver implementors should implement the new names for
+	fetchrow_array and fetchrow_arrayref ASAP (use the xs ALIAS:
+	directive to define aliases for fetch and fetchrow).
+	Fixed occasional problems with t/examp.t test.
+	Added automatic errstr reporting to the debug trace output.
+	Added the DBI FAQ from Alligator Descartes in module form for
+	easy reading via "perldoc DBI::FAQ". Needs reformatting.
+	Unknown driver specific attribute names no longer croak.
+	Fixed problem with internal neatsvpv macro.
+
 Changes in DBI 0.82,	23rd May 1997
 
 	Added $h->{RaiseError} attribute which, if set true, causes all errors to

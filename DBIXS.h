@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.34 1997/05/23 17:38:31 timbo Exp $
+/* $Id: DBIXS.h,v 1.35 1997/06/11 23:03:50 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -199,7 +199,7 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIh_COM(h)         	(dbih_getcom(h))
 #else
 #define DBIh_COM(h)         	(DBIS->getcom(h))
-#define neatsvpv(sv,len)       	(DBIS->neatsvpv(sv,len))
+#define neatsvpv(sv,len)       	(DBIS->neat_svpv(sv,len))
 #endif
 
 
@@ -255,13 +255,13 @@ typedef struct {
     FILE *logfp;
 
     /* pointers to DBI functions which the DBD's will want to use	*/
-    imp_xxh_t  * (*getcom)   _((SV *h));	/* see DBIh_COM macro	*/
-    void         (*clearcom) _((imp_xxh_t *imp_xxh));
-    SV         * (*event)    _((SV *h, char *name, SV*, SV*));
-    int          (*set_attr) _((SV *h, SV *keysv, SV *valuesv));
-    SV         * (*get_attr) _((SV *h, SV *keysv));
-    AV         * (*get_fbav) _((imp_sth_t *imp_sth));
-    char       * (*neatsvpv) _((SV *sv, STRLEN maxlen));
+    imp_xxh_t  * (*getcom)    _((SV *h));	/* see DBIh_COM macro	*/
+    void         (*clearcom)  _((imp_xxh_t *imp_xxh));
+    SV         * (*event)     _((SV *h, char *name, SV*, SV*));
+    int          (*set_attr)  _((SV *h, SV *keysv, SV *valuesv));
+    SV         * (*get_attr)  _((SV *h, SV *keysv));
+    AV         * (*get_fbav)  _((imp_sth_t *imp_sth));
+    char       * (*neat_svpv) _((SV *sv, STRLEN maxlen));
 
     SV *pad2;
 

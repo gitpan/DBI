@@ -9,6 +9,7 @@ Makefile.PL	The Makefile generator
 lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/Sponge.pm	A driver for fake cursors (precached data)
+lib/DBI/FAQ.pm	The DBI FAQ in module form for perldoc
 lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
 t/basics.t	Test script for very basic DBI functionality
 t/dbidrv.t	Test script for loading drivers and using DBI vars

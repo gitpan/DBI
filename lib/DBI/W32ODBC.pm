@@ -1,6 +1,6 @@
 package DBI;
 
-# $Id: W32ODBC.pm,v 1.2 1997/04/07 20:24:40 timbo Exp $
+# $Id: W32ODBC.pm,v 1.3 1997/06/11 23:03:50 timbo Exp $
 #
 # Copyright (c) 1997, Tim Bunce
 #
@@ -54,7 +54,7 @@ experimental.
 =cut
 
 $VERSION = $VERSION = '0.01';
-my $Revision = substr(q$Revision: 1.2 $, 10);
+my $Revision = substr(q$Revision: 1.3 $, 10);
 
 sub DBI::W32ODBC::import { }		# must trick here since we're called DBI/W32ODBC.pm
 
@@ -106,6 +106,8 @@ sub do {
 sub prepare {
     my ($h, $sql) = @_;
     $h->{'__prepare'} = $sql;
+	$h->{NAME} = [];
+	$h->{NUM_OF_FIELDS} = -1;
     return $h;
 }
 
@@ -137,7 +139,7 @@ sub rows {
 }
 
 sub finish {
-    shift->Close;
+    # shift->Close;
 }
 
 # ---
