@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.2 $, 10)+0;
+$VERSION = substr(q$Revision: 10.3 $, 10)+0;
 
 my $warning = <<'EOM';
 
@@ -239,8 +239,8 @@ sub new {
     'rhistory' => {
 	    hint => "display result history",
     },
-    'display' => {
-	    hint => "set the display mode (Neat|Box)",
+    'format' => {
+	    hint => "set display format for selected data (Neat|Box)",
     },
     'history' => {
 	    hint => "display combined command and result history",
@@ -282,6 +282,7 @@ sub new {
 	return;
     }
     $sh->{unhandled_options} = [];
+    @args = ();
     foreach my $arg (@ARGV) {
 	if ($arg =~ /^-/) {	# expected to be in "--opt=value" format
 	    push @{$sh->{unhandled_options}}, $arg;
@@ -291,7 +292,7 @@ sub new {
 	}
     }
 
-    $sh->do_display($sh->{displaymode});
+    $sh->do_format($sh->{displaymode});
 
     $sh->{data_source}	= shift(@args) || $ENV{DBI_DSN}  || '';
     $sh->{user}		= shift(@args) || $ENV{DBI_USER} || '';
@@ -378,7 +379,7 @@ sub run {
 		    die "Command '$cmd' not recognised";
 		}
 		$sh->alert("Command '$cmd' not recognised ",
-		    "(enter ${pre}help for help).");
+		    "(enter ${prefix}help for help).");
 	    }
 	}
 	elsif ($current_line ne "") {
@@ -386,8 +387,8 @@ sub run {
 	    # print whole buffer here so user can see it as
 	    # it grows (and new users might guess that unrecognised
 	    # inputs are treated as commands)
-	    $sh->run_command('list', undef,
-		"(enter '$prefix' to execute or '${pre}help' for help)");
+	    $sh->run_command('current', undef,
+		"(enter '$prefix' to execute or '${prefix}help' for help)");
 	}
     }
 }
@@ -422,7 +423,7 @@ sub run_command {
 	    *STDOUT = *OUTPUT;
 	} else {
 	    $sh->err("Couldn't open output '$output'");
-	    $sh->run_command('list', undef, '');
+	    $sh->run_command('current', undef, '');
 	}
     }
     eval {
@@ -579,7 +580,7 @@ sub do_help {
 }
 
 
-sub do_display {
+sub do_format {
     my ($sh, @args) = @_;
     my $mode = $args[0] || '';
     my $class = eval { DBI::Format->formatter($mode) };
@@ -744,7 +745,7 @@ sub do_connect {
 }
 
 
-sub do_list {
+sub do_current {
     my ($sh, $msg, @args) = @_;
     $msg = $msg ? " $msg" : "";
     $sh->log("Current statement buffer$msg:\n" . $sh->{current_buffer});
@@ -863,7 +864,7 @@ sub do_edit {
     close(FH);
     unlink $tmp_file;
 
-    $sh->run_command('list');
+    $sh->run_command('current');
 }
 
 

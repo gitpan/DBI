@@ -28,5 +28,6 @@ t/dbidrv.t	Test script for loading drivers and using DBI vars
 t/examp.t	Test script for the DBI using the ExampleP driver
 t/meta.t	Test script for metadata methods
 t/proxy.t	Test script for the proxy driver
+t/shell.t	Test script for DBI::Shell
 t/subclass.t	Test script for subclassing the DBI
 test.pl	A very simple test harness using ExampleP.pm

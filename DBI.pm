@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.3 1998/09/02 14:17:16 timbo Exp $
+# $Id: DBI.pm,v 10.4 1998/09/03 21:56:42 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = '1.01'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '1.02'; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -66,8 +66,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.01
-($Date: 1998/09/02 14:17:16 $).
+This is the DBI specification that corresponds to the DBI version 1.02
+($Date: 1998/09/03 21:56:42 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -130,7 +130,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.3 $, 10);
+my $Revision = substr(q$Revision: 10.4 $, 10);
 
 
 use Carp;
