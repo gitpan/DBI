@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.47"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.48"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -115,7 +115,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.47.
+This is the DBI specification that corresponds to the DBI version 1.48.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -295,6 +295,7 @@ tie %DBI::DBI => 'DBI::DBI_tie';
 my $dbd_prefix_registry = {
   ad_      => { class => 'DBD::AnyData',	},
   ado_     => { class => 'DBD::ADO',		},
+  amzn_    => { class => 'DBD::Amazon',		},
   best_    => { class => 'DBD::BestWins',	},
   csv_     => { class => 'DBD::CSV',		},
   db2_     => { class => 'DBD::DB2',		},
@@ -328,6 +329,7 @@ my $dbd_prefix_registry = {
   uni_     => { class => 'DBD::Unify',		},
   xbase_   => { class => 'DBD::XBase',		},
   xl_      => { class => 'DBD::Excel',		},
+  yaswi_   => { class => 'DBD::Yaswi',		},
 };
 
 sub dump_dbd_registry {
@@ -1940,23 +1942,31 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return \@rows;
     }
 
-    sub fetchall_hashref {	# XXX may be better to fetchall_arrayref then convert to hashes
+    sub fetchall_hashref {
 	my ($sth, $key_field) = @_;
 
-	my $hash_key_name = $sth->{FetchHashKeyName};
-	my $names_hash = $sth->FETCH("${hash_key_name}_hash");
-	my $index = $names_hash->{$key_field};	# perl index not column number
-	++$index if defined $index;		# convert to column number
-	$index ||= $key_field if DBI::looks_like_number($key_field) && $key_field>=1;
-	return $sth->set_err(1, "Field '$key_field' does not exist (not one of @{[keys %$names_hash]})")
-		unless defined $index;
-	my $key_value;
-	$sth->bind_col($index, \$key_value) or return;
-	my %rows;
-	while (my $row = $sth->fetchrow_hashref($hash_key_name)) {
-	    $rows{ $key_value } = $row;
-	}
-	return \%rows;
+        my $hash_key_name = $sth->{FetchHashKeyName} || 'NAME';
+        my $names_hash = $sth->FETCH("${hash_key_name}_hash");
+        my @key_fields = (ref $key_field) ? @$key_field : ($key_field);
+        my @key_indexes;
+        my $num_of_fields = $sth->FETCH('NUM_OF_FIELDS');
+        foreach (@key_fields) {
+           my $index = $names_hash->{$_};  # perl index not column
+           $index = $_ - 1 if !defined $index && DBI::looks_like_number($_) && $_>=1 && $_ <= $num_of_fields;
+           return $sth->set_err(1, "Field '$_' does not exist (not one of @{[keys %$names_hash]})")
+                unless defined $index;
+           push @key_indexes, $index;
+        }
+        my $rows = {};
+        my $NAME = $sth->FETCH($hash_key_name);
+        my @row = (undef) x $num_of_fields;
+        $sth->bind_columns(\(@row));
+        while ($sth->fetch) {
+            my $ref = $rows;
+            $ref = $ref->{$row[$_]} ||= {} for @key_indexes;
+            @{$ref}{@$NAME} = @row;
+        }
+        return $rows;
     }
 
     *dump_results = \&DBI::dump_results;
@@ -2280,75 +2290,96 @@ characters in the value that you bind to the placeholder.
 B<NULL Values>
 
 Undefined values, or C<undef>, are used to indicate NULL values.
-You can insert update columns with a NULL value as you would a
-non-NULL value.  Consider these examples that insert and update the
-column C<product_code> with a NULL value:
+You can insert and update columns with a NULL value as you would a
+non-NULL value.  These examples insert and update the column
+C<age> with a NULL value:
 
   $sth = $dbh->prepare(qq{
-    INSERT INTO people (name, age) VALUES (?, ?)
+    INSERT INTO people (fullname, age) VALUES (?, ?)
   });
   $sth->execute("Joe Bloggs", undef);
 
   $sth = $dbh->prepare(qq{
-    UPDATE people SET age = ? WHERE name = ?
+    UPDATE people SET age = ? WHERE fullname = ?
   });
   $sth->execute(undef, "Joe Bloggs");
+  
+However, care must be taken when trying to use NULL values in a
+C<WHERE> clause.  Consider:
 
-However, care must be taken in the particular case of trying to use
-NULL values to qualify a C<WHERE> clause.  Consider:
-
-  SELECT name FROM people WHERE age = ?
+  SELECT fullname FROM people WHERE age = ?
 
 Binding an C<undef> (NULL) to the placeholder will I<not> select rows
-which have a NULL C<product_code>!  At least for database engines that
+which have a NULL C<age>!  At least for database engines that
 conform to the SQL standard.  Refer to the SQL manual for your database
 engine or any SQL book for the reasons for this.  To explicitly select
-NULLs you have to say "C<WHERE product_code IS NULL>".
+NULLs you have to say "C<WHERE age IS NULL>".
 
 A common issue is to have a code fragment handle a value that could be
-either C<defined> or C<undef> (non-NULL or NULL) in a C<WHERE> clause.
-A general way to do this is:
+either C<defined> or C<undef> (non-NULL or NULL) at runtime.
+A simple technique is to prepare the appropriate statement as needed,
+and substitute the placeholder for non-NULL cases:
 
-  if (defined $age) {
-      push @sql_qual, "age = ?";
-      push @sql_bind, $age;
-  }
-  else {
-      push @sql_qual, "age IS NULL";
-  }
+  $sql_clause = defined $age? "age = ?" : "age IS NULL";
   $sth = $dbh->prepare(qq{
-      SELECT id FROM products WHERE }.join(" AND ", @sql_qual).qq{
+    SELECT fullname FROM people WHERE $sql_clause
+  });
+  $sth->execute(defined $age ? $age : ());
+
+The following technique illustrates qualifying a C<WHERE> clause with
+several columns, whose associated values (C<defined> or C<undef>) are
+in a hash %h:
+
+  for my $col ("age", "phone", "email") {
+    if (defined $h{$col}) {
+      push @sql_qual, "$col = ?";
+      push @sql_bind, $h{$col};
+    }
+    else {
+      push @sql_qual, "$col IS NULL";
+    }
+  }
+  $sql_clause = join(" AND ", @sql_qual);
+  $sth = $dbh->prepare(qq{
+      SELECT fullname FROM people WHERE $sql_clause
   });
   $sth->execute(@sql_bind);
 
-If your WHERE clause contains many "NULLs-allowed" columns, you'll
-need to manage many combinations of statements and this approach
-rapidly becomes more complex.
+The techniques above call prepare for the SQL statement with each call to
+execute.  Because calls to prepare() can be expensive, performance
+can suffer when an application iterates many times over statements
+like the above.
 
-A better solution would be to design a single C<WHERE> clause that
-supports both NULL and non-NULL comparisons.  Several examples of
-C<WHERE> clauses that do this are presented below.  But each example
-lacks portability, robustness, or simplicity.  Whether an example
-is supported on your database engine depends on what SQL extensions it
-supports, and where it can support the C<?> parameter in a statement.
+A better solution is a single C<WHERE> clause that supports both
+NULL and non-NULL comparisons.  Its SQL statement would need to be
+prepared only once for all cases, thus improving performance.
+Several examples of C<WHERE> clauses that support this are presented
+below.  But each example lacks portability, robustness, or simplicity.
+Whether an example is supported on your database engine depends on
+what SQL extensions it provides, and where it supports the C<?>
+placeholder in a statement.
 
-  0) age = ?
-  1) NVL(age, xx) = NVL(?, xx)
-  2) ISNULL(age, xx) = ISNULL(?, xx)
-  3) DECODE(age, ?, 1, 0) = 1
-  4) age = ? OR (age IS NULL AND ? IS NULL)
-  5) age = ? OR (age IS NULL AND SP_ISNULL(?) = 1)
-  6) age = ? OR (age IS NULL AND ? = 1)
-
+  0)  age = ?
+  1)  NVL(age, xx) = NVL(?, xx)
+  2)  ISNULL(age, xx) = ISNULL(?, xx)
+  3)  DECODE(age, ?, 1, 0) = 1
+  4)  age = ? OR (age IS NULL AND ? IS NULL)
+  5)  age = ? OR (age IS NULL AND SP_ISNULL(?) = 1)
+  6)  age = ? OR (age IS NULL AND ? = 1)
+	
 Statements formed with the above C<WHERE> clauses require execute
-statements as follows:
+statements as follows.  The arguments are required, whether their
+values are C<defined> or C<undef>.
 
-  0-3) $sth->execute($age);
-  4,5) $sth->execute($age, $age);
-  6)   $sth->execute($age, defined($age)?0:1);
+  0,1,2,3)  $sth->execute($age);
+  4,5)      $sth->execute($age, $age);
+  6)        $sth->execute($age, defined($age) ? 0 : 1);
 
 Example 0 should not work (as mentioned earlier), but may work on
-a few database engines anyway.
+a few database engines anyway (e.g. Sybase).  Example 0 is part
+of examples 4, 5, and 6, so if example 0 works, these other
+examples may work, even if the engine does not properly support
+the right hand side of the C<OR> expression.
 
 Examples 1 and 2 are not robust: they require that you provide a
 valid column value xx (e.g. '~') which is not present in any row.
@@ -2362,18 +2393,19 @@ is null, and returns 1 if it is, or 0 if not.
 Example 6, the least simple, is probably the most portable, i.e., it
 should work with with most, if not all, database engines.
 
-Here is a table that indicates which examples above are known to work on
-various database engines:
+Here is a table that indicates which examples above are known to
+work on various database engines:
 
-              -----Examples------
-              0  1  2  3  4  5  6
-              -  -  -  -  -  -  -
-  Oracle 9    N           Y 
-  Informix    N  N  N  Y  N  Y  Y
-  MS SQL      
-  DB2
-  Sybase
-  MySQL 4
+                   -----Examples------
+                   0  1  2  3  4  5  6
+                   -  -  -  -  -  -  -
+  Oracle 9         N  Y  N  Y  Y  ?  Y
+  Informix IDS 9   N  N  N  Y  N  Y  Y
+  MS SQL           N  N  Y  N  Y  ?  Y
+  Sybase           Y  N  N  N  N  N  Y
+  AnyData,DBM,CSV  Y  N  N  N  Y  Y* Y  
+
+* Works only because Example 0 works.
 
 DBI provides a sample perl script that will test the examples above
 on your database engine and tell you which ones work.  It is located
@@ -3339,9 +3371,25 @@ If C<PrintError> is also on, then the C<PrintError> is done first (naturally).
 
 Typically C<RaiseError> is used in conjunction with C<eval { ... }>
 to catch the exception that's been thrown and followed by an
-C<if ($@) { ... }> block to handle the caught exception. In that eval
-block the $DBI::lasth variable can be useful for diagnosis and reporting.
-For example, $DBI::lasth->{Type} and $DBI::lasth->{Statement}.
+C<if ($@) { ... }> block to handle the caught exception.
+For example:
+
+  eval {
+    ...
+    $sth->execute();
+    ...
+  };
+  if ($@) {
+    # $sth->err and $DBI::err will be true if error was from DBI
+    warn $@; # print the error
+    ... # do whatever you need to deal with the error
+  }
+
+In that eval block the $DBI::lasth variable can be useful for
+diagnosis and reporting if you can't be sure which handle triggered
+the error.  For example, $DBI::lasth->{Type} and $DBI::lasth->{Statement}.
+
+See also L</Transactions>.
 
 If you want to temporarily turn C<RaiseError> off (inside a library function
 that is likely to fail, for example), the recommended way is like this:
@@ -3908,9 +3956,12 @@ passing to C</fetchall_arrayref>.
 
 This utility method combines L</prepare>, L</execute> and
 L</fetchall_hashref> into a single call. It returns a reference to a
-hash containing one entry for each row. The key for each row entry is
-specified by $key_field. The value is a reference to a hash returned by
-C<fetchrow_hashref>.
+hash containing one entry, at most, for each row, as returned by fetchall_hashref().
+
+The C<$key_field> parameter defines which column, or columns, are used as keys
+in the returned hash. It can either be the name of a single field, or a
+reference to an array containing multiple field names. See fetchall_hashref()
+for more details.
 
 The C<$statement> parameter can be a previously prepared statement handle,
 in which case the C<prepare> is skipped. This is recommended if the
@@ -5600,8 +5651,10 @@ would then shift the balance back towards fetchall_arrayref().
   $hash_ref = $sth->fetchall_hashref($key_field);
 
 The C<fetchall_hashref> method can be used to fetch all the data to be
-returned from a prepared and executed statement handle. It returns a
-reference to a hash that contains, at most, one entry per row.
+returned from a prepared and executed statement handle. It returns a reference
+to a hash containing a key for each distinct value of the $key_field column
+that was fetched For each key the corresponding value is a reference to a hash
+containing all the selected columns and their values, as returned by fetchrow_hashref().
 
 If there are no rows to return, C<fetchall_hashref> returns a reference
 to an empty hash. If an error occurs, C<fetchall_hashref> returns the
@@ -5623,10 +5676,20 @@ number (counting from 1).  If $key_field doesn't match any column in
 the statement, as a name first then as a number, then an error is
 returned.
 
-This method is normally used only where the key field value for each
-row is unique.  If multiple rows are returned with the same value for
-the key field then later rows overwrite earlier ones.
+For queries returing more than one 'key' column, you can specify
+multiple column names by passing $key_field as a reference to an
+array containing one or more key column names (or index numbers).
+For example:
 
+  $sth = $dbh->prepare("SELECT foo, bar, baz FROM table");
+  $sth->execute;
+  $hash_ref = $sth->fetchall_hashref( [ qw(foo bar) ] );
+  print "For foo 42 and bar 38, baz is $hash_ref->{42}->{38}->{baz}\n";
+
+The fetchall_hashref() method is normally used only where the key
+fields values for each row are unique.  If multiple rows are returned
+with the same values for the key fields then later rows overwrite
+earlier ones.
 
 =item C<finish>
 
