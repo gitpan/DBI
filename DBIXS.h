@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.1 1998/08/14 20:17:38 timbo Exp $
+/* $Id: DBIXS.h,v 10.2 1998/09/02 13:43:45 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
@@ -145,6 +145,8 @@ typedef struct {		/* -- STATEMENT --			*/
     void *spare2;
 } dbih_stc_t;
 
+
+/* XXX THIS STRUCTURE SHOULD NOT BE USED */
 typedef struct {		/* -- FIELD DESCRIPTOR --		*/
     dbih_com_std_t	std;	/* standard structure (not fully setup)	*/
 

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.1 1998/08/14 20:17:38 timbo Exp $
+# $Id: Makefile.PL,v 10.2 1998/09/02 13:43:45 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -36,40 +36,30 @@ if ($] < 5.004) {
 
 my @missing;
 
-eval "use Data::ShowTable ();";
-if ($@) {
-    push @missing, 'Data::ShowTable';
-    print(<<'MSG');
-*** Warning:
-    The Data-ShowTable module is not installed.
-    It's currently required for the DBI::Shell module and 'dbish' command.
-    You can install it after installing the DBI.
-MSG
-    sleep 3;
-}
-
 eval "use RPC::pClient ();";
 if ($@) {
     push @missing, 'RPC::pClient';
-    print(<<'MSG');
+    print "\a",<<'MSG';
 *** Warning:
-    The pRPC-modules (RPC::pClient etc) are not installed.
+    The optional pRPC-modules (RPC::pClient etc) are not installed.
     The DBD::Proxy driver and DBI::ProxyServer won't work without them.
     (Note that the Storable module is also needed.)
     You can install them after installing the DBI.
+    You do not need these modules for basic DBI usage.
 
 MSG
     sleep 3;
 }
 
 if (@missing) {
-    print(<<'MSG');
-Missing modules are available from any CPAN mirror, in particular
+    print "\a", <<'MSG';
+Optional modules are available from any CPAN mirror, in particular
     http://www.perl.com/CPAN/modules/by-module
     http://www.perl.org/CPAN/modules/by-module
     ftp://ftp.funet.fi/pub/languages/perl/CPAN/modules/by-module
 
 MSG
+	sleep 5;
 }
 
 %opts = (
@@ -106,8 +96,8 @@ if ($os eq 'hpux' and $osvers < 10) {
 }
 
 # Set some private WriteMakefile options if this is 'me' :-)
-if ($ENV{LOGNAME} eq 'timbo' and $ENV{S_ARCH_SW}){	# a reasonable guess
-    $opts{DEFINE} .= ' -g -Wpointer-arith -Wcast-align -Wconversion';
+if ($ENV{S_ARCH_SW} && $ENV{LOGNAME} eq 'timbo'){	# a reasonable guess
+    $opts{DEFINE} .= ' -g -Wpointer-arith -Wconversion';
 }
 
 warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"

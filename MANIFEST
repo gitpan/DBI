@@ -19,6 +19,7 @@ lib/DBD/Proxy.pm	Proxy driver
 lib/DBD/Sponge.pm	A driver for fake cursors (precached data)
 lib/DBI/DBD.pm		Some basic help for people writing DBI drivers
 lib/DBI/FAQ.pm		The DBI FAQ in module form for perldoc
+lib/DBI/Format.pm		Class for formatting rows of data
 lib/DBI/ProxyServer.pm	The proxy drivers server
 lib/DBI/Shell.pm	The DBI interactive shell
 lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC

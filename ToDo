@@ -1,5 +1,11 @@
 CleanNames
 
+Add TYPE, SCALE, PRECISION to DBD::Sponge
+
+$dbh->get_info
+
+Bundle DBD::Xbase?
+
 Test with threaded perl (re dTHR etc).
 Make thread safe.
 
@@ -31,6 +37,8 @@ Fix shared error codes between handles!
 Add problem reporting info to DBI.pm
 
 Metadata!
+
+Add DBI::set_err to DBI::DBD.pm docs
 
 Add 'break handling' when field values change? Use two fbav's so 'previous
 record' is available. Defind break fields and handlers. Call them via

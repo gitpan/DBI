@@ -130,8 +130,8 @@ sub connect ($$;$$) {
     my $client = RPC::pClient->new(
 	'sock' => $sock,
 	'application' => $attr{dsn},
-	'user' => $attr{user} || '',
-	'password' => $attr{auth} || '',
+	'user' => $user || '',
+	'password' => $auth || '',
 	'version' => $DBD::Proxy::VERSION,
 	'cipher' => $cipherRef,
 	'debug' => $attr{debug}||0
@@ -269,8 +269,8 @@ sub prepare ($$;$) {
 
     # We *could* send the statement over the net immediately, but the
     # DBI specs allows us to defer until the first 'execute'.
-    my($sth) = DBI::_new_sth($dbh, { proxy_statement => $stmt,
-				     proxy_params => [] });
+    my($sth) = DBI::_new_sth($dbh, { 'Statement' => $stmt,
+				     'proxy_params' => [] });
     $sth;
 }
 
@@ -309,7 +309,7 @@ sub execute ($@) {
     if (!$sth->{proxy_sth}) {
 	my($status, $rsth, $numRows, $numFields, $numParam) =
 	    $client->CallInt('method', $dbh->{'proxy_dbh'}, 'prepare',
-			     $sth->{'proxy_statement'},
+			     $sth->{'Statement'},
 			     @params ? [@params] : $sth->{'proxy_params'});
 	if (!$status) {
 	    DBI::set_err($sth, 1, $rsth);

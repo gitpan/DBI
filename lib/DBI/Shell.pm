@@ -37,8 +37,14 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.1 $, 10);
+$VERSION = substr(q$Revision: 10.2 $, 10)+0;
 
+my $warning = <<'EOM';
+
+WARNING: The DBI::Shell interface and functionality are
+=======  very likely to change in subsequent versions!
+
+EOM
 
 sub shell {
     my @args = @_ ? @_ : @ARGV;
@@ -64,9 +70,11 @@ use Carp;
 use Text::Abbrev ();
 use Term::ReadLine;
 use Getopt::Long;
-use Data::Dumper;
 
-use DBI 0.93 qw(:sql_types :utils);
+use DBI 1.00 qw(:sql_types :utils);
+use DBI::Format;
+
+my $haveTermReadKey;
 
 
 sub usage {
@@ -74,6 +82,25 @@ sub usage {
 Usage: perl -MDBI::Shell -e shell [<DBI data source> [<user> [<password>]]]
 USAGE
 }
+
+sub log {
+    my $sh = shift;
+    ($sh->{batch}) ? warn @_,"\n" : print @_,"\n";	# XXX maybe
+}
+
+sub alert {	# XXX not quite sure how alert and err relate
+    # for msgs that would pop-up an alert dialog if this was a Tk app
+    my $sh = shift;
+    warn @_,"\n";
+}
+
+sub err {	# XXX not quite sure how alert and err relate
+    my ($sh, $msg, $die) = @_;
+    $msg = "DBI::Shell: $msg\n";
+    die $msg if $die;
+    $sh->alert($msg);
+}
+
 
 
 sub add_option {
@@ -94,16 +121,22 @@ sub load_plugins {
 	my @dir = map { -d "$_/$where" ? ("$_/$where") : () } @INC;
 	foreach my $dir (@dir) {
 	    opendir DIR, $dir or warn "Unable to read $dir: $!\n";
-	    push @pi, map { "$mod::$_" } grep { /\.pm/ } readdir DIR;
+	    push @pi, map { s/\.pm$//; "${mod}::$_" } grep { /\.pm$/ }
+	        readdir DIR;
 	    closedir DIR;
 	}
     }
-    print "Loading plugins:\n"; # if @pi;
-    local $DBI::Shell::SHELL = $sh; # publish the current shell
     foreach my $pi (@pi) {
-	print "  $pi\n";
+	local $DBI::Shell::SHELL = $sh; # publish the current shell
+	$sh->log("Loading $pi");
 	eval qq{ use $pi };
-	warn "Failed: $@" if $@;
+	$sh->alert("Unable to load $pi: $@") if $@;
+    }
+    # plug-ins should remove options they recognise from (localized) @ARGV
+    # by calling Getopt::Long::GetOptions (which is already in pass_through mode).
+    foreach my $pi (@pi) {
+	local *ARGV = $sh->{unhandled_options};
+	$pi->init($sh);
     }
 }
 
@@ -113,25 +146,24 @@ sub new {
     my $sh = bless {}, $class;
 
     #
-    # Setup Term
-    #
-    $sh->{term} = new Term::ReadLine($class);
-
-    #
     # Set default configuration options
     #
-    $sh->add_option('prompt=s'		=> 'dbi> ');
-    $sh->add_option('command_prefix=s'	=> '/');
-    $sh->add_option('chistory_size=i'	=> 50);
-    $sh->add_option('rhistory_size=i'	=> 50);
-    $sh->add_option('rhistory_head=i'	=>  5);
-    $sh->add_option('rhistory_tail=i'	=>  5);
-    $sh->add_option('editor|ed=s'	=>
-		    $ENV{VISUAL} || $ENV{EDITOR} || 'vi');
-    # defaults for each new database connect:
-    $sh->add_option('init_trace|trace=i'	   => 0);
-    $sh->add_option('init_autocommit|autocommit=i' => 1);
-    $sh->add_option('debug|d=i'			   => $ENV{DBISH_DEBUG} || 0);
+    foreach my $opt_ref (
+	 [ 'command_prefix=s'	=> '/' ],
+	 [ 'chistory_size=i'	=> 50 ],
+	 [ 'rhistory_size=i'	=> 50 ],
+	 [ 'rhistory_head=i'	=>  5 ],
+	 [ 'rhistory_tail=i'	=>  5 ],
+	 [ 'editor|ed=s'	=> ($ENV{VISUAL} || $ENV{EDITOR} || 'vi') ],
+	 [ 'batch'		=> 0 ],
+	 [ 'displaymode|display'=> 'neat' ],
+	# defaults for each new database connect:
+	 [ 'init_trace|trace=i' => 0 ],
+	 [ 'init_autocommit|autocommit=i' => 1 ],
+	 [ 'debug|d=i'		=> ($ENV{DBISH_DEBUG} || 0) ],
+    ) {
+	$sh->add_option(@$opt_ref);
+    }
 
 
     #
@@ -181,7 +213,7 @@ sub new {
     'type_info' => {
 	    hint => "display data types supported by current server",
     },
-    'driver_info' => {
+    'drivers' => {
 	    hint => "display available DBI drivers",
     },
 
@@ -207,8 +239,14 @@ sub new {
     'rhistory' => {
 	    hint => "display result history",
     },
+    'display' => {
+	    hint => "set the display mode (Neat|Box)",
+    },
     'history' => {
 	    hint => "display combined command and result history",
+    },
+    'option' => {
+	    hint => "display or set an option value",
     },
 
     };
@@ -232,19 +270,28 @@ sub new {
     # data_source and user command line parameters overrides both 
     # environment and config settings.
     #
-    my %opt = ();
     local (@ARGV) = @args;
     my @options = values %{ $sh->{options} };
-    unless (GetOptions(\%opt, 'help|h', @options)) {
+    Getopt::Long::config('pass_through');	# for plug-ins
+    unless (GetOptions($sh, 'help|h', @options)) {
 	$class->usage;
 	croak "DBI::Shell aborted.\n";
     }
-    @args = @ARGV;	# args with any options removed
-
-    if ($opt{help}) {
+    if ($sh->{help}) {
 	$class->usage;
 	return;
     }
+    $sh->{unhandled_options} = [];
+    foreach my $arg (@ARGV) {
+	if ($arg =~ /^-/) {	# expected to be in "--opt=value" format
+	    push @{$sh->{unhandled_options}}, $arg;
+	}
+	else {
+	    push @args, $arg;
+	}
+    }
+
+    $sh->do_display($sh->{displaymode});
 
     $sh->{data_source}	= shift(@args) || $ENV{DBI_DSN}  || '';
     $sh->{user}		= shift(@args) || $ENV{DBI_USER} || '';
@@ -253,7 +300,21 @@ sub new {
     $sh->{chistory} = [];	# command history
     $sh->{rhistory} = [];	# result  history
 
-    print "DBI::Shell $DBI::Shell::VERSION for DBI $DBI::VERSION\n";
+    #
+    # Setup Term
+    #
+    my $mode;
+    if ($sh->{batch} || ! -t STDIN) {
+	$sh->{batch} = 1;
+	$mode = "in batch mode";
+    }
+    else {
+	$sh->{term} = new Term::ReadLine($class);
+	$mode = "";
+    }
+
+    $sh->log("DBI::Shell $DBI::Shell::VERSION using DBI $DBI::VERSION $mode");
+    $sh->log("DBI::Shell loaded from $INC{'DBI/Shell.pm'}") if $sh->{debug};
 
     return $sh;
 }
@@ -262,10 +323,10 @@ sub new {
 sub run {
     my $sh = shift;
 
-    print "\n";
-    print "WARNING: The DBI::Shell interface and functionality are\n";
-    print "=======  very likely to change in subsequent versions!\n";
-    print "\n";
+    die "Unrecognised options: @{$sh->{unhandled_options}}\n"
+	if @{$sh->{unhandled_options}};
+
+    $sh->log($warning) unless $sh->{batch};
 
     # Use valid "dbi:driver:..." to connect with source.
     $sh->do_connect( $sh->{data_source}, $sh->{user}, $sh->{password});
@@ -273,29 +334,21 @@ sub run {
     #
     # Main loop
     #
-    $sh->{'abbrev'} = Text::Abbrev::abbrev(keys %{$sh->{commands}});
+    $sh->{abbrev} = undef;
+    $sh->{abbrev} = Text::Abbrev::abbrev(keys %{$sh->{commands}})
+	unless $sh->{batch};
     $sh->{current_buffer} = '';
     my $current_line = '';
 
     while (1) {
-	my $pre = $sh->{command_prefix};
+	my $prefix = $sh->{command_prefix};
 
-	$current_line = $sh->{term}->readline($sh->prompt());
+	$current_line = $sh->readline($sh->prompt());
 	$current_line = "/quit" unless defined $current_line;
 
-	#
-	# First, check for installed alias
-	#
-	# TODO
-	if (0) {
-
-	}
-	#
-	# Then check for command
-	#
-	elsif ( $current_line =~ /
+	if ( $current_line =~ /
 		^(.*?)
-		$pre
+		$prefix
 		(?:(\w*)([^\|>]*))?
 		((?:\||>>?).+)?
 		$
@@ -310,13 +363,22 @@ sub run {
 	    warn("command='$cmd' args='$args_string' output='$output'") 
 		    if $sh->{debug};
 
-	    my $command = $sh->{'abbrev'}->{$cmd}; # expand abbreviation
+	    my $command;
+	    if ($sh->{abbrev}) {
+		$command = $sh->{abbrev}->{$cmd};
+	    }
+	    else {
+		$command = ($sh->{command}->{$cmd}) ? $cmd : undef;
+	    }
 	    if ($command) {
 		$sh->run_command($command, $output, @args);
 	    }
 	    else {
-		print "Command '$cmd' not recognised ",
-		    "(enter ${pre}help for help).\n";
+		if ($sh->{batch}) {
+		    die "Command '$cmd' not recognised";
+		}
+		$sh->alert("Command '$cmd' not recognised ",
+		    "(enter ${pre}help for help).");
 	    }
 	}
 	elsif ($current_line ne "") {
@@ -325,7 +387,7 @@ sub run {
 	    # it grows (and new users might guess that unrecognised
 	    # inputs are treated as commands)
 	    $sh->run_command('list', undef,
-		"(enter '$pre' to execute or '${pre}help' for help)");
+		"(enter '$prefix' to execute or '${pre}help' for help)");
 	}
     }
 }
@@ -334,42 +396,48 @@ sub run {
 
 
 #
-# Internal subs
+# Internal methods
 #
+
+sub readline {
+    my ($sh, $prompt) = @_;
+    my $rv;
+    if ($sh->{term}) {
+	$rv = $sh->{term}->readline($prompt);
+    }
+    else {
+	chop($rv = <STDIN>);
+    }
+    return $rv;
+}
+
 
 sub run_command {
     my ($sh, $command, $output, @args) = @_;
     return unless $command;
-	local(*STDOUT) if $output;
-	local(*OUTPUT) if $output;
-	if($output) {
-		if(open(OUTPUT, $output)) {
-			*STDOUT = *OUTPUT;
-		} else {
-			$sh->err("Couldn't open output '$output'");
-			$sh->run_command('list', undef, '');
-		}
+    local(*STDOUT) if $output;
+    local(*OUTPUT) if $output;
+    if ($output) {
+	if (open(OUTPUT, $output)) {
+	    *STDOUT = *OUTPUT;
+	} else {
+	    $sh->err("Couldn't open output '$output'");
+	    $sh->run_command('list', undef, '');
 	}
+    }
     eval {
 	my $code = "do_$command";
 	$sh->$code(@args);
     };
-	close OUTPUT if $output;
+    close OUTPUT if $output;
     $sh->err("$command failed: $@") if $@;
-}
-
-sub err {
-    my ($sh, $msg, $die) = @_;
-    $msg = "DBI::Shell: $msg\n";
-    die $msg if $die;
-    print $msg;
 }
 
 
 sub print_list {
     my ($sh, $list_ref) = @_;
     for(my $i = 0; $i < @$list_ref; $i++) {
-	print "$i:  $$list_ref[$i]\n";
+	print $i+1,":  $$list_ref[$i]\n";
     }
 }
 
@@ -396,6 +464,10 @@ sub get_data_source {
 	}
     }
 
+    if ($sh->{batch}) {
+	die "Missing or unrecognised DBI DSN.";
+    }
+
     print "\n";
     while (!$driver) {
 	print "Available DBI drivers:\n";
@@ -403,7 +475,7 @@ sub get_data_source {
 	for( my $cnt = 0; $cnt <= $#drivers; $cnt++ ) {
 	    printf "%2d: dbi:%s\n", $cnt+1, $drivers[$cnt];
 	} 
-	$driver = $sh->{term}->readline(
+	$driver = $sh->readline(
 		"Enter driver name or number, or full 'dbi:...:...' DSN: ");
 	exit unless defined $driver;	# detect ^D / EOF
 	print "\n";
@@ -435,7 +507,7 @@ sub get_data_source {
 	    print "(The data_sources method returned nothing.)\n";
 	    $prompt = "Enter data source";
 	}
-	$source = $sh->{term}->readline(
+	$source = $sh->readline(
 		"$prompt or full 'dbi:...:...' DSN: ");
 	return if !defined $source;	# detect ^D / EOF
 	if ($source =~ /^\s*(\d+)/) {
@@ -454,17 +526,27 @@ sub get_data_source {
 
 sub prompt_for_password {
     my ($sh) = @_;
+    if (!defined($haveTermReadKey)) {
+	$haveTermReadKey = eval { require Term::ReadKey } ? 1 : 0;
+    }
     local $| = 1;
-    print "Password for $sh->{user}: ";
-    # XXX this may be a problem for NT.
-    system "stty -echo" unless $^O eq 'MSWin32';
-    chop($sh->{password} = <STDIN>);
-    system "stty echo" unless $^O eq 'MSWin32';
+    print "Password for $sh->{user} (",
+	($haveTermReadKey ? "not " : "Warning: "),
+	"echoed to screen): ";
+    if ($haveTermReadKey) {
+        Term::ReadKey::ReadMode('noecho');
+	$sh->{password} = Term::ReadKey::ReadLine(0);
+	Term::ReadKey::ReadMode('restore');
+    } else {
+	$sh->{password} = <STDIN>;
+    }
+    chomp $sh->{password};
     print "\n";
 }
 
 sub prompt {
     my ($sh) = @_;
+    return "" if $sh->{batch};
     return "(not connected)> " unless $sh->{dbh};
     return "$sh->{user}\@$sh->{data_source}> ";
 }
@@ -481,52 +563,32 @@ sub push_chistory {
 
 
 #
-# Result handler methods
-#
-
-sub show_header {
-    my ($sh, $cols) = @_;
-    print join(',', @$cols), "\n";
-}
-
-sub show_row {
-    my ($sh, $rowref) = @_;
-	my @row = @$rowref;
-	# XXX note that neat/neat_list output is *not* ``safe''
-	# in the sense the it does not escape any chars and
-	# may truncate the string and may translate non-printable chars.
-	# We only deal with simple escaping here.
-	foreach(@row) {
-		next unless defined;
-		s/'/\\'/g;
-		s/\n/ /g;
-	}
-    print neat_list(\@row, 9999, ","),"\n";
-}
-
-sub show_trailer {
-    my ($sh) = @_;
-    my $rows = $sh->{sth}->rows;
-    $rows = "unknown number of" if $rows == -1;
-    print "[$rows rows of $sh->{sth}->{NUM_OF_FIELDS} fields returned]\n";
-}
-
-
-
-#
 # Command methods
 #
 
 sub do_help {
     my ($sh, @args) = @_;
-    my $pre = $sh->{command_prefix};
+    my $prefix = $sh->{command_prefix};
     my $commands = $sh->{commands};
     print "Defined commands, in alphabetical order:\n";
     foreach my $cmd (sort keys %$commands) {
 	my $hint = $commands->{$cmd}->{hint} || '';
-	printf "  %s%-10s %s\n", $pre, $cmd, $hint;
+	printf "  %s%-10s %s\n", $prefix, $cmd, $hint;
     }
-    print "Commands can be abbreviated.\n";
+    print "Commands can be abbreviated.\n" if $sh->{abbrev};
+}
+
+
+sub do_display {
+    my ($sh, @args) = @_;
+    my $mode = $args[0] || '';
+    my $class = eval { DBI::Format->formatter($mode) };
+    unless ($class) {
+	$sh->alert("Unable to select '$mode': $@");
+	return;
+    }
+    $sh->log("Using formatter class '$class'") if $sh->{debug};
+    $sh->{display} = $class->new($sh);
 }
 
 
@@ -540,14 +602,6 @@ sub do_go {
     $sh->push_chistory;
     
     eval {
-	#
-	# Shortcut - if not select, do()	XXX needs more thought
-	#
-	if ($sh->{current_buffer} !~ /^\s*select\s/i) {
-	    $sh->run_command('do');
-	    return;
-	}
-
 	my $sth = $sh->{dbh}->prepare($sh->{current_buffer});
 
 	$sh->sth_go($sth, 1);
@@ -570,19 +624,27 @@ sub do_go {
 sub sth_go {
     my ($sh, $sth, $execute) = @_;
 
+    my $rv;
     if ($execute || !$sth->{Active}) {
 	my @params;
 	my $params = $sth->{NUM_OF_PARAMS};
 	print "Statement has $params parameters:\n" if $params;
 	foreach(1..$params) {
-	    my $val = $sh->{term}->readline("Parameter $_ value: ");
+	    my $val = $sh->readline("Parameter $_ value: ");
 	    push @params, $val;
 	}
-	$sth->execute(@params);
+	$rv = $sth->execute(@params);
     }
 	
+    if (!$sth->{'NUM_OF_FIELDS'}) { # not a select statement
+	local $^W=0;
+	$rv = "undefined number of" unless defined $rv;
+	$rv = "unknown number of"   if $rv == -1;
+	print "[$rv row" . ($rv==1 ? "" : "s") . " affected]\n";
+	return;
+    }
+
     $sh->{sth} = $sth;
-    $sh->show_header($sth->{NAME});
 
     #
     # Remove oldest result from history if reached limit
@@ -598,10 +660,12 @@ sub sth_go {
     #
     my @rtail;
     my $i = 0;
+    my $display = $sh->{display} || die "panic: no display set";
+    $display->header($sth, \*STDOUT);
     while (my $rowref = $sth->fetchrow_arrayref()) {
 	$i++;
 
-	$sh->show_row($rowref);
+	$display->row($rowref);
 
 	if ($i <= $sh->{rhistory_head}) {
 	    push @{$rhist->[-1]}, [@$rowref];
@@ -612,20 +676,20 @@ sub sth_go {
 	}
 
     }
-    $sh->show_trailer($i);
+    $display->trailer($i);
 
     if (@rtail) {
 	my $rows = $i;
 	my $ommitted = $i - $sh->{rhistory_head} - @rtail;
-	push @{$rhist->[-1]},
-	    [ "[...$ommitted rows out of $rows ommitted...]"];
+	    push(@{$rhist->[-1]},
+		 [ "[...$ommitted rows out of $rows ommitted...]"]);
 	foreach my $rowref (@rtail) {
 	    push @{$rhist->[-1]}, $rowref;
 	}
     }
 
-    $sh->{sth} = undef;
-    $sth->finish();
+    #$sh->{sth} = undef;
+    #$sth->finish();	# drivers which need this are broken
 }
 
 
@@ -645,13 +709,13 @@ sub do_do {
 sub do_disconnect {
     my ($sh, @args) = @_;
     return unless $sh->{dbh};
-    print "Disconnecting from $sh->{data_source}.\n";
+    $sh->log("Disconnecting from $sh->{data_source}.");
     eval {
 	$sh->{sth}->finish if $sh->{sth};
 	$sh->{dbh}->rollback unless $sh->{dbh}->{AutoCommit};
 	$sh->{dbh}->disconnect;
     };
-    warn "Error during disconnect: $@" if $@;
+    $sh->alert("Error during disconnect: $@") if $@;
     $sh->{sth} = undef;
     $sh->{dbh} = undef;
 }
@@ -666,7 +730,7 @@ sub do_connect {
     $sh->do_disconnect if $sh->{dbh};
 
     $sh->{data_source} = $dsn;
-    print "Connecting to '$sh->{data_source}' as '$sh->{user}'...\n";
+    $sh->log("Connecting to '$sh->{data_source}' as '$sh->{user}'...");
     if ($sh->{user} and !defined $sh->{password}) {
 	$sh->prompt_for_password();
     }
@@ -683,7 +747,7 @@ sub do_connect {
 sub do_list {
     my ($sh, $msg, @args) = @_;
     $msg = $msg ? " $msg" : "";
-    print "Current statement buffer$msg:\n" . $sh->{current_buffer};
+    $sh->log("Current statement buffer$msg:\n" . $sh->{current_buffer});
 }
 
 
@@ -731,7 +795,7 @@ sub do_chistory {
 sub do_history {
     my ($sh, @args) = @_;
     for(my $i = 0; $i < @{$sh->{chistory}}; $i++) {
-	print $i, ":\n", $sh->{chistory}->[$i], "--------\n";
+	print $i+1, ":\n", $sh->{chistory}->[$i], "--------\n";
 	foreach my $rowref (@{$sh->{rhistory}[$i]}) {
 	    print "    ", join(", ", @$rowref), "\n";
 	}
@@ -741,7 +805,7 @@ sub do_history {
 sub do_rhistory {
     my ($sh, @args) = @_;
     for(my $i = 0; $i < @{$sh->{rhistory}}; $i++) {
-	print $i, ":\n";
+	print $i+1, ":\n";
 	foreach my $rowref (@{$sh->{rhistory}[$i]}) {
 	    print "    ", join(", ", @$rowref), "\n";
 	}
@@ -751,11 +815,11 @@ sub do_rhistory {
 
 sub do_get {
     my ($sh, $num, @args) = @_;
-    if ($num !~ /^\d+$/) {
-	$sh->err("Not a number: $num");
+    if (!$num || $num !~ /^\d+$/ || !defined($sh->{chistory}->[$num-1])) {
+	$sh->err("No such command number '$num'. Use /chistory to list previous commands.");
 	return;
     }
-    $sh->{current_buffer} = $sh->{chistory}->[$num];
+    $sh->{current_buffer} = $sh->{chistory}->[$num-1];
     $sh->print_buffer($sh->{current_buffer});
 }
 
@@ -776,7 +840,7 @@ sub do_edit {
     $sh->{current_buffer} ||= $sh->{prev_buffer};
 	    
     # Find an area to write a temp file into.
-    my $tmp_dir = $ENV{DBI_SHELL_TMP} || # Give people the choice.
+    my $tmp_dir = $ENV{DBISH_TMP} || # Give people the choice.
 	    $ENV{TMP}  ||            # Is TMP set?
 	    $ENV{TEMP} ||            # How about TEMP?
 	    $ENV{HOME} ||            # Look for HOME?
@@ -787,7 +851,7 @@ sub do_edit {
     local (*FH);
     open(FH, ">$tmp_file") ||
 	    $sh->err("Can't create $tmp_file: $!\n", 1);
-    print FH $sh->{current_buffer};
+    print FH $sh->{current_buffer} if defined $sh->{current_buffer};
     close(FH) || $sh->err("Can't write $tmp_file: $!\n", 1);
 
     my $command = "$sh->{editor} $tmp_file";
@@ -803,12 +867,13 @@ sub do_edit {
 }
 
 
-sub do_driver_info {
+sub do_drivers {
     my ($sh, @args) = @_;
-    print "Available drivers:";
+    $sh->log("Available drivers:");
     my @drivers = DBI->available_drivers;
-    print join("\n\t", '',@drivers), "\n";
-    print "\n";
+    foreach my $driver (sort @drivers) {
+	$sh->log("\t$driver");
+    }
 }
 
 
@@ -824,10 +889,44 @@ sub do_type_info {
 
 
 sub prepare_from_data {
-    my ($sh, $statement, $data, $names) = @_;
+    my ($sh, $statement, $data, $names, %attr) = @_;
     my $sponge = DBI->connect("dbi:Sponge:","","",{ RaiseError => 1 });
-    my $sth = $sponge->prepare($statement, { rows=>$data, NAME=>$names });
+    my $sth = $sponge->prepare($statement, { rows=>$data, NAME=>$names, %attr });
     return $sth;
+}
+
+
+# Do option: sets or gets an option
+sub do_option {
+    my ($sh, @args) = @_;
+
+    unless (@args) {
+	foreach my $opt (sort keys %{ $sh->{options}}) {
+	    my $value = (defined $sh->{$opt}) ? $sh->{$opt} : 'undef';
+	    $sh->log(sprintf("%20s: %s", $opt, $value));
+	}
+	return;
+    }
+
+    my $options = Text::Abbrev::abbrev(keys %{$sh->{options}});
+
+    # Expecting the form [option=value] [option=] [option]
+    foreach my $opt (@args) {
+	my ($opt_name, $value) = $opt =~ /^\s*(\w+)(?:=(.*))?/;
+	$opt_name = $options->{$opt_name} || $opt_name if $opt_name;
+	if (!$opt_name || !$sh->{options}->{$opt_name}) {
+	    $sh->log("Unknown or ambiguous option name '$opt_name'");
+	    next;
+	}
+	my $crnt = (defined $sh->{$opt_name}) ? $sh->{$opt_name} : 'undef';
+	if (not defined $value) {
+	    $sh->log("/option $opt_name=$crnt");
+	}
+	else {
+	    $sh->log("/option $opt_name=$value  (was $crnt)");
+	    $sh->{$opt_name} = ($value eq 'undef') ? undef : $value;
+	}
+    }
 }
 
 
@@ -853,12 +952,17 @@ sub do_table_info {
 }
 
 
+
 1;
 __END__
 
 =head1 TO DO
 
 Proper docs - but not yet, too much is changing.
+
+"/source file" command to read command file.
+Allow to nest via stack of command file handles.
+Add command log facility to create batch files.
 
 Commands:
 	load (query?) from file
@@ -869,15 +973,15 @@ Use Data::ShowTable if available.
 Define DBI::Shell plug-in semantics.
 	Implement import/export as plug-in module
 
-Batch mode
+Clarify meaning of batch mode
 
 Completion hooks
-
-Set/Get DBI::Shell options
 
 Set/Get DBI handle attributes
 
 Portability
+
+Emulate popular command shell modes (Oracle, Ingres etc)?
 
 =head1 COMMANDS
 
@@ -889,11 +993,127 @@ Many commands - few documented, yet!
 
   /help
 
+=item chistory
+
+  /chistory          (display history of all commands entered)
+  /chistory | YourPager (display history with paging)
+
+=item clear
+
+  /clear             (Clears the current command buffer)
+
+=item commit
+
+  /commit            (commit changes to the database)
+
 =item connect
 
-  /connect               (pick from available drivers and sources)
-  /connect dbi:Oracle    (pick source from based on driver)
+  /connect           (pick from available drivers and sources)
+  /connect dbi:Oracle (pick source from based on driver)
   /connect dbi:YourDriver:YourSource i.e. dbi:Oracle:mysid
+
+Use this option to change userid or password.
+
+=item current
+
+  /current            (Display current statement in the buffer)
+
+=item do
+
+  /do                 (execute the current (non-select) statement)
+
+	dbish> create table foo ( mykey integer )
+	dbish> /do
+
+	dbish> truncate table OldTable /do (Oracle truncate)
+
+=item drivers
+
+  /drivers            (Display available DBI drivers)
+
+=item edit
+
+  /edit               (Edit current statement in an external editor)
+
+Editor is defined using the enviroment variable $VISUAL or
+$EDITOR or default is vi.  Use /option editor=new editor to change
+in the current session.
+
+To read a file from the operating system invoke the editor (/edit)
+and read the file into the editor buffer.
+
+=item exit
+
+  /exit              (Exits the shell)
+
+=item get
+
+  /get               (Retrieve a previous command to the current buffer)
+
+=item go
+
+  /go                (Execute the current statement)
+
+Run (execute) the statement in the current buffer.  This is the default
+action if the statement ends with /
+
+	dbish> select * from user_views/
+
+	dbish> select table_name from user_tables
+	dbish> where table_name like 'DSP%'
+	dbish> /
+
+	dbish> select table_name from all_tables/ | more
+
+=item history
+
+  /history            (Display combined command and result history)
+  /history | more
+
+=item option
+
+  /option [option1[=value]] [option2 ...]
+  /option            (Displays the current options)
+  /option   MyOption (Displays the value, if exists, of MyOption)
+  /option   MyOption=4 (defines and/or sets value for MyOption)
+
+=item perl
+
+  /perl               (Evaluate the current statement as perl code)
+
+=item quit
+
+  /quit               (Leaves shell.  Same as exit)
+
+=item redo
+
+  /redo               (Re-execute the previously executed statement)
+
+=item rhistory
+
+  /rhistory           (Display result history)
+
+=item rollback
+
+  /rollback           (rollback changes to the database)
+
+For this to be useful, turn the autocommit off. /option autocommit=0
+
+=item table_info
+
+  /table_info         (display all tables that exist in current database)
+  /table_info | more  (for paging)
+
+=item trace
+
+  /trace              (set DBI trace level for current database)
+
+Adjust the trace level for DBI 0 - 4.  0 off.  4 lots of information.
+Useful for determining what is really happening in DBI.  See DBI.
+
+=item type_info
+
+  /type_info          (display data types supported by current server)
 
 =back
 
@@ -910,8 +1130,8 @@ Marks was working on a dbish modeled after the Sybase sqsh utility.
 Wanting to start from a cleaner slate than the feature-full but complex
 dbimon, I worked with Adam to create a fairly open modular and very
 configurable DBI::Shell module. Along the way Tom Lowery chipped in
-ideas and patches. As we go further along more useful code from
-Jochen's dbimon is bound to find it's way back in.
+ideas and patches. As we go further along more useful code and concepts
+from Jochen's dbimon is bound to find it's way back in.
 
 =head1 COPYRIGHT
 

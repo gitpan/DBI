@@ -17,6 +17,7 @@ sub ok ($$) {
     warn "# failed test $t at line ".(caller)[2]."\n" unless $ok;
 }
 	
+my $r;
 my $dbh = DBI->connect('dbi:ExampleP:', '', '');
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 $dbh->{AutoCommit} = 1;
@@ -90,12 +91,24 @@ $csr_a = undef;	# force destructin of this cursor now
 ok(43, 1);
 
 ok(0, $csr_b->execute());
-my $r = $csr_b->fetchall_arrayref;
+$r = $csr_b->fetchall_arrayref;
 ok(0, $r);
 ok(0, @$r);
 ok(0, $r->[0]->[0] == $row_a[0]);
 ok(0, $r->[0]->[1] == $row_a[1]);
 ok(0, $r->[0]->[2] eq $row_a[2]);
+
+ok(0, $csr_b->execute());
+$r = $csr_b->fetchall_arrayref([2,1]);
+ok(0, $r && @$r);
+ok(0, $r->[0]->[1] == $row_a[1]);
+ok(0, $r->[0]->[0] eq $row_a[2]);
+
+ok(0, $csr_b->execute());
+$r = $csr_b->fetchall_arrayref({ Size=>1, NAME=>1});
+ok(0, $r && @$r);
+ok(0, $r->[0]->{Size} == $row_a[1]);
+ok(0, $r->[0]->{NAME} eq $row_a[2]);
 
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
@@ -108,7 +121,7 @@ ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; }
 #print "$@\n";
 ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
 $dbh->{RaiseError} = 0;
-ok(55, !$dbh->{RaiseError});
+ok(0, !$dbh->{RaiseError});
 
 {
   my @warn;
@@ -135,4 +148,4 @@ if (open(DUMP_RESULTS, ">$dump_file")) {
 }
 #unlink $dump_file;
 
-BEGIN { $tests = 63; }
+BEGIN { $tests = 71; }

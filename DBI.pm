@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+# $Id: DBI.pm,v 10.3 1998/09/02 14:17:16 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = '1.00'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '1.01'; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -37,9 +37,9 @@ DBI - Database independent interface for Perl
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare_cached($statement);
  
-  $rv = $sth->bind_param($param_num, $bind_value);
-  $rv = $sth->bind_param($param_num, $bind_value, $bind_type);
-  $rv = $sth->bind_param($param_num, $bind_value, \%attr);
+  $rv = $sth->bind_param($p_num, $bind_value);
+  $rv = $sth->bind_param($p_num, $bind_value, $bind_type);
+  $rv = $sth->bind_param($p_num, $bind_value, \%attr);
 
   $rv = $sth->execute;
   $rv = $sth->execute(@bind_values);
@@ -66,8 +66,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.00
-($Date: 1998/08/14 20:21:36 $).
+This is the DBI specification that corresponds to the DBI version 1.01
+($Date: 1998/09/02 14:17:16 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -130,7 +130,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.1 $, 10);
+my $Revision = substr(q$Revision: 10.3 $, 10);
 
 
 use Carp;
@@ -266,6 +266,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	table_info     	=> { U =>[1,1] },
 	type_info_all	=> { U =>[1,1] },
 	type_info	=> { U =>[1,2] },
+	get_info	=> { U =>[2,2] },
     },
     st => {		# Statement Class Interface
 	@Common_IF,
@@ -309,11 +310,11 @@ foreach $class (keys %DBI_IF){
 
 
 END {
-    DBI->trace_msg("    DBI::END\n") if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    -> DBI::END\n") if $DBI::dbi_debug >= 2;
     # Let drivers know why we are calling disconnect_all:
     $DBI::PERL_ENDING = $DBI::PERL_ENDING = 1;	# avoid typo warning
-    DBI->disconnect_all();
-    DBI->trace_msg("    DBI::END complete\n") if $DBI::dbi_debug >= 2;
+    DBI->disconnect_all() if %DBI::installed_drh;
+    DBI->trace_msg("    <- DBI::END complete\n") if $DBI::dbi_debug >= 2;
 }
 
 
@@ -335,7 +336,7 @@ sub connect {
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
-	DBI->trace_msg("$class->connect($dsn, $user, $pass, $old_driver, $attr)\n");
+	DBI->trace_msg("    -> $class->connect(".join(", ",@_).")\n");
     }
     Carp::croak('Usage: $class->connect([$dsn [,$user [,$passwd [,\%attr]]]])')
 	if (ref $old_driver or ($attr and not ref $attr) or ref $pass);
@@ -350,22 +351,22 @@ sub connect {
     if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Switch') {
 	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
 	$driver = 'Proxy';
-	DBI->trace_msg("DBI_AUTOPROXY: dbi:$driver:$dsn\n");
+	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver:$dsn\n");
+    }
+
+    unless ($old_driver) { # new-style connect so new default semantics
+	$attr = { PrintError=>1, AutoCommit=>1, ref $attr ? %$attr : () };
     }
 
     my $drh = $class->install_driver($driver) || die 'panic: install_driver';
-    DBI->trace_msg("$class->$connect_via using $driver driver $drh\n")
-	if $DBI::dbi_debug;
 
     unless ($dbh = $drh->$connect_via($dsn, $user, $pass, $attr)) {
-	# need to fake RaiseError here if $attr->{RaiseError}
 	Carp::croak($drh->errstr) if ref $attr and $attr->{RaiseError};
-	DBI->trace_msg("$class->connect failed: ".($drh->errstr)."\n")
-	    if $DBI::dbi_debug;
+	Carp::carp($drh->errstr)  if ref $attr and $attr->{PrintError};
+	DBI->trace_msg("       $class->connect failed: ".($drh->errstr)."\n");
 	$! = 0; # for the daft people who do DBI->connect(...) || die "$!";
 	return undef;
     }
-    DBI->trace_msg("$class->connect = $dbh\n") if $DBI::dbi_debug;
 
     # XXX this is inelegant but practical in the short term, sigh.
     if ($installed_rootclass{$class}) {
@@ -375,30 +376,27 @@ sub connect {
 	bless $inner => $class.'::db';
     }
 
-    unless ($old_driver) { # new-style connect so new default semantics
-	$attr = { PrintError=>1, AutoCommit=>1, $attr ? %$attr : () };
-    }
-    if ($attr) {
+    if (ref $attr) {
+	my %a = %$attr;
 	my $a;
 	# handle these attributes first
-	foreach $a (qw(PrintError RaiseError AutoCommit)) {
-	    next unless exists $attr->{$a};
-	    $dbh->{$a} = $attr->{$a};
-	    delete $attr->{$a};
+	foreach $a (qw(RaiseError PrintError AutoCommit)) {
+	    next unless exists $a{$a};
+	    $dbh->{$a} = $a{$a};
+	    delete $a{$a};
 	}
-	foreach $a (keys %$attr) {
-	    $dbh->{$a} = $attr->{$a};
+	foreach $a (keys %a) {
+	    $dbh->{$a} = $a{$a};
 	}
     }
+    DBI->trace_msg("    <- connect= $dbh\n");
 
     $dbh;
 }
 
 
 sub disconnect_all {
-    DBI->trace_msg("DBI::disconnect_all @_\n") if $DBI::dbi_debug;
     foreach(keys %DBI::installed_drh){
-	DBI->trace_msg("DBI::disconnect_all for '$_'\n") if $DBI::dbi_debug;
 	my $drh = $DBI::installed_drh{$_};
 	next unless ref $drh;	# avoid problems on premature death
 	$drh->disconnect_all();
@@ -416,16 +414,15 @@ sub install_driver {		# croaks on failure
     # allow driver to be specified as a 'dbi:driver:' string
     $driver = $1 if $driver =~ s/^DBI:(.*?)://i;
 
-    Carp::croak("DBI->install_driver: DBD driver not specified.\n")
-	unless $driver;
+    Carp::croak("usage: $class->install_driver(\$driver [, \%attr])")
+		unless ($driver and @_<=3);
 
     # already installed
     return $drh if $drh = $DBI::installed_drh{$driver};
 
-    DBI->trace_msg("$class->install_driver($driver) for perl=$] pid=$$ ruid=$< euid=$>\n")
+    DBI->trace_msg("    -> $class->install_driver($driver"
+			.") for perl=$] pid=$$ ruid=$< euid=$>\n")
 	if $DBI::dbi_debug;
-    Carp::croak("usage $class->install_driver(\$driver [, \%attr])")
-		unless ($driver and @_<=3);
 
     # --- load the code
     eval "package DBI::_firesafe; require DBD::$driver";
@@ -444,7 +441,8 @@ sub install_driver {		# croaks on failure
 	}
 	Carp::croak("install_driver($driver) failed: $@$advice\n");
     }
-    DBI->trace_msg("DBI->install_driver($driver) loaded\n") if $DBI::dbi_debug;
+    DBI->trace_msg("       install_driver: driver $driver loaded\n")
+	if $DBI::dbi_debug;
 
     # --- do some behind-the-scenes checks and setups on the driver
     _setup_driver($driver);
@@ -461,7 +459,7 @@ sub install_driver {		# croaks on failure
     }
 
     $DBI::installed_drh{$driver} = $drh;
-    DBI->trace_msg("DBI->install_driver($driver) = $drh\n") if $DBI::dbi_debug;
+    DBI->trace_msg("    <- install_driver= $drh\n") if $DBI::dbi_debug;
     $drh;
 }
 
@@ -878,6 +876,11 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	shift->_not_impl('rollback');
     }
 
+    sub get_info {
+	shift->_not_impl("get_info @_");
+	return undef;
+    }
+
     sub table_info {
 	shift->_not_impl('table_info');
 	return undef;
@@ -979,17 +982,19 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    }
 	}
 	elsif ($mode eq 'HASH') {
-	    my @keys = keys %$slice;
-	    if (@keys) {
-		while ($row = $sth->fetchhash) {
+	    my @o_keys = keys %$slice;
+	    if (@o_keys) {
+		my %i_names = map {  (lc($_)=>$_) } @{ $sth->{NAME} };
+		my @i_keys  = map { $i_names{lc($_)} } @o_keys;
+		while ($row = $sth->fetchrow_hashref) {
 		    my %hash;
-		    @hash{@keys} = @{$row}{@keys};
+		    @hash{@o_keys} = @{$row}{@i_keys};
 		    push @rows, \%hash;
 		}
 	    }
 	    else {
 		# XXX assumes new ref each fetchhash
-		push @rows, $row while ($row = $sth->fetchhash);
+		push @rows, $row while ($row = $sth->fetchrow_hashref);
 	    }
 	}
 	else { Carp::croak("fetchall_arrayref($mode) invalid") }
@@ -1404,7 +1409,9 @@ In this 'old-style' form of connect the $data_source should not start
 with 'dbi:driver_name:' and, even if it does, the embedded driver_name
 will be ignored. The $dbh->{AutoCommit} attribute is I<undefined>. The
 $dbh->{PrintError} attribute is off. And the old DBI_DBNAME env var is
-checked if DBI_DSN is not defined.
+checked if DBI_DSN is not defined. This 'old-style' connect will be
+withdrawn in a future version.
+
 
 =item B<available_drivers>
 
@@ -1738,8 +1745,8 @@ For backwards compatibility could just use C<eval { ... }> instead.
 =item B<ChopBlanks> (boolean, inherited)
 
 This attribute can be used to control the trimming of trailing space
-characters from fixed width character (CHAR) fields. No other field
-types are affected.
+characters from I<fixed width> character (CHAR) fields. No other field
+types are affected, even where field values have trailing spaces.
 
 The default is false (it is possible that that may change).
 Applications that need specific behaviour should set the attribute as
@@ -1749,7 +1756,8 @@ behaviour of the interface they are emulating.
 Drivers are not required to support this attribute but any driver which
 does not must arrange to return undef as the attribute value.
 
-=item B<LongReadLen> (integer, inherited)
+
+=item B<LongReadLen> (unsigned integer, inherited)
 
 This attribute may be used to control the maximum length of 'long'
 ('blob', 'memo' etc.) fields which the driver will I<read> from the
@@ -1895,7 +1903,7 @@ The cache can be accessed (and cleared) via the L</CachedKids> attribute.
 Prepare and execute a statement. Returns the number of rows affected
 (-1 if not known or not available) or undef on error.
 
-This method is typically most useful for non-select statements which
+This method is typically most useful for I<non-select> statements which
 either cannot be prepared in advance (due to a limitation in the
 driver) or which do not need to be executed repeatedly. It should not
 be used for select statements.
@@ -2079,6 +2087,9 @@ within the following list of arrays. For example:
     ],
   ];
 
+Note that more than one row may have the same value in the DATA_TYPE
+field.
+
 This method is not normally used directly. The L</type_info> method
 provides a more useful interface to the data.
 
@@ -2118,8 +2129,9 @@ data types where this is not applicable.
 
 =item LITERAL_PREFIX (string)
 
-Characters used to prefix a literal. Typically "'" for characters.
-NULL (undef) is returned for data types where this is not applicable.
+Characters used to prefix a literal. Typically "'" for characters,
+possibly "0x" for binary values passed as hex.  NULL (undef) is
+returned for data types where this is not applicable.
 
 
 =item LITERAL_SUFFIX (string)
@@ -2212,7 +2224,8 @@ special case, the standard numeric types are optimised to return $value
 without calling type_info.
 
 Quote may I<not> be able to deal with all possible input (such as
-binary data) and should not be relied upon for security.
+binary data) and is not related in any way with escaping or quoting
+shell meta-characters.
 
 =back
 
@@ -2266,7 +2279,7 @@ AutoCommit is in effect.
 B<* Database in which a transaction is always active>
 
 These are typically mainstream commercial relational databases with
-'ANSI standandard' transaction behaviour.
+'ANSI standard' transaction behaviour.
 
 If AutoCommit is off then changes to the database won't have any
 lasting effect unless L</commit> is called (but see also
@@ -2309,6 +2322,27 @@ Holds the 'name' of the database. Usually (and recommended to be) the
 same as the "dbi:DriverName:..." string used to connect to the database
 but with the leading "dbi:DriverName:" removed.
 
+
+=item B<RowCacheSize>  (integer) *NEW*
+
+A hint to the driver indicating the size of local row cache the
+application would like the driver to use for future select statements.
+If a row cache is not implemented then setting RowCacheSize is ignored
+and getting the value returns undef.
+
+Some RowCacheSize values have special meaning:
+
+  0 - Automatically determine a reasonable cache size for each select
+  1 - Disable the local row cache
+ >1 - Cache this many rows
+ <0 - Cache as many rows fit into this much memory for each select.
+
+Note that large cache sizes may require very large amount of memory
+(cached rows * maximum size of row) and that a large cache will cause
+a longer delay for the first fetch and when the cache needs refilling.
+
+See also L</RowsInCache> statement handle attribute.
+
 =back
 
 
@@ -2320,9 +2354,9 @@ but with the leading "dbi:DriverName:" removed.
 
 =item B<bind_param>
 
-  $rc = $sth->bind_param($param_num, $bind_value)  || die $sth->errstr;
-  $rv = $sth->bind_param($param_num, $bind_value, \%attr)     || ...
-  $rv = $sth->bind_param($param_num, $bind_value, $bind_type) || ...
+  $rc = $sth->bind_param($p_num, $bind_value)  || die $sth->errstr;
+  $rv = $sth->bind_param($p_num, $bind_value, \%attr)     || ...
+  $rv = $sth->bind_param($p_num, $bind_value, $bind_type) || ...
 
 The bind_param method can be used to I<bind> (assign/associate) a value
 with a I<placeholder> embedded in the prepared statement. Placeholders
@@ -2377,9 +2411,9 @@ Undefined values or C<undef> are be used to indicate null values.
 
 =item B<bind_param_inout>
 
-  $rc = $sth->bind_param_inout($param_num, \$bind_value, $max_len)  || die $sth->errstr;
-  $rv = $sth->bind_param_inout($param_num, \$bind_value, $max_len, \%attr)     || ...
-  $rv = $sth->bind_param_inout($param_num, \$bind_value, $max_len, $bind_type) || ...
+  $rc = $sth->bind_param_inout($p_num, \$bind_value, $max_len)  || die $sth->errstr;
+  $rv = $sth->bind_param_inout($p_num, \$bind_value, $max_len, \%attr)     || ...
+  $rv = $sth->bind_param_inout($p_num, \$bind_value, $max_len, $bind_type) || ...
 
 This method acts like L</bind_param> but also enables values to be
 I<output from> (updated by) the statement. (The statement is typically
@@ -2482,10 +2516,11 @@ future so don't rely on it.
   $tbl_ary_ref = $sth->fetchall_arrayref( $slice_hash_ref  );
 
 The C<fetchall_arrayref> method can be used to fetch all the data to be
-returned from a prepared statement. It returns a reference to an array
-which contains one reference per row.  If there are no rows to return,
-fetchall_arrayref returns a reference to an empty array. If an error
-occurs fetchall_arrayref returns the data fetched thus far.
+returned from a prepared and executed statement handle. It returns a
+reference to an array which contains one reference per row.  If there
+are no rows to return, fetchall_arrayref returns a reference to an
+empty array. If an error occurs fetchall_arrayref returns the data
+fetched thus far (you should check $sth->err afterwards or use L</RaiseError>.
 
 When passed an array reference, fetchall_arrayref uses L</fetchrow_arrayref>
 to fetch each row as an array ref. If the parameter array is not empty
@@ -2495,7 +2530,8 @@ With no parameters, fetchall_arrayref acts as if passed an empty array ref.
 
 When passed a hash reference, fetchall_arrayref uses L</fetchrow_hashref>
 to fetch each row as a hash ref. If the parameter hash is not empty
-then it is used as a slice to select individual columns by name.
+then it is used as a slice to select individual columns by name. The
+names should be lower case regardless of the letter case in $sth->{NAME}.
 The values of the hash should be set to 1.
 
 For example, to fetch just the first column of every row you can use:
@@ -2728,6 +2764,14 @@ C<"where current of ..."> SQL syntax then it returns undef.
 
 Returns the statement string passed to the L</prepare> method.
 
+
+=item B<RowsInCache>  (integer, read-only) *NEW*
+
+If the driver supports a local row cache for select statements then
+this attribute holds the number of un-fetched rows in the cache. If the
+driver doesn't, then it returns undef.
+
+See also the L</RowCacheSize> database handle attribute.
 
 =back
 
@@ -2998,7 +3042,7 @@ Mailing list archives are held at:
 
 The DBI 'Home Page' (not maintained by me):
 
- http://www.arcana.co.uk/technologia/DBI
+ http://www.arcana.co.uk/technologia/perl/DBI
 
 Other related links:
 
@@ -3079,7 +3123,7 @@ same row to be fetched from the row cache over and over again (without
 involving Oracle code but exercising *all* the DBI and DBD::Oracle code
 in the code path for a fetch).
 
-The results (on my lightly loaded Sparc 10) fetching 50000 rows using:
+The results (on my lightly loaded old Sparc 10) fetching 50000 rows using:
 
 	1 while $csr->fetch;
 
@@ -3087,9 +3131,9 @@ were:
 	one field:   5300 fetches per cpu second (approx)
 	ten fields:  4000 fetches per cpu second (approx)
 
-Obviously results will vary between platforms but it does give a feel
-for the current theoretical maximum performance.  By way of comparison,
-using the code:
+Obviously results will vary between platforms (newer faster platforms
+can reach around 50000 fetches per second) but it does give a feel for
+the maximum performance: fast.  By way of comparison, using the code:
 
 	1 while @row = $csr->fetchrow_array;
 
@@ -3121,9 +3165,10 @@ fetch loop with just:
 
 	1 while $csr->fetch;
 
-and time that. If that doesn't help much then point the finger at the
-database, the platform, the network etc. But think carefully before
-pointing it at the DBI or your driver.
+and time that. If that helps then point the finger at your own code. If
+that doesn't help much then point the finger at the database, the
+platform, the network etc. But think carefully before pointing it at
+the DBI or your driver.
 
 (Having said all that, if anyone can show me how to make the DBI or
 drivers even more efficient, I'm all ears.)
@@ -3218,7 +3263,7 @@ See also the "Does Perl have a year 2000 problem?" section of the Perl FAQ:
 =item Informix - DBD::Informix
 
  Author:  Jonathan Leffler
- Email:   johnl@informix.com, dbi-users@fugue.com
+ Email:   jleffler@informix.com, j.leffler@acm.org, dbi-users@fugue.com
 
 =item Solid - DBD::Solid
 

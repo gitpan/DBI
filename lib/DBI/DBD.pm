@@ -1,15 +1,9 @@
-# $Id: DBD.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+# $Id: DBD.pm,v 10.2 1998/09/02 13:43:45 timbo Exp $
 #
 # Copyright (c) 1997 Jonathan Leffler and Tim Bunce
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Artistic License, as specified in the Perl README file.
-
-# This module serves two purposes:
-#
-#	Firstly it holds documentation to assist people writing drivers.
-#	Secondly it holds perl code that's used in the driver configuring
-#	and building process (typically called by the drivers Makefile.PL)
 
 =head1 NAME
 
@@ -17,12 +11,12 @@ DBI::DBD - DBD Driver Writer's Guide (draft)
 
 =head1 SYNOPSIS
 
-    perldoc DBI::FAQ
+    perldoc DBI::DBD
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 10.1 $
-	$Date: 1998/08/14 20:21:36 $
+	$Revision: 10.2 $
+	$Date: 1998/09/02 13:43:45 $
 
 This document is very much a minimal draft which will need to be revised
 frequently (and extensively).
@@ -1531,7 +1525,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$DBI::DBD::VERSION = $DBI::VERSION;
+$DBI::DBD::VERSION = substr(q$Revision: 10.2 $, 10);
 
 @EXPORT = qw(
 	dbd_dbi_dir dbd_dbi_arch_dir

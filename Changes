@@ -1,3 +1,15 @@
+Changes in DBI 1.01,	2nd September 1998
+
+  Many enhancements to Shell (with many contributions from
+  Jochen Wiedmann, Tom Lowery and Adam Marks).
+  Assorted fixes to DBD::Proxy and DBI::ProxyServer.
+  Tidied up trace messages - trace(2) much cleaner now.
+  Added $dbh->{RowCacheSize} and $sth->{RowsInCache}.
+  Added experimental DBI::Format (mainly for DBI::Shell).
+  Fixed fetchall_arrayref($slice_hash).
+  DBI->connect now honours PrintError=1 if connect fails.
+  Assorted clarifications to the docs.
+
 Changes in DBI 1.00,	14th August 1998
 
   The DBI is no longer 'alpha' software!

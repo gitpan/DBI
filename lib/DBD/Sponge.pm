@@ -6,7 +6,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: Sponge.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+#   $Id: Sponge.pm,v 10.2 1998/09/02 13:43:45 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -22,7 +22,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 10.1 $',
+	    'Version' => '$Revision: 10.2 $',
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;
@@ -58,6 +58,8 @@
 	$sth->STORE(NUM_OF_FIELDS => scalar @$firstrow);
 	$sth->{NAME} = $attribs->{NAME}
 		|| [ map { "col$_" } 1..@$firstrow ];
+	$sth->{TYPE} = $attribs->{TYPE}
+		|| [ (DBI::SQL_VARCHAR()) x @$firstrow ];
 
 	$outer;
     }

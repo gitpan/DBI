@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.1 1998/08/14 20:17:38 timbo Exp $
+/* $Id: DBI.xs,v 10.3 1998/09/02 14:17:16 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -394,7 +394,7 @@ dbi_watcher(h, imp_xxh, pre)	/* internal utility hook for debugging */
 {
     if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
 	D_imp_sth(h);
-	warn("watch %s:\n", neatsvpv(h,0));
+	warn("watch %s %lx:\n", neatsvpv(h,0), imp_sth);
     }
 }
 
@@ -516,7 +516,7 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
 	    imp_size = imp_maxsize + 64;
     }
 
-    if (dbis->debug >= 2)
+    if (dbis->debug >= 3)
 	fprintf(DBILOGFP,"    dbih_make_com(%s, %s, %d)\n",
 		neatsvpv(parent_h,0), imp_class, imp_size);
 
@@ -579,7 +579,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     h      = dbih_inner(orv, "dbih_setup_handle");
     parent = dbih_inner(parent, NULL);	/* check parent valid (& inner)	*/
 
-    if (dbis->debug >= 2)
+    if (dbis->debug >= 3)
 	fprintf(DBILOGFP,"    dbih_setup_handle(%s=>%s, %s, %lx, %s)\n",
 	    SvPV(orv,na), SvPV(h,na), imp_class, (long)parent, neatsvpv(imp_datasv,0));
 
@@ -751,7 +751,7 @@ dbih_clearcom(imp_xxh)
 
     DBIc_COMSET_off(imp_xxh);
 
-    if (dbis->debug >= 2)
+    if (dbis->debug >= 3)
 	fprintf(DBILOGFP,"    dbih_clearcom 0x%lx (com 0x%lx, type %d) done.\n\n",
 		(IV)DBIc_MY_H_OBJ(imp_xxh), (IV)imp_xxh, DBIc_TYPE(imp_xxh));
 }
@@ -818,9 +818,9 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     AV *av;
     int idx = SvIV(col);
     int fields = DBIc_NUM_FIELDS(imp_sth);
-    attribs = attribs;	/* avoid 'unused variable' warning	*/
 
     if (fields <= 0) {
+	attribs = attribs;	/* avoid 'unused variable' warning	*/
 	croak("Statement has no columns to bind%s",
 	    DBIc_ACTIVE(imp_sth)
 		? "" : " (perhaps you need to call execute first)");
@@ -896,7 +896,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     int    internal = DBIc_CALL_DEPTH(imp_xxh) > 1; /* for DBD's in perl */
     int    cacheit = 0;
 
-    if (dbis->debug >= 2)
+    if (dbis->debug >= 3)
 	fprintf(DBILOGFP,"    STORE %s %s => %s\n",
 		SvPV(h,na), neatsvpv(keysv,0), neatsvpv(valuesv,0));
 
@@ -913,7 +913,10 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	(on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
     }
     else if (strEQ(key, "RootClass")) {
-	cacheit = 1;
+	cacheit = 1;	/* just save it */
+    }
+    else if (strEQ(key, "RowCacheSize")) {
+	cacheit = 0;	/* ignore it */
     }
     else if (strEQ(key, "ChopBlanks")) {
 	DBIc_set(imp_xxh,DBIcf_ChopBlanks, on);
@@ -1012,18 +1015,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     /* XXX needs to be split into separate dr/db/st funcs	*/
     /* XXX probably needs some form of hashing->switch lookup	*/
 
-    /* This is just one example. I'll add more (LENGTH, NULLABLE etc)	*/
-    /* once I've worked out a better scheme for this.			*/
-    if (     htype==DBIt_ST && keylen==4 && strEQ(key, "TYPE")) {
-	D_imp_sth(h);
-	AV *av = newAV();
-	i = AvFILL(DBIc_FDESC_AV(imp_sth))+1;
-	while(--i >= 0)
-	    av_store(av, i, newSViv(DBIc_FDESC(imp_sth,i)->com.col_sql_type));
-	valuesv = newRV(sv_2mortal((SV*)av));
-	cacheit = TRUE;	/* can't change */
-    }
-    else if (htype==DBIt_ST && keylen==9 && strEQ(key, "CleanName")) {
+    if (htype==DBIt_ST && keylen==9 && strEQ(key, "CleanName")) {
 	D_imp_sth(h);
 	AV *av = newAV();
 	AV *name = Nullav; /* XXX */
@@ -1043,6 +1035,12 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_PARAMS(imp_sth));
 	cacheit = TRUE;	/* can't change */
+    }
+    else if (keylen==12 && strEQ(key, "RowCacheSize")) {
+	valuesv = &sv_undef;
+    }
+    else if (htype==DBIt_ST && keylen==11 && strEQ(key, "RowsInCache")) {
+	valuesv = &sv_undef;
     }
     else if (keylen==6  && strEQ(key, "Active")) {
 	valuesv = boolSV(DBIc_ACTIVE(imp_xxh));
@@ -1104,7 +1102,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	sv_free(*svp);
 	*svp = SvREFCNT_inc(valuesv);
     }
-    if (dbis->debug >= 2)
+    if (dbis->debug >= 3)
 	fprintf(DBILOGFP,"    FETCH %s %s = %s%s\n", SvPV(h,na),
 	    neatsvpv(keysv,0), neatsvpv(valuesv,0), cacheit?" (cached)":"");
     if (valuesv == &sv_yes || valuesv == &sv_no || valuesv == &sv_undef)
@@ -1350,17 +1348,17 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     if (SvRMAGICAL(SvRV(h)) && (mg=mg_find(SvRV(h),'P'))!=NULL) {
 
         if (SvPVX(mg->mg_obj)==NULL) {  /* maybe global destruction */
-            if (debug >= 2)
-                fprintf(DBILOGFP,"       (inner handle already deleted)\n");
+            if (debug >= 3)
+                fprintf(DBILOGFP,"    <> inner handle already DESTROYed\n");
 	    XSRETURN(0);
         }
 	/* Distinguish DESTROY of tie (outer) from DESTROY of inner ref	*/
 	/* This may one day be used to manually destroy extra internal	*/
 	/* refs if the application ceases to use the handle.		*/
         if (is_destroy) {
-	    if (debug >= 2)
-                fprintf(DBILOGFP,"       (outer handle DESTROY ignored)\n");
-	    /* for now we ignore it since it'll be followed at once by	*/
+	    if (debug >= 3)
+                fprintf(DBILOGFP,"    <> outer handle DESTROY (ignored)\n");
+	    /* for now we ignore it since it'll be followed soon by	*/
 	    /* a destroy of the inner hash and that'll do the real work	*/
 	    XSRETURN(0);
 	}
@@ -1723,8 +1721,8 @@ _install_method(class, meth_name, file, attribs=Nullsv)
 			  svp = av_fetch(av, 2, 0);
 	    ima->usage_msg  = savepv( (svp) ? SvPV(*svp,na) : "");
 	    ima->flags |= IMA_HAS_USAGE;
-	    if (dbis->debug >= 3)
-		fprintf(DBILOGFP,"    usage: min %d, max %d, '%s'",
+	    if (debug)
+		fprintf(DBILOGFP,"    usage: min %d, max %d, '%s'\n",
 			ima->minargs, ima->maxargs, ima->usage_msg);
 	}
 	if (debug)
@@ -1749,9 +1747,11 @@ trace(sv, level=dbis->debug, file=Nullch)
     ALIAS:
     _debug_dispatch = 1
     CODE:
-    sv = sv;	/* avoid 'unused variable' warning'			*/
-    if (!dbis)
+    if (!dbis) {
+	sv = sv;	/* avoid 'unused variable' warning'		*/
+	ix = ix;	/* avoid 'unused variable' warning'		*/
 	croak("DBI not initialised");
+    }
     /* Return old/current value. No change if new value not given.	*/
     RETVAL = dbis->debug;
     set_trace_file(file);
@@ -1804,7 +1804,7 @@ FETCH(sv)
     imp_xxh_t *imp_xxh = (ok) ? DBIh_COM(DBI_LAST_HANDLE) : NULL;
 
     if (dbis->debug >= 2 || (ok && DBIc_DEBUGIV(imp_xxh) >= 2)) {
-	fprintf(DBILOGFP,"    <> $DBI::%s (%c) FETCH from lasth=", meth, type);
+	fprintf(DBILOGFP,"    -> $DBI::%s (%c) FETCH from lasth=", meth, type);
 	if (ok) {
 	    SvROK_on(DBI_LAST_HANDLE);
 	    fprintf(DBILOGFP,"%s\n", SvPV(DBI_LAST_HANDLE,na));
@@ -1823,7 +1823,7 @@ FETCH(sv)
 	SvROK_on(DBI_LAST_HANDLE);
 	ST(0) = sv_mortalcopy(DBI_LAST_HANDLE);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"   $DBI::%s = %s (inner)\n",
+	    fprintf(DBILOGFP,"    <- $DBI::%s= %s (inner)\n",
 				meth, SvPV(DBI_LAST_HANDLE,na));
 	SvROK_off(DBI_LAST_HANDLE);
 	XSRETURN(1);
@@ -1836,7 +1836,7 @@ FETCH(sv)
     if (type == '*') {	/* special case for $DBI::err, see also err method	*/
 	SV *errsv = DBIc_ERR(imp_xxh);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"	err = %s\n", neatsvpv(errsv,0));
+	    fprintf(DBILOGFP,"    <- err= %s\n", neatsvpv(errsv,0));
 	ST(0) = sv_mortalcopy(errsv);
 	XSRETURN(1);
     }
@@ -1844,21 +1844,21 @@ FETCH(sv)
 	SV *state = DBIc_STATE(imp_xxh);
 	ST(0) = DBIc_STATE_adjust(imp_xxh, state);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"	state = %s\n", neatsvpv(ST(0),0));
+	    fprintf(DBILOGFP,"    <- state= %s\n", neatsvpv(ST(0),0));
 	XSRETURN(1);
     }
     if (type == '$') { /* lookup scalar variable in implementors stash */
 	char *vname = mkvname(DBIc_IMP_STASH(imp_xxh), meth, 0);
 	SV *vsv = perl_get_sv(vname, 1);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"%s = %s\n", vname, neatsvpv(vsv,0));
+	    fprintf(DBILOGFP,"    <- %s = %s\n", vname, neatsvpv(vsv,0));
 	ST(0) = sv_mortalcopy(vsv);
 	XSRETURN(1);
     }
     /* default to method call via stash of implementor of DBI_LAST_HANDLE */
     imp_stash = DBIc_IMP_STASH(imp_xxh);
     if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"%s::%s\n", HvNAME(imp_stash), meth);
+	fprintf(DBILOGFP,"    >> %s::%s\n", HvNAME(imp_stash), meth);
     ST(0) = DBI_LAST_HANDLE;
     if ((imp_gv = gv_fetchmethod(imp_stash,meth)) == NULL) {
 	croak("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",
@@ -1944,8 +1944,10 @@ fetchrow_array(sth)
     fetchrow = 1
     PPCODE:
     SV *retsv;
-    if (CvDEPTH(cv) == 99)
+    if (CvDEPTH(cv) == 99) {
+	ix = ix;	/* avoid 'unused variable' warning'		*/
         croak("Deep recursion. Probably fetchrow-fetch-fetchrow loop.");
+    }
     PUSHMARK(sp);
     XPUSHs(sth);
     PUTBACK;
@@ -1990,8 +1992,10 @@ fetch(sth)
     fetchrow_arrayref = 1
     CODE:
     int num_fields;
-    if (CvDEPTH(cv) == 99)
+    if (CvDEPTH(cv) == 99) {
+	ix = ix;	/* avoid 'unused variable' warning'		*/
         croak("Deep recursion. Probably fetch-fetchrow-fetch loop.");
+    }
     PUSHMARK(sp);
     XPUSHs(sth);
     PUTBACK;
@@ -2028,6 +2032,7 @@ void
 DESTROY(...)
     CODE:
     /* the interesting stuff happens in DBD::_mem::common::DESTROY */
+	items = items;	/* avoid 'unused variable' warning	*/
     ST(0) = &sv_undef;
 
 
@@ -2119,6 +2124,7 @@ trace(sv, level=0, file=Nullch)
 		SvPV(sv,na), level, XS_VERSION);
 	if (!dowarn && level>0)
 	    fprintf(DBILOGFP,"    Note: perl is running without the recommended perl -w option\n");
+	ix = ix;	/* avoid 'unused variable' warning	*/
     }
     }
     OUTPUT:
