@@ -1,9 +1,9 @@
-/* $Id: DBI.xs,v 1.62 1997/02/03 17:17:15 timbo Exp $
+/* $Id: DBI.xs,v 1.63 1997/02/21 15:06:52 timbo Exp $
  *
- * Copyright (c) 1994, 1995  Tim Bunce
+ * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
  * You may distribute under the terms of either the GNU General Public
- * License or the Artistic License, as specified in the Perl README file.
+ * License or the Artistic License, as specified in the Perl5 README file.
  */
 
 #define IN_DBI_XS 1	/* see DBIXS.h */
@@ -19,13 +19,13 @@ extern int perl_destruct_level;
 /* Retrieve imp_??h_t struct from handle magic.	*/
 /* Cast increases required alignment of target type	*/
 /* not a problem since we created the pointers anyway.	*/
-#define DBIh_FROM_MG(mg) ((imp_xxh_t*)SvPVX((mg)->mg_obj))
+#define DBIh_FROM_MG(mg) ((imp_xxh_t*)(void*)SvPVX((mg)->mg_obj))
 
 #ifndef PerlIO_setlinebuf
 #ifdef HAS_SETLINEBUF
-#define PerlIO_setlinebuf(f)        setlinebuf(f);
+#define PerlIO_setlinebuf(f)        setlinebuf(f)
 #else
-#define PerlIO_setlinebuf(f)        setvbuf(f, Nullch, _IOLBF, 0);
+#define PerlIO_setlinebuf(f)        setvbuf(f, Nullch, _IOLBF, 0)
 #endif
 #endif
 
@@ -59,6 +59,14 @@ typedef struct dbi_ima_st {
 #define IMA_HAS_USAGE		0x0001	/* check parameter usage	*/
 #define IMA_FUNC_REDIRECT	0x0002	/* is $h->func(..., "method")	*/
 #define IMA_KEEP_ERR		0x0004	/* don't reset err & errstr	*/
+
+#define DBIc_STATE_adjust(imp_xxh, state)				 \
+    (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
+	? (strEQ(SvPV(state,na),"00000") ? &sv_no : sv_mortalcopy(state))\
+	: (SvTRUE(DBIc_ERR(imp_xxh))					 \
+	    ? sv_2mortal(newSVpv("S1000",5)) /* General error	*/	 \
+	    : &sv_no)			/* Success ("00000")	*/	 \
+    )
 
 #define DBI_LAST_HANDLE		dbi_last_h /* special fake inner handle	*/
 #define DBI_LAST_HANDLE_PARENT	(DBIc_PARENT_H(DBIh_COM(DBI_LAST_HANDLE)))
@@ -1181,7 +1189,6 @@ void
 FETCH(sv)
     SV *	sv
     CODE:
-    /* XXX TIESCALAR CODE SEEMS TO BE BUST IN Perl5.000 */
     /* Note that we do not come through the dispatcher to get here.	*/
     char *meth = SvPV(SvRV(sv),na);	/* what should this tie do ?	*/
     char type = *meth++;		/* is this a $ or & style	*/
@@ -1220,7 +1227,7 @@ FETCH(sv)
 	XSRETURN_UNDEF;
     }
 
-    if (type == '*') {	/* special case for $DBI::err	*/
+    if (type == '*') {	/* special case for $DBI::err, see also err method	*/
 	SV *errsv = DBIc_ERR(imp_xxh);
 	if (dbis->debug >= 2)
 	    fprintf(DBILOGFP,"	err = '%s'\n", neatsvpv(errsv,0));
@@ -1228,19 +1235,8 @@ FETCH(sv)
 	XSRETURN(1);
     }
     if (type == '"') {	/* special case for $DBI::state	*/
-	SV *errsv = DBIc_STATE(imp_xxh);
-	if (!SvOK(errsv)) {	/* SQLSTATE not implemented by driver	*/
-	    if (SvTRUE(DBIc_ERR(imp_xxh)))		/* use DBI::err	*/
-		ST(0) = sv_2mortal(newSVpv("S1000",5));	/* General error */
-	    else
-		ST(0) = &sv_no;			/* Success ("00000")	*/
-	} else {
-	    /* map "00000" to false, all else is true			*/
-	    if (strEQ(SvPV(errsv,na), "00000"))
-		ST(0) = &sv_no;
-	    else
-		ST(0) = sv_mortalcopy(errsv);
-	}
+	SV *state = DBIc_STATE(imp_xxh);
+	ST(0) = DBIc_STATE_adjust(imp_xxh, state);
 	if (dbis->debug >= 2)
 	    fprintf(DBILOGFP,"	state = '%s'\n", neatsvpv(ST(0),0));
 	XSRETURN(1);
@@ -1263,7 +1259,7 @@ FETCH(sv)
 	    meth, meth, HvNAME(imp_stash));
 	XSRETURN_UNDEF;
     }
-/* something here is not quite right ! (wrong number of args to method for example) */
+/* something here is not quite right ! (wrong number of args to method for example) XXX? */
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
     perl_call_sv((SV*)imp_gv, GIMME);
 
@@ -1411,6 +1407,30 @@ private_data(h)
     CODE:
     D_imp_xxh(h);
     ST(0) = sv_mortalcopy(DBIc_IMP_DATA(imp_xxh));
+
+
+void
+err(h)
+    SV * h
+    CODE:
+    D_imp_xxh(h);
+    SV *errsv = DBIc_ERR(imp_xxh);
+    ST(0) = sv_mortalcopy(errsv);
+
+void
+state(h)
+    SV * h
+    CODE:
+    D_imp_xxh(h);
+    SV *state = DBIc_STATE(imp_xxh);
+    ST(0) = DBIc_STATE_adjust(imp_xxh, state);
+
+void
+errstr(h)
+    SV *    h
+    CODE:
+    D_imp_xxh(h);
+    ST(0) = sv_mortalcopy(DBIc_ERRSTR(imp_xxh));
 
 
 MODULE = DBI   PACKAGE = DBD::_mem::common

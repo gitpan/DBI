@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.56 1997/01/27 22:35:54 timbo Exp $
+# $Id: Makefile.PL,v 1.57 1997/02/21 15:06:52 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -27,13 +27,14 @@ warn <<EOT;
 
     Remember to actually *read* the README file!
 
-    Build, TEST and INSTALL Perl 5 first. Use version 5.002beta2 or later.
+    Build, TEST and INSTALL Perl 5 first. Use version 5.003 or later.
 
     DO NOT build the DBI under the Perl source tree.
 
     Use 'make test' to execute self tests.
 
-    Install DBI (using 'make install' before building DBD::* drivers.
+    Install DBI (using 'make install') and delete this working directory
+	before unpacking and building any DBD::* drivers.
 
 EOT
 
@@ -75,7 +76,8 @@ directories you MUST delete old DBI files and directories from your
     }
 
     # get DBIXS.h installed for access by DBD's
-    $self->{PM}->{'DBIXS.h'} = '$(INST_ARCHLIBDIR)/DBI/DBIXS.h';
+	# (was '$(INST_ARCHLIBDIR)/DBI/DBIXS.h')
+    $self->{PM}->{'DBIXS.h'} = '$(INST_ARCHAUTODIR)/DBIXS.h';
     '';
 }
 

@@ -3,7 +3,15 @@ Current DBI Implementation Notes:
 	$ary_ref = $sth->fetch; currently always returns the same array ref.
 	This may be a feature that stays, then again it may not.
 
-    *** THINGS MAY CHANGE *** See README file ***
+    THINGS MAY CHANGE. See the README file.
+
+Changes in DBI 0.77,	21st Feb 1997
+
+	Removed erroneous $h->errstate and $h->errmsg methods from DBI.pm.
+	Added $h->err, $h->errstr and $h->state default methods in DBI.xs.
+	Updated informal DBI API notes in DBI.pm. Updated README slightly.
+	DBIXS.h now correctly installed into INST_ARCHAUTODIR.
+	(DBD authors will need to edit their Makefile.PL's)
 
 Changes in DBI 0.76,	3rd Feb 1997
 

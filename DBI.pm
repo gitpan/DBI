@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.76';
+$VERSION = '0.77';
 
-my $Revision = substr(q$Revision: 1.62 $, 10);
+my $Revision = substr(q$Revision: 1.63 $, 10);
 
-# $Id: DBI.pm,v 1.62 1997/02/03 18:55:15 timbo Exp $
+# $Id: DBI.pm,v 1.63 1997/02/21 15:06:52 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -97,8 +97,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	'do'       =>	{ U =>[2,0,'$statement [, \%attribs [, @bind_params ] ]'] },
 	prepare    =>	{ U =>[2,3,'$statement [, \%attribs]'] },
 	handler    =>	{ U =>[2,2,'\&handler'] },
-	errstate   =>	{ U =>[1,1], O=>0x04 },
-	errmsg     =>	{ U =>[1,1], O=>0x04 },
+	state      =>	{ U =>[1,1], O=>0x04 },
 	disconnect =>	{ U =>[1,1] },
 	tables     =>	{ U =>[1,1] },
 	quote      =>	{ U =>[2,2, '$str'] },
@@ -201,7 +200,13 @@ sub install_driver {
 
     # --- load the code
     eval "package DBI::_firesafe; require DBD::$driver_name";
-    confess "install_driver($driver_name) failed: $@" if $@;
+    if ($@) {
+	my $advice = "";
+	$advice = "\nPerhaps DBD::$driver_name was statically linked into a new perl binary."
+		 ."\nIn which case you need to use that new perl binary."
+	    if $@ =~ /Can't find loadable object/;
+	confess "install_driver($driver_name) failed: $@$advice\n"
+    }
     warn "DBI->install_driver($driver_name) loaded\n" if $DBI::dbi_debug;
 
     # --- do some behind-the-scenes checks and setups on the driver
@@ -265,24 +270,22 @@ sub available_drivers {
 
 sub neat_list {
     my($listref, $maxlen, $sep) = @_;
-    $maxlen = 0 unless defined $maxlen;
+    $maxlen = 0 unless defined $maxlen;	# 0 == use internal default
     $sep = ", " unless defined $sep;
-    join(", ", map { neat($_,$maxlen) } @$listref);
+    join($sep, map { neat($_,$maxlen) } @$listref);
 }
 
 
 sub dump_results {
-    my($sth, $maxlen, $sep) = @_;
+    my($sth, $maxlen, $lsep, $fsep) = @_;
     $maxlen ||= 35;
-    $sep    ||= "\n";
+    $lsep   ||= "\n";
     my $rows = 0;
     my $ref;
-#$sth->debug(2);
     while($ref = $sth->fetch) {
-	print $sep if $rows++;
-	print neat_list($ref,$maxlen);
+	print $lsep if $rows++ and $lsep;
+	print neat_list($ref,$maxlen,$fsep);
     }
-#$sth->debug(0);
     print "\n$rows rows".($DBI::err ? " ($DBI::err: $DBI::errstr)" : "")."\n";
     $rows;
 }
@@ -452,7 +455,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     # methods common to all handle types:
 
     *debug = \&DBI::_debug_handle;
-    sub errstr	{ $DBI::err }	# errstr defaults to (tie'd) err value
 
     # generic TIEHASH default methods:
     sub FIRSTKEY { undef }
@@ -599,20 +601,21 @@ $drh = DBI->internal; # return $drh for internal Switch 'driver'
 $drh = DBI->install_driver($driver_name [, \%attributes ] );
 $rv  = DBI->install_method($class_method, $filename [, \%attribs]);
 
-$DBI::lasth   the last handle used
-$DBI::err     same as DBI::lasth->{Error}
-$DBI::errstr  same as DBI::lasth->{ErrorStr}
-$DBI::state   ISO SQL/92 style SQLSTATE value
-$DBI::rows    same as DBI::lasth->{ROW_COUNT}
+$DBI::lasth   the last handle used (not recommended for use)
+$DBI::err     same as $h->err
+$DBI::errstr  same as $h->errstr
+$DBI::state   same as $h->state
+$DBI::rows    same as $sth->rows
+(where $h is the last handle used)
 
 DBI->connect calls DBI->install_driver if the driver has not been
-installed yet. It then returns the result of $drh->connect.
-It is important to note that DBI->install_driver always returns
-a valid driver handle or it *dies* with an error message which
-includes the string 'install_driver' and the underlying problem.
-So, DBI->connect will die on an install_driver failure and will
-only return undef on a connect failure, for which $DBI::errstr
-will hold the error.
+installed yet. It then returns the result of $drh->connect.  It is
+important to note that DBI->install_driver always returns a valid
+driver handle or it *dies* with an error message which includes the
+string 'install_driver' and the underlying problem.  So, DBI->connect
+will die on an install_driver failure and will only return undef on a
+connect failure, for which $DBI::errstr will will hold the error.
+Direct use of install_driver is not recommended.
 
 ---------------------------------------------------------------
 DRIVER OBJECTS (not normally used by an application)
@@ -641,8 +644,9 @@ $rc  = $dbh->do($statement [, \%attr, [ @params ]]);
 $sth = $dbh->prepare($statement [, \%attr]);
 $sth = $dbh->tables();
 
-$rv  = $dbh->errstate;
-@ary = $dbh->errmsg;
+$rv  = $dbh->err;	/* error code, ala $DBI::err		*/
+$rv  = $dbh->errstr;	/* error message, ala $DBI::errstr	*/
+$rv  = $dbh->state;	/* SQLSTATE style code, if supported	*/
 
 $sql = $dbh->quote($str);
 
@@ -663,7 +667,6 @@ $rc  = $sth->execute(@bind_values);    	undef, 0E0, 1, 2, ...
 $rc  = $sth->finish;                    undef or 1
 
 $sth->{Type}       "st"
-$sth->{Name}
 $sth->{Database}   (\%)  # eg $sth->{Database}->{Driver}->{Name} !
 
 $sth->{NAME}       (\@)
