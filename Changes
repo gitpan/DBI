@@ -1,3 +1,9 @@
+Changes in DBI 1.11,	17th June 1999
+
+  Fixed bind_columns argument checking to allow a single arg.
+  Fixed problems with internal default_user method.
+  Fixed broken DBD::ADO.
+  Made default $DBI::rows more robust for some obscure cases.
 
 Changes in DBI 1.10,	14th June 1999
 

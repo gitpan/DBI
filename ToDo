@@ -1,9 +1,12 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Docs for connect_cached and test with proxy.
+
 Primary Key metadata
 
 Enable warnings in default_user().
+Add prompt for user/pass in default_user().
 
 Change bind_column to save the info for get_fbav to use when
 first called. Thus making bind before execute reliable.

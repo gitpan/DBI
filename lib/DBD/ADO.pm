@@ -6,9 +6,9 @@
     require Carp;
 
     @EXPORT = ();
-    $VERSION = substr(q$Revision: 1.11 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 1.12 $, 9,-1) -1;
 
-#   $Id: ADO.pm,v 1.11 1999/05/26 00:48:39 timbo Exp $
+#   $Id: ADO.pm,v 1.12 1999/06/17 13:08:26 timbo Exp $
 #
 #   Copyright (c) 1999, Phlip & Tim Bunce
 #
@@ -151,7 +151,7 @@ my $VT_I4_BYREF;
 	my $conn = $sth->{ado_conn};
 	my $sql  = $sth->{Statement};
 
-	my $rows = Variant($VT_I4_BYREF, 0);
+	my $rows = Win32::OLE::Variant->new($VT_I4_BYREF, 0);
 	my $rs = $conn->Execute($sql, $rows, $ado_consts->{adCmdText});
 
 	local $Win32::OLE::Warn = 0;

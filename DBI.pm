@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.22 1999/06/13 23:46:47 timbo Exp $
+# $Id: DBI.pm,v 10.23 1999/06/17 13:08:26 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = "1.10"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.11"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -67,8 +67,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.10
-($Date: 1999/06/13 23:46:47 $).
+This is the DBI specification that corresponds to the DBI version 1.11
+($Date: 1999/06/17 13:08:26 $).
 
 The DBI specification is evolving at a steady pace so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -118,7 +118,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.22 $, 10);
+my $Revision = substr(q$Revision: 10.23 $, 10);
 
 
 use Carp;
@@ -238,6 +238,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	'connect_cached'=>{U=>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'] },
 	'disconnect_all'=>{ U =>[1,1] },
 	data_sources => { U =>[1,2,'[\%attr]' ] },
+	default_user => { U =>[3,4,'$user, $pass [, \%attr]' ] },
     },
     db => {		# Database Session Class Interface
 	@Common_IF,
@@ -266,7 +267,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	@Common_IF,
 	@TieHash_IF,
 	bind_col	=> { U =>[3,4,'$column, \\$var [, \%attr]'] },
-	bind_columns	=> { U =>[3,0,'\%attr, \\$var1 [, \\$var2, ...]'] },
+	bind_columns	=> { U =>[2,0,'\\$var1 [, \\$var2, ...]'] },
 	bind_param	=> { U =>[3,4,'$parameter, $var [, \%attr]'] },
 	bind_param_inout=> { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attr]'] },
 	execute		=> { U =>[1,0,'[@args]'] },
@@ -372,9 +373,10 @@ sub connect {
 	#    if $^W && !defined($attr->{AutoCommit});
     }
 
-    my $drh = $class->install_driver($driver) || die "panic: install_driver($driver) failed";
+    my $drh = $class->install_driver($driver)
+	|| die "panic: install_driver($driver) failed";
 
-    ($user, $pass) = $drh->default_user($user,$pass)
+    ($user, $pass) = $drh->default_user($user, $pass, $attr)
 	if !(defined $user && defined $pass);
 
     unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
@@ -1720,8 +1722,14 @@ Equivalent to $h->rows. Please refer to the L</rows> method documentation.
 
   $rv = $h->err;
 
-Returns the native database engine error code from the last driver
-function called.
+Returns the I<native> database engine error code from the last driver
+function called. The code is typically an integer but you should not
+assume that.
+
+If you need to test for individual errors I<and> have your program be
+portable to different database engines, then you'll need to determine
+what the corresponding error codes are for all those engines and test for
+all of them.
 
 =item B<errstr>
 
@@ -1736,8 +1744,8 @@ function called.
 
 Returns an error code in the standard SQLSTATE five character format.
 Note that the specific success code C<00000> is translated to C<0>
-(false). If the driver does not support SQLSTATE then state will
-return C<S1000> (General Error) for all errors.
+(false). If the driver does not support SQLSTATE, and most don't,
+then state will return C<S1000> (General Error) for all errors.
 
 =item B<trace>
 
@@ -1946,8 +1954,12 @@ A value of 0 means don't automatically fetch any long data (fetch
 should return undef for long fields when LongReadLen is 0).
 
 The default is typically 0 (zero) bytes but may vary between drivers.
-Most applications fetching long fields will set this value to slightly
+Applications fetching long fields should set this value to slightly
 larger than the longest long field value which will be fetched.
+
+Some databases return some 'long' types encoded as pairs of hex digits.
+For these types LongReadLen relates to the underlying data and not the
+doubled-up length of the encoded string.
 
 Changing the value of LongReadLen for a statement handle I<after> it's
 been prepare()'d I<will typically have no effect> so it's usual to

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.20 1999/06/13 23:02:03 timbo Exp $
+/* $Id: DBI.xs,v 10.22 1999/06/17 13:17:22 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -2511,6 +2511,15 @@ trace_msg(sv, msg, min_level=1)
     else {
         ST(0) = &sv_no;
     }
+
+
+void
+rows(h)
+    SV *        h
+    CODE:
+    /* fallback esp for $DBI::rows after $drh was last used */
+	if (0) h = h;	/* avoid unused variable warning */
+    ST(0) = sv_2mortal(newSViv(-1));
 
 
 MODULE = DBI   PACKAGE = DBD::_mem::common

@@ -4,9 +4,9 @@
     require DBI;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.2 $, 9,-1);
+    $VERSION = substr(q$Revision: 10.3 $, 9,-1);
 
-#   $Id: NullP.pm,v 10.2 1999/05/13 01:44:25 timbo Exp $
+#   $Id: NullP.pm,v 10.3 1999/06/17 13:08:26 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -28,7 +28,9 @@
 	$drh;
     }
 
-    1;
+    sub default_user {
+        return ('','');
+    }
 }
 
 

@@ -30,7 +30,7 @@ ok(0, !-e $trace_file);
 DBI->trace(3,$trace_file);		# enable trace before first driver load
 
 my $r;
-my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', '', '');
+my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', undef, undef);
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 
 my $dbh2 = DBI->connect('dbi:ExampleP:', '', '');

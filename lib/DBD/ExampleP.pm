@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.8 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 10.9 $, 9,-1) -1;
 
-#   $Id: ExampleP.pm,v 10.8 1999/06/09 20:52:53 timbo Exp $
+#   $Id: ExampleP.pm,v 10.9 1999/06/17 13:08:26 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -41,6 +41,9 @@
 	$drh;
     }
 
+    sub default_user {
+	return ('','');
+    }
 }
 
 
