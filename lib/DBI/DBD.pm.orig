@@ -1791,12 +1791,12 @@ sub dbd_edit_mm_attribs {
 	foreach my $test (sort @tests) {
 	    next if $test =~ /^zz_.*_pp\.t$/;
 	    $test =~ s/\.t$//;
-	    my $pp_test = ":t:zz_${test}_pp.t";
+	    my $pp_test = "t/zz_${test}_pp.t";
 	    print "Creating extra DBI::PurePerl test: $pp_test\n";
 	    open PPT, ">$pp_test" or warn "Can't create $pp_test: $!";
 	    print PPT "#!perl -w\n";
 	    print PPT "\$ENV{DBI_PUREPERL}=2;\n";
-	    print PPT "do '$test.t';\n";
+	    print PPT "do 't/$test.t';\n";
 	    print PPT "exit 0\n";
 	    close PPT or warn "Error writing $pp_test: $!";
 	}
