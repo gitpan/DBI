@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.63 1997/02/21 15:06:52 timbo Exp $
+/* $Id: DBI.xs,v 1.64 1997/03/28 15:31:22 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -33,8 +33,8 @@ static imp_xxh_t *dbih_getcom _((SV *h));
 static void       dbih_clearcom _((imp_xxh_t *imp_xxh));
 static SV	 *dbih_event _((SV *h, char *name, SV*, SV*));
 static SV	 *dbi_last_h;
-static int        dbih_set_attr _((SV *h, SV *keysv, SV *valuesv));
-static SV        *dbih_get_attr _((SV *h, SV *keysv));
+static int        dbih_set_attr  _((SV *h, SV *keysv, SV *valuesv));
+static SV        *dbih_get_attr  _((SV *h, SV *keysv));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
 
 int imp_maxsize;
@@ -369,7 +369,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	DBIc_PARENT_COM(imp) = NULL;
 	DBIc_TYPE(imp)	     = DBIt_DR;
 	DBIc_FLAGS(imp)      = 0;
-	DBIc_WARN_on(imp);	/* only set here, childern inherit	*/
+	DBIc_WARN_on(imp);	/* only set here, children inherit	*/
     }
 
     /* copy some attributes from parent if not defined locally and	*/
@@ -421,13 +421,14 @@ dbih_dumpcom(imp_xxh, msg)
     warn("    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
     warn("    KIDS %ld (%ld active)\n",
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
-    warn("    IMP_DATA %s\n",	neatsvpv(DBIc_IMP_DATA(imp_xxh),0));
+    warn("    IMP_DATA %s in '%s'\n",
+	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
 
-	if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
-		imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
-		warn("    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
-		warn("    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
-	}
+    if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
+	imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
+	warn("    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
+	warn("    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
+    }
 }
 
 
@@ -605,6 +606,9 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "Warn")) {
 	(on) ? DBIc_WARN_on(imp_xxh) : DBIc_WARN_off(imp_xxh);
     }
+    else if (strEQ(key, "InactiveDestroy")) {
+	(on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
+    }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
@@ -630,6 +634,7 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     return TRUE;
 }
 
+
 static SV *
 dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     SV *h;
@@ -639,32 +644,75 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     STRLEN keylen;
     char  *key = SvPV(keysv, keylen);
     int    htype = DBIc_TYPE(imp_xxh);
-    int    cacheit = TRUE;
+    int    cacheit = FALSE;
+    SV   **svp;
     SV    *valuesv = &sv_undef;
-    /* DBI quick_FETCH will service some requests	*/
+    /* DBI quick_FETCH will service some requests (e.g., cached values)	*/
 
-    if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"    FETCH %s %s\n", SvPV(h,na), neatsvpv(keysv,0));
-
-    if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
+    if (htype==DBIt_ST      && keylen==13 && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_FIELDS(imp_sth));
+	cacheit = TRUE;
     }
-    else if (htype==DBIt_ST && strEQ(key, "NUM_OF_PARAMS")) {
+    else if (htype==DBIt_ST && keylen==13 && strEQ(key, "NUM_OF_PARAMS")) {
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_PARAMS(imp_sth));
+	cacheit = TRUE;
     }
-    else {
-	croak("Can't get %s->{%s}: unrecognised attribute",
-	    SvPV(h,na), SvPV(keysv,na));	/* XXX should be event?	*/
+    else if (keylen==4  && strEQ(key, "Warn")) {
+	valuesv = DBIc_WARN(imp_xxh)		? &sv_yes : &sv_no;
+    }
+    else if (keylen==10 && strEQ(key, "CompatMode")) {
+	valuesv = DBIc_COMPAT(imp_xxh)		? &sv_yes : &sv_no;
+    }
+    else if (keylen==15 && strEQ(key, "InactiveDestroy")) {
+	valuesv = DBIc_IADESTROY(imp_xxh)	? &sv_yes : &sv_no;
+    }
+    else {	/* finally check the actual hash just in case	*/
+	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
+	if (!svp)
+	    croak("Can't get %s->{%s}: unrecognised attribute",
+		SvPV(h,na), SvPV(keysv,na));	/* XXX should be event?	*/
+	valuesv = *svp;
     }
     if (cacheit) {
-	SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, 1);
+	svp = hv_fetch((HV*)SvRV(h), key, keylen, TRUE);
 	sv_free(*svp);
 	*svp = valuesv;
 	(void)SvREFCNT_inc(valuesv);	/* keep it around for cache	*/
     }
+    if (dbis->debug >= 2)
+	fprintf(DBILOGFP,"    FETCH %s %s = %s%s\n", SvPV(h,na),
+	    neatsvpv(keysv,0), neatsvpv(valuesv,0), cacheit?" (cached)":"");
+    if (valuesv == &sv_yes || valuesv == &sv_no)
+	return valuesv;	/* no need to mortalize yes or no */
     return sv_2mortal(valuesv);
+}
+
+
+static SV *			/* find attrib in handle or its parents	*/
+dbih_find_attr(h, keysv, copydown, spare)
+    SV *h;
+    SV *keysv;
+    int copydown;		/* copydown attribute down from parent	*/
+    int spare;
+{
+    D_imp_xxh(h);
+    SV *ph;
+    STRLEN keylen;
+    char  *key = SvPV(keysv, keylen);
+    SV *valuesv;
+    SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
+    if (svp)
+	valuesv = *svp;
+    else
+    if (!SvOK(ph=DBIc_PARENT_H(imp_xxh)))
+	valuesv = Nullsv;
+    else /* recurse up */
+	valuesv = dbih_find_attr(ph, keysv, copydown, spare);
+    if (valuesv && copydown)
+	hv_store((HV*)SvRV(h), key, keylen, newSVsv(valuesv), 0);
+    return valuesv;	/* return actual sv, not a mortalised copy	*/
 }
 
 
@@ -870,17 +918,20 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
         ST(0) = h;      /* switch handle on stack to inner ref		*/
     }
 
+    imp_xxh = DBIh_COM(h); /* get common Internal Handle Attributes	*/
+
     /* record this inner handle for use by DBI::var::FETCH	*/
     if (is_destroy) {	/* we use devious means here...	*/
 	if (DBI_IS_LAST_HANDLE(h)) {	/* if destroying _this_ handle */
 	    SV *lhp = DBI_LAST_HANDLE_PARENT;
 	    (SvROK(lhp)) ? DBI_SET_LAST_HANDLE(lhp) : DBI_UNSET_LAST_HANDLE;
+	} /* otherwise don't alter last handle */
+
+	if (DBIc_IADESTROY(imp_xxh)) { /* want's ineffective destroy	*/
+	    DBIc_ACTIVE_off(imp_xxh);
 	}
-	/* otherwise don't alter it */
     }
     else DBI_SET_LAST_HANDLE(h);
-
-    imp_xxh = DBIh_COM(h); /* get common Internal Handle Attributes	*/
 
     if (!ima || !(ima->flags & IMA_KEEP_ERR)) {
 	DBIh_CLEAR_ERROR(imp_xxh);
@@ -912,8 +963,6 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
 	}
 
-	DBIc_LAST_METHOD(imp_xxh) = meth_name;
-
 	if (debug >= 2) {
 	    /* Full pkg method name (or just meth_name for ANON CODE)	*/
 	    char *imp_meth_name = (isGV(imp_msv)) ? GvNAME(imp_msv) : meth_name;
@@ -929,6 +978,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		fprintf(DBILOGFP," %s", neatsvpv(ST(i),0));
 	    fprintf(DBILOGFP, ")\n");
 	}
+
+	DBIc_LAST_METHOD(imp_xxh) = meth_name;
 
 	PUSHMARK(mark);  /* mark arguments again so we can pass them on	*/
 
@@ -982,8 +1033,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    fprintf(logfp, " %s",  neatsvpv(ST(i),0));
 	if (gimme & G_ARRAY)
 	    fprintf(logfp," ) [%d items]", outitems);
-	if (qsv)
-	    fprintf(logfp," QUICK");
+	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
+	    fprintf(logfp," QUICK (%s)", neatsvpv(ST(1),0));
 	fprintf(logfp,"\n");
     }
 
@@ -1033,6 +1084,8 @@ set_err(sv, errval, errstr=&sv_no, state=&sv_undef)
     {
     D_imp_xxh(sv);
     sv_setsv(DBIc_ERR(imp_xxh),    errval);
+    if (errstr==&sv_no || !SvOK(errstr))
+	errstr = errval;
     sv_setsv(DBIc_ERRSTR(imp_xxh), errstr);
     if (SvOK(state)) {
 	STRLEN len;
@@ -1230,7 +1283,7 @@ FETCH(sv)
     if (type == '*') {	/* special case for $DBI::err, see also err method	*/
 	SV *errsv = DBIc_ERR(imp_xxh);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"	err = '%s'\n", neatsvpv(errsv,0));
+	    fprintf(DBILOGFP,"	err = %s\n", neatsvpv(errsv,0));
 	ST(0) = sv_mortalcopy(errsv);
 	XSRETURN(1);
     }
@@ -1238,7 +1291,7 @@ FETCH(sv)
 	SV *state = DBIc_STATE(imp_xxh);
 	ST(0) = DBIc_STATE_adjust(imp_xxh, state);
 	if (dbis->debug >= 2)
-	    fprintf(DBILOGFP,"	state = '%s'\n", neatsvpv(ST(0),0));
+	    fprintf(DBILOGFP,"	state = %s\n", neatsvpv(ST(0),0));
 	XSRETURN(1);
     }
     if (type == '$') { /* lookup scalar variable in implementors stash */
@@ -1430,7 +1483,12 @@ errstr(h)
     SV *    h
     CODE:
     D_imp_xxh(h);
-    ST(0) = sv_mortalcopy(DBIc_ERRSTR(imp_xxh));
+	SV *errstr = DBIc_ERRSTR(imp_xxh);
+	SV *err;
+	/* If there's no errstr but there is an err then use err */
+	if (!SvTRUE(errstr) && (err=DBIc_ERR(imp_xxh)) && SvTRUE(err))
+		errstr = err;
+    ST(0) = sv_mortalcopy(errstr);
 
 
 MODULE = DBI   PACKAGE = DBD::_mem::common

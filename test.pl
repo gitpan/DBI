@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.16 1996/09/23 18:20:45 timbo Exp $
+# $Id: test.pl,v 1.17 1997/03/28 15:31:22 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,7 +11,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.16 $}."\n";
+	print q{DBI test application $Revision: 1.17 $}."\n";
 	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
 }
 
@@ -144,7 +144,7 @@ sub run_test{
     my $row_ref = $cursor_a->fetch;
     print join(' ',@$row_ref),"\n";
 
-    print "bind_col ", ($col0 and $col0 eq $row_ref->[0]) ? "worked\n" :
+    print "bind_columns ", ($col0 and $col0 eq $row_ref->[0]) ? "worked\n" :
 		"didn't work (bound:$col0 fetched:$row_ref->[0])!\n";
 
     $cursor_a->finish;

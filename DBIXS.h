@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.30 1997/01/14 17:45:23 timbo Exp $
+/* $Id: DBIXS.h,v 1.31 1997/03/28 15:31:22 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -139,8 +139,8 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIcf_COMSET	0x0001	/* needs to be clear'd before free'd	*/
 #define DBIcf_IMPSET	0x0002	/* has implementor data to be clear'd	*/
 #define DBIcf_ACTIVE	0x0004	/* needs finish/disconnect before clear	*/
-#define DBIcf_spare		0x0008	/*                                      */
-#define DBIcf_WARN  	0x0010	/* warn about poor practice etc		*/
+#define DBIcf_IADESTROY	0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
+#define DBIcf_WARN  	0x0010	/* warn about poor practice etc  	*/
 #define DBIcf_COMPAT  	0x0020	/* compat/emulation mode (eg oraperl)	*/
 
 #define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
@@ -171,6 +171,10 @@ typedef struct {		/* -- STATEMENT --			*/
 	    croak("panic: DBI active kids < 0");			\
 	DBIc_FLAGS(imp) &= ~DBIcf_ACTIVE;				\
     } while(0)
+
+#define DBIc_IADESTROY(imp)	(DBIc_FLAGS(imp) &   DBIcf_IADESTROY)
+#define DBIc_IADESTROY_on(imp)	(DBIc_FLAGS(imp) |=  DBIcf_IADESTROY)
+#define DBIc_IADESTROY_off(imp)	(DBIc_FLAGS(imp) &= ~DBIcf_IADESTROY)
 
 #define DBIc_WARN(imp)   	(DBIc_FLAGS(imp) &   DBIcf_WARN)
 #define DBIc_WARN_on(imp)	(DBIc_FLAGS(imp) |=  DBIcf_WARN)
@@ -293,5 +297,8 @@ typedef struct {
 	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvIV(*svp)
 
+#ifndef SV_YES_NO
+#define SV_YES_NO(bool) ((bool) ? &sv_yes : &sv_no) 
+#endif
 
 /* end of DBIXS.h */

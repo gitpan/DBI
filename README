@@ -18,7 +18,11 @@ This strategy enables the DBI and drivers to serve a useful purpose
 whilst allowing the real interface to evolve with experience behind the
 emulation interface.
 
-See the 'New Directions' message at the end of this file re ODBC.
+The DBI.pm file now contains the DBI specification and other documentation
+(including Frequently Asked Questions and references to other resources).
+Please read it.
+
+Also see the 'New Directions' message at the end of this file re ODBC.
 
 For more information and to keep informed about progress you can join
 the a mailing list via http://www.fugue.com/dbi (if you are unable to
@@ -205,7 +209,7 @@ Tim.
 
 -------------------------------------------------------------------------
 
-Further notes (giving a revised position and direction):         Jan 1997
+Further notes (giving a revised position and direction):
 
 The strategy for the forseeable future is one of co-existance with both
 existing DBD::* drivers and ODBC drivers. The existing DBD::* drivers
@@ -216,5 +220,10 @@ My original statement (above) implied that DBD::Oracle, for example,
 would be replaced. That's not the case. I believe that more functionality
 can be added more easily to drivers such as DBD::Oracle once SQL CLI
 concepts and definitions are being used within the DBI as a whole.
+
+Please note that the ODBC work is a long term project and not likely
+to simply appear one day. Please don't ask me about progress. If you're
+on the dbi-users or dbi-dev mailing lists you'll hear about it as it
+progresses.
 
 -------------------------------------------------------------------------

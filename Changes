@@ -3,7 +3,19 @@ Current DBI Implementation Notes:
 	$ary_ref = $sth->fetch; currently always returns the same array ref.
 	This may be a feature that stays, then again it may not.
 
-    THINGS MAY CHANGE. See the README file.
+    THINGS MAY CHANGE. See the README file and DBI pod text.
+
+Changes in DBI 0.78,	28th Mar 1997
+
+	Greatly extended the pod documentation in DBI.pm, including the under
+	used bind_columns method. Use 'perldoc DBI' to read after installing.
+	Fixed $h->err. Fetching an attribute value no longer resets err.
+	Added $h->{InactiveDestroy}, see documentation for details.
+	Improved debugging of cached ('quick') attribute fetches.
+	errstr will return err code value if there is no string value.
+	Added DBI/W32ODBC to the distribution. This is a pure-perl experimental
+	DBI emulation layer for Win32::ODBC. Note that it's unsupported, your
+	mileage will vary, and bug reports without fixes will probably be ignored.
 
 Changes in DBI 0.77,	21st Feb 1997
 
@@ -11,7 +23,9 @@ Changes in DBI 0.77,	21st Feb 1997
 	Added $h->err, $h->errstr and $h->state default methods in DBI.xs.
 	Updated informal DBI API notes in DBI.pm. Updated README slightly.
 	DBIXS.h now correctly installed into INST_ARCHAUTODIR.
-	(DBD authors will need to edit their Makefile.PL's)
+	(DBD authors will need to edit their Makefile.PL's to use
+	-I$(INSTALLSITEARCH)/auto/DBI -I$(INSTALLSITEARCH)/DBI)
+
 
 Changes in DBI 0.76,	3rd Feb 1997
 
