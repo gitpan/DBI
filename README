@@ -1,6 +1,6 @@
 DBI - The Perl Database Interface by Tim Bunce.
 
-Copyright (c) 1994,1995,1996,1997,1998,1999  Tim Bunce  England.
+Copyright (c) 1994-2000  Tim Bunce  England.
 
 See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
@@ -80,6 +80,12 @@ just to me (I'm likely to ignore it).  Please include:
    (Try installing the Devel::CoreStack module to get a stack trace.)
    If the stack trace mentions XS_DynaLoader_dl_load_file then rerun
    make test after setting the environment variable PERL_DL_DEBUG to 2.
+
+4. If your installation succeeds, but your script does not behave
+   as you expect, the problem is possibly in your script. Before
+   sending to dbi-users, try writing a small, easy to use test case
+   to reproduce your problem. Also, use the DBI->trace method to
+   trace your database calls.
 
 Please don't post problems to comp.lang.perl.* or perl5-porters.
 This software is supported via the dbi-users mailing list.  For more

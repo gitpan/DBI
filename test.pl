@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 10.3 1999/05/18 22:04:23 timbo Exp $
+# $Id: test.pl,v 10.4 2000/06/02 16:31:37 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 10.3 $}."\n";
+    print q{DBI test application $Revision: 10.4 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
 	warn $@ if $@;
@@ -58,13 +58,13 @@ $dbh->debug($::opt_h);
 
 if (0) {	# only works after 5.004_04
     my $h = DBI->connect('dbi:NullP:','','');
-	$h->trace(3);
-	{
-		warn "RaiseError= '$h->{RaiseError}' (pre local)\n";
-		local($h->{RaiseError}) = 1;
-		warn "RaiseError= '$h->{RaiseError}' (post local)\n";
-	}
-	warn "RaiseError= '$h->{RaiseError}' (post local block)\n";
+    $h->trace(3);
+    {
+	warn "RaiseError= '$h->{RaiseError}' (pre local)\n";
+	local($h->{RaiseError});# = undef;
+	warn "RaiseError= '$h->{RaiseError}' (post local)\n";
+    }
+    warn "RaiseError= '$h->{RaiseError}' (post local block)\n";
 }
 
 if ($::opt_m) {

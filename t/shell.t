@@ -10,6 +10,10 @@ BEGIN {
 		print "1..0\n";
 		exit 0;
 	}
+
+	# keep dumb Term::ReadKey happy
+	$ENV{COLUMNS} = 80;
+	$ENV{LINES} = 24;
 }
 
 print "1..$tests\n";

@@ -1,6 +1,25 @@
+begin_work?
+add details of the DBI book to the docs
+test shell /connect user etc
+added dbi_fetchall attrib to $dbh->selectall_arrayref($sql, { dbi_fetchall=>{} }, @bind); - add test
+
+  Perl 5.6 ithreads changes with thanks to Doug MacEachern.
+  Changed trace output to use PerlIO thanks to Paul Moore.
+  This version requires at least Perl 5.004.
+  Fixed bug in RaiseError/PrintError handling.
+    (% chars in the error string could cause a core dump.)
+  Fixed Win32 PerlEx IIS concurrency bugs thanks to Murray Nesbitt.
+  Major documentation polishing thanks to Linda Mui at O'Reilly.
+  Password parameter now shown as **** in trace output.
+  Added two fields to type_info and type_info_all.
+  Added $dsn to PrintError/RaiseError message from DBI->connect().
+  Changed prepare_cached() croak to carp if sth still Active.
+  Added prepare_cached() example to the docs.
+  Added further DBD::ADO enhancements from Thomas Lowery.
+
 Changes in DBI 1.13,	11th July 1999
 
-  Fixed Win32 PerlEx IIS concurrency bugs thanks to ActiveState.
+  Fixed Win32 PerlEx IIS concurrency bugs thanks to Murray Nesbitt.
   Fixed problems with DBD::ExampleP long_list test mode.
   Added SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR and SQL_BIT
     to list of known and exportable SQL types.
@@ -622,3 +641,13 @@ Changes in DBI 0.58	21 June 1995
   Reworked internal logging.
   Added $VERSION.
   Made disconnect_all a compulsary method for drivers.
+
+
+Some Key Dates in Ancient History
+
+29th Sep 1992: DBperl project started.
+19th Sep 1994: DBperl project renamed to DBI.
+12th Oct 1994: First public release of the DBI module.
+               (for Perl 5.000-beta-3h)
+
+End.

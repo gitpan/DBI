@@ -1,13 +1,13 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.12 1999/07/12 02:02:33 timbo Exp $
+# $Id: Makefile.PL,v 10.14 2000/06/11 02:27:27 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 BEGIN {
-    require 5.003;
+    require 5.004;
     unshift @INC, "lib";
 }
 
@@ -31,17 +31,6 @@ GetOptions(qw(v! g! thread!))
 	or die "Invalid arguments\n";
 
 $::opt_g &&= '-g';  # convert to actual string
-
-if ($] < 5.004) {
-    print "\n*** YOU ARE USING A VERY OLD VERSION OF PERL. ***\n\a";
-    print "Perl 5.004 fixes many bugs in older versions and is highly recommended.\n";
-    print "You may see warnings from 'pod2man' due to the old version you have.\n";
-    print "You can ignore them, or, better still, upgrade to the latest release\n";
-    print "of Perl (5.004_04 and 5.005_03 at the time this was written).\n\n";
-    sleep 10;
-    print "In the near future the DBI will no longer support your very old Perl!\n\n\a";
-    sleep 20;
-}
 
 if ($Config{archname} =~ /-thread\b/i) {
     print "\n";
@@ -104,7 +93,7 @@ MSG
 
 if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
     $opts{ABSTRACT_FROM} = 'DBI.pm';
-    $opts{AUTHOR} = 'Tim Bunce (dbi-users@fugue.com)';
+    $opts{AUTHOR} = 'Tim Bunce (dbi-users@isc.org)';
     $opts{CAPI} = 'TRUE' if $Config{archname} =~ /-object\b/i;
 }
 
@@ -137,9 +126,6 @@ if ($ENV{S_ARCH_SW} && $ENV{LOGNAME} eq 'timbo'){	# a reasonable guess
 
 warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
 	if ($Config{gccversion} and $Config{gccversion} =~ m/^(1|2\.[1-5])/);
-
-$opts{OPTIMIZE} = '-Od'
-    if ($Config{cc} eq 'cc' && $Config{osname} eq 'sco');
 
 $Verbose = $::opt_v;
 WriteMakefile( %opts );
@@ -218,7 +204,7 @@ If you don't have an old version of the DBI installed you can ignore this.
 
     # install files that DBD's may need
     my $file;
-    foreach $file (qw(DBIXS.h dbi_sql.h dbd_xsh.h), <*.xst>) {
+    foreach $file (qw(DBIXS.h dbi_sql.h dbd_xsh.h dbipport.h), <*.xst>) {
 	$self->{PM}->{$file} = '$(INST_ARCHAUTODIR)/'.$file;
     }
 

@@ -1,0 +1,3188 @@
+.rn '' }`
+''' $RCSfile$$Revision$$Date$
+'''
+''' $Log$
+'''
+.de Sh
+.br
+.if t .Sp
+.ne 5
+.PP
+\fB\\$1\fR
+.PP
+..
+.de Sp
+.if t .sp .5v
+.if n .sp
+..
+.de Ip
+.br
+.ie \\n(.$>=3 .ne \\$3
+.el .ne 3
+.IP "\\$1" \\$2
+..
+.de Vb
+.ft CW
+.nf
+.ne \\$1
+..
+.de Ve
+.ft R
+
+.fi
+..
+'''
+'''
+'''     Set up \*(-- to give an unbreakable dash;
+'''     string Tr holds user defined translation string.
+'''     Bell System Logo is used as a dummy character.
+'''
+.tr \(*W-|\(bv\*(Tr
+.ie n \{\
+.ds -- \(*W-
+.ds PI pi
+.if (\n(.H=4u)&(1m=24u) .ds -- \(*W\h'-12u'\(*W\h'-12u'-\" diablo 10 pitch
+.if (\n(.H=4u)&(1m=20u) .ds -- \(*W\h'-12u'\(*W\h'-8u'-\" diablo 12 pitch
+.ds L" ""
+.ds R" ""
+'''   \*(M", \*(S", \*(N" and \*(T" are the equivalent of
+'''   \*(L" and \*(R", except that they are used on ".xx" lines,
+'''   such as .IP and .SH, which do another additional levels of
+'''   double-quote interpretation
+.ds M" """
+.ds S" """
+.ds N" """""
+.ds T" """""
+.ds L' '
+.ds R' '
+.ds M' '
+.ds S' '
+.ds N' '
+.ds T' '
+'br\}
+.el\{\
+.ds -- \(em\|
+.tr \*(Tr
+.ds L" ``
+.ds R" ''
+.ds M" ``
+.ds S" ''
+.ds N" ``
+.ds T" ''
+.ds L' `
+.ds R' '
+.ds M' `
+.ds S' '
+.ds N' `
+.ds T' '
+.ds PI \(*p
+'br\}
+.\"	If the F register is turned on, we'll generate
+.\"	index entries out stderr for the following things:
+.\"		TH	Title 
+.\"		SH	Header
+.\"		Sh	Subsection 
+.\"		Ip	Item
+.\"		X<>	Xref  (embedded
+.\"	Of course, you have to process the output yourself
+.\"	in some meaninful fashion.
+.if \nF \{
+.de IX
+.tm Index:\\$1\t\\n%\t"\\$2"
+..
+.nr % 0
+.rr F
+.\}
+.TH DBI 3 "perl 5.004, patch 04" "11/Jun/100" "User Contributed Perl Documentation"
+.UC
+.if n .hy 0
+.if n .na
+.ds C+ C\v'-.1v'\h'-1p'\s-2+\h'-1p'+\s0\v'.1v'\h'-1p'
+.de CQ          \" put $1 in typewriter font
+.ft CW
+'if n "\c
+'if t \\&\\$1\c
+'if n \\&\\$1\c
+'if n \&"
+\\&\\$2 \\$3 \\$4 \\$5 \\$6 \\$7
+'.ft R
+..
+.\" @(#)ms.acc 1.5 88/02/08 SMI; from UCB 4.2
+.	\" AM - accent mark definitions
+.bd B 3
+.	\" fudge factors for nroff and troff
+.if n \{\
+.	ds #H 0
+.	ds #V .8m
+.	ds #F .3m
+.	ds #[ \f1
+.	ds #] \fP
+.\}
+.if t \{\
+.	ds #H ((1u-(\\\\n(.fu%2u))*.13m)
+.	ds #V .6m
+.	ds #F 0
+.	ds #[ \&
+.	ds #] \&
+.\}
+.	\" simple accents for nroff and troff
+.if n \{\
+.	ds ' \&
+.	ds ` \&
+.	ds ^ \&
+.	ds , \&
+.	ds ~ ~
+.	ds ? ?
+.	ds ! !
+.	ds /
+.	ds q
+.\}
+.if t \{\
+.	ds ' \\k:\h'-(\\n(.wu*8/10-\*(#H)'\'\h"|\\n:u"
+.	ds ` \\k:\h'-(\\n(.wu*8/10-\*(#H)'\`\h'|\\n:u'
+.	ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'^\h'|\\n:u'
+.	ds , \\k:\h'-(\\n(.wu*8/10)',\h'|\\n:u'
+.	ds ~ \\k:\h'-(\\n(.wu-\*(#H-.1m)'~\h'|\\n:u'
+.	ds ? \s-2c\h'-\w'c'u*7/10'\u\h'\*(#H'\zi\d\s+2\h'\w'c'u*8/10'
+.	ds ! \s-2\(or\s+2\h'-\w'\(or'u'\v'-.8m'.\v'.8m'
+.	ds / \\k:\h'-(\\n(.wu*8/10-\*(#H)'\z\(sl\h'|\\n:u'
+.	ds q o\h'-\w'o'u*8/10'\s-4\v'.4m'\z\(*i\v'-.4m'\s+4\h'\w'o'u*8/10'
+.\}
+.	\" troff and (daisy-wheel) nroff accents
+.ds : \\k:\h'-(\\n(.wu*8/10-\*(#H+.1m+\*(#F)'\v'-\*(#V'\z.\h'.2m+\*(#F'.\h'|\\n:u'\v'\*(#V'
+.ds 8 \h'\*(#H'\(*b\h'-\*(#H'
+.ds v \\k:\h'-(\\n(.wu*9/10-\*(#H)'\v'-\*(#V'\*(#[\s-4v\s0\v'\*(#V'\h'|\\n:u'\*(#]
+.ds _ \\k:\h'-(\\n(.wu*9/10-\*(#H+(\*(#F*2/3))'\v'-.4m'\z\(hy\v'.4m'\h'|\\n:u'
+.ds . \\k:\h'-(\\n(.wu*8/10)'\v'\*(#V*4/10'\z.\v'-\*(#V*4/10'\h'|\\n:u'
+.ds 3 \*(#[\v'.2m'\s-2\&3\s0\v'-.2m'\*(#]
+.ds o \\k:\h'-(\\n(.wu+\w'\(de'u-\*(#H)/2u'\v'-.3n'\*(#[\z\(de\v'.3n'\h'|\\n:u'\*(#]
+.ds d- \h'\*(#H'\(pd\h'-\w'~'u'\v'-.25m'\f2\(hy\fP\v'.25m'\h'-\*(#H'
+.ds D- D\\k:\h'-\w'D'u'\v'-.11m'\z\(hy\v'.11m'\h'|\\n:u'
+.ds th \*(#[\v'.3m'\s+1I\s-1\v'-.3m'\h'-(\w'I'u*2/3)'\s-1o\s+1\*(#]
+.ds Th \*(#[\s+2I\s-2\h'-\w'I'u*3/5'\v'-.3m'o\v'.3m'\*(#]
+.ds ae a\h'-(\w'a'u*4/10)'e
+.ds Ae A\h'-(\w'A'u*4/10)'E
+.ds oe o\h'-(\w'o'u*4/10)'e
+.ds Oe O\h'-(\w'O'u*4/10)'E
+.	\" corrections for vroff
+.if v .ds ~ \\k:\h'-(\\n(.wu*9/10-\*(#H)'\s-2\u~\d\s+2\h'|\\n:u'
+.if v .ds ^ \\k:\h'-(\\n(.wu*10/11-\*(#H)'\v'-.4m'^\v'.4m'\h'|\\n:u'
+.	\" for low resolution devices (crt and lpr)
+.if \n(.H>23 .if \n(.V>19 \
+\{\
+.	ds : e
+.	ds 8 ss
+.	ds v \h'-1'\o'\(aa\(ga'
+.	ds _ \h'-1'^
+.	ds . \h'-1'.
+.	ds 3 3
+.	ds o a
+.	ds d- d\h'-1'\(ga
+.	ds D- D\h'-1'\(hy
+.	ds th \o'bp'
+.	ds Th \o'LP'
+.	ds ae ae
+.	ds Ae AE
+.	ds oe oe
+.	ds Oe OE
+.\}
+.rm #[ #] #H #V #F C
+.SH "NAME"
+DBI \- Database independent interface for Perl
+.SH "SYNOPSIS"
+.PP
+.Vb 1
+\&  use DBI;
+.Ve
+.Vb 2
+\&  @driver_names = DBI->available_drivers;
+\&  @data_sources = DBI->data_sources($driver_name);
+.Ve
+.Vb 1
+\&  $dbh = DBI->connect($data_source, $username, $auth, \e%attr);
+.Ve
+.Vb 3
+\&  $rv  = $dbh->do($statement);
+\&  $rv  = $dbh->do($statement, \e%attr);
+\&  $rv  = $dbh->do($statement, \e%attr, @bind_values);
+.Ve
+.Vb 3
+\&  $ary_ref = $dbh->selectall_arrayref($statement);
+\&  @row_ary = $dbh->selectrow_array($statement);
+\&  $ary_ref = $dbh->selectcol_arrayref($statement);
+.Ve
+.Vb 2
+\&  $sth = $dbh->prepare($statement);
+\&  $sth = $dbh->prepare_cached($statement);
+.Ve
+.Vb 3
+\&  $rv = $sth->bind_param($p_num, $bind_value);
+\&  $rv = $sth->bind_param($p_num, $bind_value, $bind_type);
+\&  $rv = $sth->bind_param($p_num, $bind_value, \e%attr);
+.Ve
+.Vb 2
+\&  $rv = $sth->execute;
+\&  $rv = $sth->execute(@bind_values);
+.Ve
+.Vb 2
+\&  $rc = $sth->bind_col($col_num, \e$col_variable);
+\&  $rc = $sth->bind_columns(@list_of_refs_to_vars_to_bind);
+.Ve
+.Vb 3
+\&  @row_ary  = $sth->fetchrow_array;
+\&  $ary_ref  = $sth->fetchrow_arrayref;
+\&  $hash_ref = $sth->fetchrow_hashref;
+.Ve
+.Vb 1
+\&  $ary_ref  = $sth->fetchall_arrayref;
+.Ve
+.Vb 1
+\&  $rv  = $sth->rows;
+.Ve
+.Vb 2
+\&  $rc  = $dbh->commit;
+\&  $rc  = $dbh->rollback;
+.Ve
+.Vb 1
+\&  $sql = $dbh->quote($string);
+.Ve
+.Vb 3
+\&  $rc  = $h->err;
+\&  $str = $h->errstr;
+\&  $rv  = $h->state;
+.Ve
+.Vb 1
+\&  $rc  = $dbh->disconnect;
+.Ve
+\fIThe synopsis above only lists the major methods.\fR
+.Sh "\s-1GETTING\s0 \s-1HELP\s0"
+If you have questions about \s-1DBI\s0, you can get help from
+the \fIdbi-users@isc.org\fR mailing list.
+You can subscribe to the list by visiting:
+.PP
+.Vb 1
+\&  http://www.isc.org/dbi-lists.html
+.Ve
+Also worth a visit is the \s-1DBI\s0 home page at:
+.PP
+.Vb 1
+\&  http://www.symbolstone.org/technology/perl/DBI
+.Ve
+Before asking any questions, reread this document, consult the
+archives and read the \s-1DBI\s0 \s-1FAQ\s0. The archives are listed
+at the end of this document.
+The \s-1FAQ\s0 is installed as a \s-1DBI::FAQ\s0 module so
+you can read it by executing \f(CWperldoc DBI::FAQ\fR.
+.PP
+Please note that Tim Bunce does not maintain the mailing lists or the
+web page (generous volunteers do that).  So please don't send mail
+directly to him; he just doesn't have the time to answer questions
+personally. The \fIdbi-users\fR mailing list has lots of experienced
+people who should be able to help you if you need it.
+.Sh "\s-1NOTE\s0"
+This is the \s-1DBI\s0 specification that corresponds to the \s-1DBI\s0 version 1.13
+(\f(CW$Date: 2000/06/11 02:27:27 $\fR).
+.PP
+The \s-1DBI\s0 specification is evolving at a steady pace, so it's
+important to check that you have the latest copy. The \s-1RECENT\s0 \s-1CHANGES\s0
+section below has a summary of user-visible changes. The \fIChanges\fR
+file supplied with the \s-1DBI\s0 holds more detailed change information.
+.PP
+Note also that whenever the \s-1DBI\s0 changes, the drivers take some time to
+catch up. Recent versions of the \s-1DBI\s0 have added new features
+(marked \fI\s-1NEW\s0\fR in the text) that may not yet be supported by the drivers
+you use. Talk to the authors of those drivers if you need the features.
+.PP
+Extensions to the \s-1DBI\s0 and other \s-1DBI\s0 related modules use the \f(CWDBIx::*\fR
+namespace. See the section on \fI/Naming Conventions and Name Space\fR and:
+.PP
+.Vb 1
+\&  http://www.perl.com/CPAN/modules/by-module/DBIx/
+.Ve
+.Sh "\s-1RECENT\s0 \s-1CHANGES\s0 "
+Here is a brief summary of significant user-visible changes in recent versions.
+(If a recent version isn't mentioned, it simply means that there were no
+significant user-visible changes in that version.)
+.Ip "Between \s-1DBI\s0 1.00 and \s-1DBI\s0 1.09:" 4
+.Sp
+.Vb 1
+\&  Added $dbh->selectcol_arrayref($statement) method.
+.Ve
+.Vb 3
+\&  Connect now allows you to specify attribute settings within the DSN.
+\&  For example: 
+\&        dbi:Driver(RaiseError=>1,Taint=>1,AutoCommit=>0):dbname"
+.Ve
+.Vb 1
+\&  Added $h->{Taint}, $sth->{NAME_uc}, and $sth->{NAME_lc} attributes.
+.Ve
+.SH "DESCRIPTION"
+The DBI is a database access module for the Perl programming language.  It defines
+a set of methods, variables, and conventions that provide a consistent
+database interface, independent of the actual database being used.
+.PP
+It is important to remember that the DBI is just an interface. 
+The DBI is a layer
+of \*(L"glue\*(R" between an application and one or more database \fIdriver\fR
+modules.  It is the driver modules which do most of the real work. The DBI
+provides a standard interface and framework for the drivers to operate
+within.
+.Sh "Architecture of a \s-1DBI\s0 Application"
+.PP
+.Vb 11
+\&             |<- Scope of DBI ->|
+\&                  .-.   .--------------.   .-------------.
+\&  .-------.       | |---| XYZ Driver   |---| XYZ Engine  |
+\&  | Perl  |       | |   `--------------'   `-------------'
+\&  | script|  |A|  |D|   .--------------.   .-------------.
+\&  | using |--|P|--|B|---|Oracle Driver |---|Oracle Engine|
+\&  | DBI   |  |I|  |I|   `--------------'   `-------------'
+\&  | API   |       | |...
+\&  |methods|       | |... Other drivers
+\&  `-------'       | |...
+\&                  `-'
+.Ve
+The \s-1API\s0, or Application Programming Interface, defines the 
+call interface and variables for Perl scripts to use. The \s-1API\s0
+is implemented by the Perl \s-1DBI\s0 extension.
+.PP
+The \s-1DBI\s0 \*(L"dispatches\*(R" the method calls to the appropriate driver for
+actual execution.  The \s-1DBI\s0 is also responsible for the dynamic loading
+of drivers, error checking and handling, providing default
+implementations for methods, and many other non-database specific duties.
+.PP
+Each driver 
+contains implementations of the \s-1DBI\s0 methods using the
+private interface functions of the corresponding database engine.  Only authors
+of sophisticated/multi-database applications or generic library
+functions need be concerned with drivers.
+.Sh "Notation and Conventions"
+The following conventions are used in this document:
+.PP
+.Vb 11
+\&  $dbh    Database handle object
+\&  $sth    Statement handle object
+\&  $drh    Driver handle object (rarely seen or used in applications)
+\&  $h      Any of the handle types above ($dbh, $sth, or $drh)
+\&  $rc     General Return Code  (boolean: true=ok, false=error)
+\&  $rv     General Return Value (typically an integer)
+\&  @ary    List of values returned from the database, typically a row of data
+\&  $rows   Number of rows processed (if available, else -1)
+\&  $fh     A filehandle
+\&  undef   NULL values are represented by undefined values in Perl
+\&  \e%attr  Reference to a hash of attribute values passed to methods
+.Ve
+Note that Perl will automatically destroy database and statement handle objects
+if all references to them are deleted.
+.Sh "Outline Usage"
+To use \s-1DBI\s0, 
+first you need to load the \s-1DBI\s0 module:
+.PP
+.Vb 2
+\&  use DBI;
+\&  use strict;
+.Ve
+(The \f(CWuse strict;\fR isn't required but is strongly recommended.)
+.PP
+Then you need to the \f(CWconnect\fR entry elsewhere in this document to your data source and get a \fIhandle\fR for that
+connection:
+.PP
+.Vb 2
+\&  $dbh = DBI->connect($dsn, $user, $password,
+\&                      { RaiseError => 1, AutoCommit => 0 });
+.Ve
+Since connecting can be expensive, you generally just connect at the
+start of your program and disconnect at the end.
+.PP
+Explicitly defining the required \f(CWAutoCommit\fR behavior is strongly
+recommended and may become mandatory in a later version.  This
+determines whether changes are automatically committed to the
+database when executed, or need to be explicitly committed later.
+.PP
+The \s-1DBI\s0 allows an application to \*(L"prepare\*(R" statements for later
+execution.  A prepared statement is identified by a statement handle
+held in a Perl variable.
+We'll call the Perl variable \f(CW$sth\fR in our examples.
+.PP
+The typical method call sequence for a \f(CWSELECT\fR statement is:
+.PP
+.Vb 4
+\&  prepare,
+\&    execute, fetch, fetch, ...
+\&    execute, fetch, fetch, ...
+\&    execute, fetch, fetch, ...
+.Ve
+for example:
+.PP
+.Vb 1
+\&  $sth = $dbh->prepare("SELECT foo, bar FROM table WHERE baz=?");
+.Ve
+.Vb 1
+\&  $sth->execute( $baz );
+.Ve
+.Vb 3
+\&  while ( @row = $sth->fetchrow_array ) {
+\&    print "@row\en";
+\&  }
+.Ve
+The typical method call sequence for a \fInon\fR\-\f(CWSELECT\fR statement is:
+.PP
+.Vb 4
+\&  prepare,
+\&    execute,
+\&    execute,
+\&    execute.
+.Ve
+for example:
+.PP
+.Vb 1
+\&  $sth = $dbh->prepare("INSERT INTO table(foo,bar,baz) VALUES (?,?,?)");
+.Ve
+.Vb 5
+\&  while(<CSV>) {
+\&    chop;
+\&    my ($foo,$bar,$baz) = split /,/;
+\&        $sth->execute( $foo, $bar, $baz );
+\&  }
+.Ve
+The \f(CWdo()\fR method can be used for non repeated \fInon\fR\-\f(CWSELECT\fR statement
+(or with drivers that don't support placeholders):
+.PP
+.Vb 1
+\&  $rows_affected = $dbh->do("UPDATE your_table SET foo = foo + 1");
+.Ve
+To commit your changes to the database (when the \f(CWAutoCommit\fR entry elsewhere in this document is off):
+.PP
+.Vb 1
+\&  $dbh->commit;  # or call $dbh->rollback; to undo changes
+.Ve
+Finally, when you have finished working with the data source, you should
+the \f(CWdisconnect\fR entry elsewhere in this document from it:
+.PP
+.Vb 1
+\&  $dbh->disconnect;
+.Ve
+.Sh "General Interface Rules & Caveats"
+The \s-1DBI\s0 does not have a concept of a \*(L"current session\*(R". Every session
+has a handle object (i.e., a \f(CW$dbh\fR) returned from the \f(CWconnect\fR method.
+That handle object is used to invoke database related methods.
+.PP
+Most data is returned to the Perl script as strings. (Null values are
+returned as \f(CWundef\fR.)  This allows arbitrary precision numeric data to be
+handled without loss of accuracy.  Beware that Perl may not preserve
+the same accuracy when the string is used as a number.
+.PP
+Dates and times are returned as character strings in the native format
+of the corresponding database engine.  Time zone effects are
+database/driver dependent.
+.PP
+Perl supports binary data in Perl strings, and the \s-1DBI\s0 will pass binary
+data to and from the driver without change. It is up to the driver
+implementors to decide how they wish to handle such binary data.
+.PP
+Most databases that understand multiple character sets have a
+default global charset. Text stored in the database is, or should
+be, stored in that charset; if not, then that's the fault of either
+the database or the application that inserted the data. When text is
+fetched it should be automatically converted to the charset of the
+client, presumably based on the locale. If a driver needs to set a
+flag to get that behavior, then it should do so; it should not require
+the application to do that.
+.PP
+Multiple \s-1SQL\s0 statements may not be combined in a single statement
+handle (\f(CW$sth\fR), although some databases and drivers do support this
+(notably Sybase and \s-1SQL\s0 Server).
+.PP
+Non-sequential record reads are not supported in this version of the \s-1DBI\s0.
+In other words, records can only be fetched in the order that the
+database returned them, and once fetched they are forgotten.
+.PP
+Positioned updates and deletes are not directly supported by the \s-1DBI\s0.
+See the description of the \f(CWCursorName\fR attribute for an alternative.
+.PP
+Individual driver implementors are free to provide any private
+functions and/or handle attributes that they feel are useful.
+Private driver functions can be invoked using the \s-1DBI\s0 \f(CWfunc()\fR method.
+Private driver attributes are accessed just like standard attributes.
+.PP
+Many methods have an optional \f(CW\e%attr\fR parameter which can be used to
+pass information to the driver implementing the method. Except where
+specifically documented, the \f(CW\e%attr\fR parameter can only be used to pass
+driver specific hints. In general, you can ignore \f(CW\e%attr\fR parameters
+or pass it as \f(CWundef\fR.
+.Sh "Naming Conventions and Name Space"
+The \s-1DBI\s0 package and all packages below it (\f(CWDBI::*\fR) are reserved for
+use by the \s-1DBI\s0. Extensions and related modules use the \f(CWDBIx::\fR
+namespace (see \f(CWhttp://www.perl.com/CPAN/modules/by-module/DBIx/\fR).
+Package names beginning with \f(CWDBD::\fR are reserved for use
+by \s-1DBI\s0 database drivers.  All environment variables used by the \s-1DBI\s0
+or by individual DBDs begin with \*(L"\f(CWDBI_\fR\*(R" or \*(L"\f(CWDBD_\fR\*(R".
+.PP
+The letter case used for attribute names is significant and plays an
+important part in the portability of \s-1DBI\s0 scripts.  The case of the
+attribute name is used to signify who defined the meaning of that name
+and its values.
+.PP
+.Vb 5
+\&  Case of name  Has a meaning defined by
+\&  ------------  ------------------------
+\&  UPPER_CASE    Standards, e.g.,  X/Open, ISO SQL92 etc (portable)
+\&  MixedCase     DBI API (portable), underscores are not used.
+\&  lower_case    Driver or database engine specific (non-portable)
+.Ve
+It is of the utmost importance that Driver developers only use
+lowercase attribute names when defining private attributes. Private
+attribute names must be prefixed with the driver name or suitable
+abbreviation (e.g., \*(L"\f(CWora_\fR\*(R" for Oracle, \*(L"\f(CWing_\fR\*(R" for Ingres, etc).
+.PP
+Driver Specific Prefix Registry:
+.PP
+.Vb 19
+\&  ado_     DBD::ADO
+\&  best_    DBD::BestWins
+\&  csv_     DBD::CSV
+\&  db2_     DBD::DB2
+\&  f_       DBD::File
+\&  file_    DBD::TextFile
+\&  ib_      DBD::InterBase
+\&  ing_     DBD::Ingres
+\&  ix_      DBD::Informix
+\&  msql_    DBD::mSQL
+\&  mysql_   DBD::mysql
+\&  odbc_    DBD::ODBC
+\&  ora_     DBD::Oracle
+\&  pg_      DBD::Pg
+\&  proxy_   DBD::Proxy
+\&  solid_   DBD::Solid
+\&  syb_     DBD::Sybase
+\&  tuber_   DBD::Tuber
+\&  xbase_   DBD::XBase
+.Ve
+.Sh "\s-1SQL\s0 \- A Query Language"
+Most \s-1DBI\s0 drivers require applications to use a dialect of \s-1SQL\s0 
+(Structured Query Language) to interact with the database engine.
+The following links provide useful information and further links about
+\s-1SQL\s0:
+.PP
+.Vb 3
+\&  http://www.altavista.com/query?q=sql+tutorial
+\&  http://www.jcc.com/sql_stnd.html
+\&  http://www.contrib.andrew.cmu.edu/~shadow/sql.html
+.Ve
+The \s-1DBI\s0 itself does not mandate or require any particular language to
+be used; it is language independent. In \s-1ODBC\s0 terms, the \s-1DBI\s0 is in
+\*(L"pass-thru\*(R" mode, although individual drivers might not be. The only requirement
+is that queries and other statements must be expressed as a single
+string of characters passed as the first argument to the the \f(CWprepare\fR entry elsewhere in this document or
+the \f(CWdo\fR entry elsewhere in this document methods.
+.PP
+For an interesting diversion on the \fIreal\fR history of \s-1RDBMS\s0 and \s-1SQL\s0,
+from the people who made it happen, see:
+.PP
+.Vb 1
+\&  http://ftp.digital.com/pub/DEC/SRC/technical-notes/SRC-1997-018-html/sqlr95.html
+.Ve
+Follow the \*(L"And the rest\*(R" and \*(L"Intergalactic dataspeak\*(R" links for the
+\s-1SQL\s0 history.
+.Sh "Placeholders and Bind Values"
+Some drivers support placeholders and bind values. 
+\fIPlaceholders\fR, also called parameter markers, are used to indicate
+values in a database statement that will be supplied later,
+before the prepared statement is executed.  For example, an application
+might use the following to insert a row of data into the \s-1SALES\s0 table:
+.PP
+.Vb 1
+\&  INSERT INTO sales (product_code, qty, price) VALUES (?, ?, ?)
+.Ve
+or the following, to select the description for a product:
+.PP
+.Vb 1
+\&  SELECT description FROM products WHERE product_code = ?
+.Ve
+The \f(CW?\fR characters are the placeholders.  The association of actual
+values with placeholders is known as \fIbinding\fR, and the values are
+referred to as \fIbind values\fR.
+.PP
+When using placeholders with the \s-1SQL\s0 \f(CWLIKE\fR qualifier, you must
+remember that the placeholder substitutes for the whole string.
+So you should use \*(L"\f(CW... LIKE ? ...\fR\*(R" and include any wildcard
+characters in the value that you bind to the placeholder.
+.PP
+\fBNull Values\fR
+.PP
+Undefined values, or \f(CWundef\fR, can be used to indicate null values.
+However, care must be taken in the particular case of trying to use
+null values to qualify a \f(CWSELECT\fR statement. Consider:
+.PP
+.Vb 1
+\&  SELECT description FROM products WHERE product_code = ?
+.Ve
+Binding an \f(CWundef\fR (\s-1NULL\s0) to the placeholder will \fInot\fR select rows
+which have a \s-1NULL\s0 \f(CWproduct_code\fR! Refer to the \s-1SQL\s0 manual for your database
+engine or any \s-1SQL\s0 book for the reasons for this.  To explicitly select
+NULLs you have to say \*(L"\f(CWWHERE product_code IS NULL\fR\*(R" and to make that
+general you have to say:
+.PP
+.Vb 1
+\&  ... WHERE (product_code = ? OR (? IS NULL AND product_code IS NULL))
+.Ve
+and bind the same value to both placeholders.
+.PP
+\fBPerformance\fR
+.PP
+Without using placeholders, the insert statement shown previously would have to
+contain the literal values to be inserted and would have to be
+re-prepared and re-executed for each row. With placeholders, the insert
+statement only needs to be prepared once. The bind values for each row
+can be given to the \f(CWexecute\fR method each time it's called. By avoiding
+the need to re-prepare the statement for each row, the application
+typically runs many times faster. Here's an example:
+.PP
+.Vb 9
+\&  my $sth = $dbh->prepare(q{
+\&    INSERT INTO sales (product_code, qty, price) VALUES (?, ?, ?)
+\&  }) || die $dbh->errstr;
+\&  while (<>) {
+\&      chop;
+\&      my ($product_code, $qty, $price) = split /,/;
+\&      $sth->execute($product_code, $qty, $price) || die $dbh->errstr;
+\&  }
+\&  $dbh->commit || die $dbh->errstr;
+.Ve
+See the \f(CWexecute\fR and \f(CWbind_param\fR entries elsewhere in this document for more details.
+.PP
+The \f(CWq{...}\fR style quoting used in this example avoids clashing with
+quotes that may be used in the \s-1SQL\s0 statement. Use the double-quote like
+\f(CWqq{...}\fR operator if you want to interpolate variables into the string.
+See the section on \fIQuote and Quote-like Operators\fR in the \fIperlop\fR manpage for more details.
+.PP
+See also the the \f(CWbind_column\fR entry elsewhere in this document method, which is used to associate Perl
+variables with the output columns of a \f(CWSELECT\fR statement.
+.SH "THE DBI CLASS"
+In this section, we cover the DBI class methods, utility functions,
+and the dynamic attributes associated with generic DBI handles.
+.Sh "\s-1DBI\s0 Class Methods"
+The following methods are provided by the \s-1DBI\s0 class:
+.Ip "\f(CWconnect\fR" 4
+.Sp
+.Vb 4
+\&  $dbh = DBI->connect($data_source, $username, $password)
+\&            || die $DBI::errstr;
+\&  $dbh = DBI->connect($data_source, $username, $password, \e%attr)
+\&            || die $DBI::errstr;
+.Ve
+Establishes a database connection, or session, to the requested \f(CW$data_source\fR.
+Returns a database handle object if the connection succeeds. Use
+\f(CW$dbh-\fR>\f(CWdisconnect\fR to terminate the connection.
+.Sp
+If the connect fails (see below), it returns \f(CWundef\fR and sets both \f(CW$DBI::err\fR
+and \f(CW$DBI::errstr\fR. (It does \fInot\fR set \f(CW$!\fR, etc.) You should generally
+test the return status of \f(CWconnect\fR and \f(CWprint $DBI::errstr\fR if it has failed.
+.Sp
+Multiple simultaneous connections to multiple databases through multiple
+drivers can be made via the \s-1DBI\s0. Simply make one \f(CWconnect\fR call for each
+database and keep a copy of each returned database handle.
+.Sp
+The \f(CW$data_source\fR value should begin with \*(L"\f(CWdbi:\fR\fIdriver_name\fR\f(CW:\fR\*(R". The
+\fIdriver_name\fR specifies the driver that will be used to make the
+connection. (Letter case is significant.)
+.Sp
+As a convenience, if the \f(CW$data_source\fR parameter is undefined or empty, the
+\s-1DBI\s0 will substitute the value of the environment variable \f(CWDBI_DSN\fR.
+If just the \fIdriver_name\fR part is empty (i.e., the \f(CW$data_source\fR prefix is \*(L"\f(CWdbi::\fR"),
+the environment variable \f(CWDBI_DRIVER\fR is used. If neither variable is set,
+then \f(CWconnect\fR dies.
+.Sp
+Examples of \f(CW$data_source\fR values are:
+.Sp
+.Vb 3
+\&  dbi:DriverName:database_name
+\&  dbi:DriverName:database_name@hostname:port
+\&  dbi:DriverName:database=database_name;host=hostname;port=port
+.Ve
+There is \fIno standard\fR for the text following the driver name. Each
+driver is free to use whatever syntax it wants. The only requirement the
+\s-1DBI\s0 makes is that all the information is supplied in a single string.
+You must consult the documentation for the drivers you are using for a
+description of the syntax they require. (Where a driver author needs
+to define a syntax for the \f(CW$data_source\fR, it is recommended that
+they follow the \s-1ODBC\s0 style, shown in the last example above.)
+.Sp
+If the environment variable \f(CWDBI_AUTOPROXY\fR is defined (and the driver in
+\f(CW$data_source\fR is not \*(L"\f(CWProxy\fR") then the connect request will
+automatically be changed to:
+.Sp
+.Vb 1
+\&  dbi:Proxy:$ENV{DBI_AUTOPROXY};dsn=$data_source
+.Ve
+and passed to the \s-1DBD::\s0Proxy module. \f(CWDBI_AUTOPROXY\fR is typically set as
+\*(L"\f(CWhostname=...;port=...\fR\*(R". See the \s-1DBD::\s0Proxy documentation for more details.
+.Sp
+If \f(CW$username\fR or \f(CW$password\fR are undefined (rather than just empty),
+then the \s-1DBI\s0 will substitute the values of the \f(CWDBI_USER\fR and \f(CWDBI_PASS\fR
+environment variables, respectively.  The \s-1DBI\s0 will warn if the
+environment variables are not defined.  However, the everyday use of 
+these environment 
+variables is not recommended for security reasons. The mechanism is
+primarily intended to simplify testing.
+.Sp
+\f(CWDBI-\fR>\f(CWconnect\fR automatically installs the driver if it has not been
+installed yet. Driver installation either returns a valid driver
+handle, or it \fIdies\fR with an error message that includes the string
+\*(L"\f(CWinstall_driver\fR\*(R" and the underlying problem. So \f(CWDBI-\fR>\f(CWconnect\fR 
+will die
+on a driver installation failure and will only return \f(CWundef\fR on a
+connect failure, in which case \f(CW$DBI::errstr\fR will hold the error message.
+.Sp
+The \f(CW$data_source\fR argument (with the \*(L"\f(CWdbi:...:\fR\*(R" prefix removed) and the
+\f(CW$username\fR and \f(CW$password\fR arguments are then passed to the driver for
+processing. The \s-1DBI\s0 does not define any interpretation for the
+contents of these fields.  The driver is free to interpret the
+\f(CW$data_source\fR, \f(CW$username\fR, and \f(CW$password\fR fields in any way, and supply
+whatever defaults are appropriate for the engine being accessed.
+(Oracle, for example, uses the \s-1ORACLE_SID\s0 and \s-1TWO_TASK\s0 environment 
+variables if no \f(CW$data_source\fR is specified.)
+.Sp
+The \f(CWAutoCommit\fR and \f(CWPrintError\fR attributes for each connection default to
+\*(L"on\*(R". (See the \f(CWAutoCommit\fR and \f(CWPrintError\fR entries elsewhere in this document for more information.)
+However, it is strongly recommended that you explicitly define \f(CWAutoCommit\fR
+rather than rely on the default. Future versions of
+the \s-1DBI\s0 may issue a warning if \f(CWAutoCommit\fR is not explicitly defined.
+.Sp
+The \f(CW\e%attr\fR parameter can be used to alter the default settings of 
+\f(CWPrintError\fR, \f(CWRaiseError\fR, \f(CWAutoCommit\fR, and other attributes. For example:
+.Sp
+.Vb 4
+\&  $dbh = DBI->connect($data_source, $user, $pass, {
+\&        PrintError => 0,
+\&        AutoCommit => 0
+\&  });
+.Ve
+You can also define connection attribute values within the \f(CW$data_source\fR
+parameter. For example:
+.Sp
+.Vb 1
+\&  dbi:DriverName(PrintError=>0,Taint=>1):...
+.Ve
+Individual attributes values specified in this way take precedence over
+any conflicting values specified via the \f(CW\e%attr\fR parameter to \f(CWconnect\fR.
+.Sp
+Where possible, each session (\f(CW$dbh\fR) is independent from the transactions
+in other sessions. This is useful when you need to hold cursors open
+across transactions\*(--for example, if you use one session for your long lifespan
+cursors (typically read-only) and another for your short update
+transactions.
+.Sp
+For compatibility with old \s-1DBI\s0 scripts, the driver can be specified by
+passing its name as the fourth argument to \f(CWconnect\fR (instead of \f(CW\e%attr\fR):
+.Sp
+.Vb 1
+\&  $dbh = DBI->connect($data_source, $user, $pass, $driver);
+.Ve
+In this \*(L"old-style\*(R" form of \f(CWconnect\fR, the \f(CW$data_source\fR should not start
+with \*(L"\f(CWdbi:driver_name:\fR\*(R". (If it does, the embedded driver_name
+will be ignored). Also note that in this older form of \f(CWconnect\fR, 
+the \f(CW$dbh-\fR>\f(CW{AutoCommit}\fR attribute is \fIundefined\fR, the
+\f(CW$dbh-\fR>\f(CW{PrintError}\fR attribute is off, and the old \f(CWDBI_DBNAME\fR
+environment variable is
+checked if \f(CWDBI_DSN\fR is not defined. Beware that this \*(L"old-style\*(R" 
+\f(CWconnect\fR will be withdrawn in a future version of \s-1DBI\s0.
+.Ip "\f(CWconnect_cached\fR \fI\s-1NEW\s0\fR" 4
+.Sp
+.Vb 4
+\&  $dbh = DBI->connect_cached($data_source, $username, $password)
+\&            || die $DBI::errstr;
+\&  $dbh = DBI->connect_cached($data_source, $username, $password, \e%attr)
+\&            || die $DBI::errstr;
+.Ve
+\f(CWconnect_cached\fR is like the \f(CWconnect\fR entry elsewhere in this document except that the database handle
+returned is also
+stored in a hash associated with the given parameters. If another call
+is made to \f(CWconnect_cached\fR with the same parameter values, then the
+corresponding cached \f(CW$dbh\fR will be returned if it is still valid.
+The cached database handle is replaced with a new connection if it
+has been disconnected or if the \f(CWping\fR method fails.
+.Sp
+Note that the behavior of this method differs in several respects from the
+behavior of presistent connections implemented by Apache::\s-1DBI\s0.
+.Sp
+Caching can be useful in some applications, but it can also cause
+problems and should be used with care. The exact behavior of this
+method is liable to change, so if you intend to use it in any production
+applications you should discuss your needs on the \fIdbi-users\fR mailing list.
+.Sp
+The cache can be accessed (and cleared) via the the \f(CWCachedKids\fR entry elsewhere in this document attribute.
+.Ip "\f(CWavailable_drivers\fR" 4
+.Sp
+.Vb 2
+\&  @ary = DBI->available_drivers;
+\&  @ary = DBI->available_drivers($quiet);
+.Ve
+Returns a list of all available drivers by searching for \f(CWDBD::*\fR modules
+through the directories in \f(CW@INC\fR. By default, a warning is given if
+some drivers are hidden by others of the same name in earlier
+directories. Passing a true value for \f(CW$quiet\fR will inhibit the warning.
+.Ip "\f(CWdata_sources\fR" 4
+.Sp
+.Vb 2
+\&  @ary = DBI->data_sources($driver);
+\&  @ary = DBI->data_sources($driver, \e%attr);
+.Ve
+Returns a list of all data sources (databases) available via the named
+driver. The driver will be loaded if it hasn't been already. If \f(CW$driver\fR is empty
+or \f(CWundef\fR, then the value of the \f(CWDBI_DRIVER\fR environment variable is
+used.
+.Sp
+Data sources are returned in a form suitable for passing to the
+the \f(CWconnect\fR entry elsewhere in this document method (that is, they will include the \*(L"\f(CWdbi:$driver:\fR\*(R" prefix).
+.Sp
+Note that many drivers have no way of knowing what data sources might
+be available for it. These drivers return an empty or incomplete list.
+.Ip "\f(CWtrace\fR" 4
+.Sp
+.Vb 2
+\&  DBI->trace($trace_level)
+\&  DBI->trace($trace_level, $trace_filename)
+.Ve
+\s-1DBI\s0 trace information can be enabled for all handles using the \f(CWtrace\fR
+\s-1DBI\s0 class method. To enable trace information for a specific handle, use
+the similar \f(CW$h-\fR>\f(CWtrace\fR method described elsewhere.
+.Sp
+Trace levels are as follows:
+.Sp
+.Vb 8
+\&  0 - Trace disabled.
+\&  1 - Trace DBI method calls returning with results or errors.
+\&  2 - Trace method entry with parameters and returning with results.
+\&  3 - As above, adding some high-level information from the driver
+\&      and some internal information from the DBI.
+\&  4 - As above, adding more detailed information from the driver.
+\&      Also includes DBI mutex information when using threaded Perl.
+\&  5 and above - As above but with more and more obscure information.
+.Ve
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.  Levels 3
+and above (up to 9) are best reserved for investigating a
+specific problem, when you need to see \*(L"inside\*(R" the driver and \s-1DBI\s0.
+.Sp
+The trace output is detailed and typically very useful. Much of the
+trace output is formatted using the the \f(CWneat\fR entry elsewhere in this document function, so strings
+in the trace output may be edited and truncated.
+.Sp
+Initially trace output is written to \f(CWSTDERR\fR.  If \f(CW$trace_filename\fR is
+specified, then the file is opened in append mode and all trace
+output (including that from other handles) is redirected to that file.
+Further calls to \f(CWtrace\fR without a \f(CW$trace_filename\fR do not alter where
+the trace output is sent. If \f(CW$trace_filename\fR is undefined, then
+trace output is sent to \f(CWSTDERR\fR and the previous trace file is closed.
+.Sp
+See also the \f(CW$h-\fR>\f(CWtrace\fR and \f(CW$h-\fR>\f(CWtrace_msg\fR methods and the
+the \f(CWDEBUGGING\fR entry elsewhere in this document section
+for information about the \f(CWDBI_TRACE\fR environment variable.
+.Sh "\s-1DBI\s0 Utility Functions"
+In addition to the methods listed in the previous section,
+the \s-1DBI\s0 package also provides these utility functions:
+.Ip "\f(CWneat\fR" 4
+.Sp
+.Vb 1
+\&  $str = DBI::neat($value, $maxlen);
+.Ve
+Return a string containing a neat (and tidy) representation of the
+supplied value.
+.Sp
+Strings will be quoted, although internal quotes will \fInot\fR be escaped.
+Values known to be numeric will be unquoted. Undefined (\s-1NULL\s0) values
+will be shown as \f(CWundef\fR (without quotes). Unprintable characters will
+be replaced by dot (.).
+.Sp
+For result strings longer than \f(CW$maxlen\fR the result string will be
+truncated to \f(CW$maxlen-4\fR and \*(L"\f(CW...'\fR\*(R" will be appended.  If \f(CW$maxlen\fR is 0
+or \f(CWundef\fR, it defaults to \f(CW$DBI::neat_maxlen\fR which, in turn, defaults to 400.
+.Sp
+This function is designed to format values for human consumption.
+It is used internally by the \s-1DBI\s0 for the \f(CWtrace\fR entry elsewhere in this document output. It should
+typically \fInot\fR be used for formatting values for database use.
+(See also the \f(CWquote\fR entry elsewhere in this document .)
+.Ip "\f(CWneat_list\fR" 4
+.Sp
+.Vb 1
+\&  $str = DBI::neat_list(\e@listref, $maxlen, $field_sep);
+.Ve
+Calls \f(CWDBI::neat\fR on each element of the list and returns a string
+containing the results joined with \f(CW$field_sep\fR. \f(CW$field_sep\fR defaults
+to \f(CW", "\fR.
+.Ip "\f(CWlooks_like_number\fR" 4
+.Sp
+.Vb 1
+\&  @bool = DBI::looks_like_number(@array);
+.Ve
+Returns true for each element that looks like a number.
+Returns false for each element that does not look like a number.
+Returns \f(CWundef\fR for each element that is undefined or empty.
+.Sh "\s-1DBI\s0 Dynamic Attributes"
+Dynamic attributes are always associated with the \fIlast handle used\fR
+(that handle is represented by \f(CW$h\fR in the descriptions below).
+.PP
+Where an attribute is equivalent to a method call, then refer to
+the method call for all related documentation.
+.PP
+Warning: these attributes are provided as a convenience but they
+do have limitations. Specifically, they have a short lifespan:
+because they are associated with
+the last handle used, they should only be used \fIimmediately\fR after
+calling the method that \*(L"sets\*(R" them.
+If in any doubt, use the corresponding method call.
+.Ip "\f(CW$DBI::err\fR" 4
+Equivalent to \f(CW$h-\fR>\f(CWerr\fR.
+.Ip "\f(CW$DBI::errstr\fR" 4
+Equivalent to \f(CW$h-\fR>\f(CWerrstr\fR.
+.Ip "\f(CW$DBI::state\fR" 4
+Equivalent to \f(CW$h-\fR>\f(CWstate\fR.
+.Ip "\f(CW$DBI::rows\fR" 4
+Equivalent to \f(CW$h-\fR>\f(CWrows\fR. Please refer to the documentation 
+for the the \f(CWrows\fR entry elsewhere in this document method.
+.SH "METHODS COMMON TO ALL HANDLES"
+The following methods can be used by all types of DBI handles.
+.Ip "\f(CWerr\fR" 4
+.Sp
+.Vb 1
+\&  $rv = $h->err;
+.Ve
+Returns the \fInative\fR database engine error code from the last driver
+method called. The code is typically an integer but you should not
+assume that.
+.Sp
+The \s-1DBI\s0 resets \f(CW$h\fR\->err to undef before most \s-1DBI\s0 method calls, so the
+value only has a short lifespan. Also, most drivers share the same
+error variables across all their handles, so calling a method on
+one handle will typically reset the error on all the other handles
+that are children of that driver.
+.Sp
+If you need to test for individual errors \fIand\fR have your program be
+portable to different database engines, then you'll need to determine
+what the corresponding error codes are for all those engines and test for
+all of them.
+.Ip "\f(CWerrstr\fR" 4
+.Sp
+.Vb 1
+\&  $str = $h->errstr;
+.Ve
+Returns the native database engine error message from the last driver
+method called. This has the same lifespan issues as the the \f(CWerr\fR entry elsewhere in this document method
+described above.
+.Ip "\f(CWstate\fR" 4
+.Sp
+.Vb 1
+\&  $str = $h->state;
+.Ve
+Returns an error code in the standard \s-1SQLSTATE\s0 five character format.
+Note that the specific success code \f(CW00000\fR is translated to \f(CW0\fR
+(false). If the driver does not support \s-1SQLSTATE\s0 (and most don't),
+then state will return \f(CWS1000\fR (General Error) for all errors.
+.Ip "\f(CWtrace\fR" 4
+.Sp
+.Vb 2
+\&  $h->trace($trace_level);
+\&  $h->trace($trace_level, $trace_filename);
+.Ve
+\s-1DBI\s0 trace information can be enabled for a specific handle (and any
+future children of that handle) by setting the trace level using the
+\f(CWtrace\fR method.
+.Sp
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.  Levels 3
+and above (up to 9) are best reserved for investigating a
+specific problem, when you need to see \*(L"inside\*(R" the driver and \s-1DBI\s0.
+Set \f(CW$trace_level\fR to 0 to disable the trace.
+.Sp
+The trace output is detailed and typically very useful. Much of the
+trace output is formatted using the the \f(CWneat\fR entry elsewhere in this document function, so strings
+in the trace output may be edited and truncated.
+.Sp
+Initially, trace output is written to \f(CWSTDERR\fR.  If \f(CW$trace_filename\fR is
+specified, then the file is opened in append mode and \fIall\fR trace
+output (including that from other handles) is redirected to that file.
+Further calls to trace without a \f(CW$trace_filename\fR do not alter where
+the trace output is sent. If \f(CW$trace_filename\fR is undefined, then
+trace output is sent to \f(CWSTDERR\fR and the previous trace file is closed.
+.Sp
+See also the \f(CWDBI-\fR>\f(CWtrace\fR method and the \f(CWDEBUGGING\fR entry elsewhere in this document for information
+about the \f(CWDBI_TRACE\fR environment variable.
+.Ip "\f(CWtrace_msg\fR" 4
+.Sp
+.Vb 2
+\&  $h->trace_msg($message_text);
+\&  $h->trace_msg($message_text, $min_level);
+.Ve
+Writes \f(CW$message_text\fR to the trace file if trace is enabled for \f(CW$h\fR or
+for the \s-1DBI\s0 as a whole. Can also be called as \f(CWDBI-\fR>\f(CWtrace_msg($msg)\fR.
+See the \f(CWtrace\fR entry elsewhere in this document .
+.Sp
+If \f(CW$min_level\fR is defined, then the message is output only if the trace
+level is equal to or greater than that level. \f(CW$min_level\fR defaults to 1.
+.Ip "\f(CWfunc\fR" 4
+.Sp
+.Vb 1
+\&  $h->func(@func_arguments, $func_name);
+.Ve
+The \f(CWfunc\fR method can be used to call private non-standard and
+non-portable methods implemented by the driver. Note that the function
+name is given as the last argument.
+.Sp
+This method is not directly related to calling stored procedures.
+Calling stored procedures is currently not defined by the \s-1DBI\s0.
+Some drivers, such as \s-1DBD::\s0Oracle, support it in non-portable ways.
+See driver documentation for more details.
+.SH "ATTRIBUTES COMMON TO ALL HANDLES"
+These attributes are common to all types of DBI handles.
+.PP
+Some attributes are inherited by child handles. That is, the value
+of an inherited attribute in a newly created statement handle is the
+same as the value in the parent database handle. Changes to attributes
+in the new statement handle do not affect the parent database handle
+and changes to the database handle do not affect existing statement
+handles, only future ones.
+.PP
+Attempting to set or get the value of an unknown attribute is fatal,
+except for private driver specific attributes (which all have names
+starting with a lowercase letter).
+.PP
+Example:
+.PP
+.Vb 2
+\&  $h->{AttributeName} = ...;    # set/write
+\&  ... = $h->{AttributeName};    # get/read
+.Ve
+.Ip "\f(CWWarn\fR (boolean, inherited)" 4
+Enables useful warnings for certain bad practices. Enabled by default. Some
+emulation layers, especially those for Perl 4 interfaces, disable warnings.
+Since warnings are generated using the Perl \f(CWwarn\fR function, they can be
+intercepted using the Perl \f(CW$SIG{__WARN__}\fR hook.
+.Ip "\f(CWActive\fR (boolean, read-only)" 4
+True if the handle object is \*(L"active\*(R". This is rarely used in
+applications. The exact meaning of active is somewhat vague at the
+moment. For a database handle it typically means that the handle is
+connected to a database (\f(CW$dbh-\fR>\f(CWdisconnect\fR sets \f(CWActive\fR off).  For
+a statement handle it typically means that the handle is a \f(CWSELECT\fR
+that may have more data to fetch. (Fetching all the data or calling \f(CW$sth-\fR>\f(CWfinish\fR
+sets \f(CWActive\fR off.)
+.Ip "\f(CWKids\fR (integer, read-only)" 4
+For a driver handle, \f(CWKids\fR is the number of currently existing database
+handles that were created from that driver handle.  For a database
+handle, \f(CWKids\fR is the number of currently existing statement handles that
+were created from that database handle.
+.Ip "\f(CWActiveKids\fR (integer, read-only)" 4
+Like \f(CWKids\fR, but only counting those that are \f(CWActive\fR (as above).
+.Ip "\f(CWCachedKids\fR (hash ref)" 4
+For a database handle, returns a reference to the cache (hash) of
+statement handles created by the the \f(CWprepare_cached\fR entry elsewhere in this document method.  For a
+driver handle, returns a reference to the cache (hash) of
+database handles created by the the \f(CWconnect_cached\fR entry elsewhere in this document method.
+.Ip "\f(CWCompatMode\fR (boolean, inherited)" 4
+Used by emulation layers (such as Oraperl) to enable compatible behavior
+in the underlying driver (e.g., \s-1DBD::\s0Oracle) for this handle. Not normally
+set by application code.
+.Ip "\f(CWInactiveDestroy\fR (boolean)" 4
+This attribute can be used to disable the \fIdatabase engine\fR related
+effect of DESTROYing a handle (which would normally close a prepared
+statement or disconnect from the database etc).
+.Sp
+For a database handle, this attribute does not disable an \fIexplicit\fR
+call to the disconnect method, only the implicit call from \s-1DESTROY\s0.
+.Sp
+This attribute is specifically designed for use in Unix applications
+that \*(L"fork\*(R" child processes. Either the parent or the child process,
+but not both, should set \f(CWInactiveDestroy\fR on all their shared handles.
+Note that some databases, including Oracle, don't support passing a
+database connection across a fork.
+.Ip "\f(CWPrintError\fR (boolean, inherited)" 4
+This attribute can be used to force errors to generate warnings (using
+\f(CWwarn\fR) in addition to returning error codes in the normal way.  When set
+\*(L"on\*(R", any method which results in an error occuring will cause the \s-1DBI\s0 to
+effectively do a \f(CWwarn("$class $method failed: $DBI::errstr")\fR where \f(CW$class\fR
+is the driver class and \f(CW$method\fR is the name of the method which failed. E.g.,
+.Sp
+.Vb 1
+\&  DBD::Oracle::db prepare failed: ... error text here ...
+.Ve
+By default, \f(CWDBI-\fR>\f(CWconnect\fR sets \f(CWPrintError\fR \*(L"on\*(R".
+.Sp
+If desired, the warnings can be caught and processed using a \f(CW$SIG{__WARN__}\fR
+handler or modules like \s-1CGI::\s0Carp and \s-1CGI::\s0ErrorWrap.
+.Ip "\f(CWRaiseError\fR (boolean, inherited)" 4
+This attribute can be used to force errors to raise exceptions rather
+than simply return error codes in the normal way. It is \*(L"off\*(R" by default.
+When set \*(L"on\*(R", any method which results in an error will cause
+the \s-1DBI\s0 to effectively do a \f(CWdie("$class $method failed: $DBI::errstr")\fR,
+where \f(CW$class\fR is the driver class and \f(CW$method\fR is the name of the method
+that failed. E.g.,
+.Sp
+.Vb 1
+\&  DBD::Oracle::db prepare failed: ... error text here ...
+.Ve
+If \f(CWPrintError\fR is also on, then the \f(CWPrintError\fR is done before the
+\f(CWRaiseError\fR unless no \f(CW__DIE__\fR handler has been defined, in which case
+\f(CWPrintError\fR is skipped since the \f(CWdie\fR will print the message.
+.Sp
+If you want to temporarily turn \f(CWRaiseError\fR off (inside a library function
+that is likely to fail, for example), the recommended way is like this:
+.Sp
+.Vb 4
+\&  {
+\&    local $h->{RaiseError};  # localize and turn off for this block
+\&    ...
+\&  }
+.Ve
+The original value will automatically and reliably be restored by Perl,
+regardless of how the block is exited.
+The same logic applies to other attributes, including \f(CWPrintError\fR.
+.Sp
+Sadly, this doesn't work for Perl versions up to and including 5.004_04.
+For backwards compatibility, you could just use \f(CWeval { ... }\fR instead.
+.Ip "\f(CWChopBlanks\fR (boolean, inherited)" 4
+This attribute can be used to control the trimming of trailing space
+characters from fixed width character (\s-1CHAR\s0) fields. No other field
+types are affected, even where field values have trailing spaces.
+.Sp
+The default is false (although it is possible that the default may change).
+Applications that need specific behavior should set the attribute as
+needed. Emulation interfaces should set the attribute to match the
+behavior of the interface they are emulating.
+.Sp
+Drivers are not required to support this attribute, but any driver which
+does not support it must arrange to return \f(CWundef\fR as the attribute value.
+.Ip "\f(CWLongReadLen\fR (unsigned integer, inherited)" 4
+This attribute may be used to control the maximum length of long fields
+("blob\*(R", \*(L"memo\*(R", etc.) which the driver will read from the
+database automatically when it fetches each row of data.  The
+\f(CWLongReadLen\fR attribute only relates to fetching and reading long values; it
+is not involved in inserting or updating them.
+.Sp
+A value of 0 means not to automatically fetch any long data. (\f(CWfetch\fR
+should return \f(CWundef\fR for long fields when \f(CWLongReadLen\fR is 0.)
+.Sp
+The default is typically 0 (zero) bytes but may vary between drivers.
+Applications fetching long fields should set this value to slightly
+larger than the longest long field value to be fetched.
+.Sp
+Some databases return some long types encoded as pairs of hex digits.
+For these types, \f(CWLongReadLen\fR relates to the underlying data length and not the
+doubled-up length of the encoded string.
+.Sp
+Changing the value of \f(CWLongReadLen\fR for a statement handle after it
+has been \f(CWprepare\fR'd will typically have no effect, so it's common to
+set \f(CWLongReadLen\fR on the \f(CW$dbh\fR before calling \f(CWprepare\fR.
+.Sp
+Note that the value used here has a direct effect on the memory used
+by the application, so don't be too generous.
+.Sp
+See the \f(CWLongTruncOk\fR entry elsewhere in this document for more information on truncation behavior.
+.Ip "\f(CWLongTruncOk\fR (boolean, inherited)" 4
+This attribute may be used to control the effect of fetching a long
+field value which has been truncated (typically because it's longer
+than the value of the \f(CWLongReadLen\fR attribute).
+.Sp
+By default, \f(CWLongTruncOk\fR is false and so fetching a long value that
+needs to be truncated will cause the fetch to fail.
+(Applications should always be sure to
+check for errors after a fetch loop in case an error, such as a divide
+by zero or long field truncation, caused the fetch to terminate
+prematurely.)
+.Sp
+If a fetch fails due to a long field truncation when \f(CWLongTruncOk\fR is
+false, many drivers will allow you to continue fetching further rows.
+.Sp
+See also the \f(CWLongReadLen\fR entry elsewhere in this document .
+.Ip "\f(CWTaint\fR (boolean, inherited)" 4
+If this attribute is set to a true value \fIand\fR Perl is running in
+taint mode (e.g., started with the \f(CW-T\fR option), then all data
+fetched from the database is tainted, and the arguments to most \s-1DBI\s0
+method calls are checked for being tainted. \fIThis may change.\fR
+.Sp
+The attribute defaults to off, even if Perl is in taint mode.
+See the \fIperlsec\fR manpage for more about taint mode.  If Perl is not
+running in taint mode, this attribute has no effect.
+.Sp
+When fetching data that you trust you can turn off the Taint attribute,
+for that statement handle, for the duration of the fetch loop.
+.Sp
+Currently only fetched data is tainted. It is possible that the results
+of other \s-1DBI\s0 method calls, and the value of fetched attributes, may
+also be tainted in future versions. That change may well break your
+applications unless you take great care now. If you use \s-1DBI\s0 Taint mode,
+please report your experience and any suggestions for changes.
+.Ip "\f(CWprivate_*\fR" 4
+The \s-1DBI\s0 provides a way to store extra information in a \s-1DBI\s0 handle as
+\*(L"private\*(R" attributes. The \s-1DBI\s0 will allow you to store and retreive any
+attribute which has a name starting with \*(L"\f(CWprivate_\fR\*(R". It is strongly
+recommended that you use just \fIone\fR private attribute (e.g., use a
+hash ref) and give it a long and unambiguous name that includes the
+module or application name that the attribute relates to (e.g.,
+\*(L"\f(CWprivate_YourFullModuleName_thingy\fR").
+.SH "DBI DATABASE HANDLE OBJECTS"
+This section covers the methods and attributes associated with
+database handles.
+.Sh "Database Handle Methods"
+The following methods are specified for \s-1DBI\s0 database handles:
+.Ip "\f(CWdo\fR" 4
+.Sp
+.Vb 3
+\&  $rc  = $dbh->do($statement)           || die $dbh->errstr;
+\&  $rc  = $dbh->do($statement, \e%attr)   || die $dbh->errstr;
+\&  $rv  = $dbh->do($statement, \e%attr, @bind_values) || ...
+.Ve
+Prepare and execute a single statement. Returns the number of rows
+affected or \f(CWundef\fR on error. A return value of \f(CW-1\fR means the 
+number of rows is not known or is not available.
+.Sp
+This method is typically most useful for \fInon\fR\-\f(CWSELECT\fR statements that
+either cannot be prepared in advance (due to a limitation of the
+driver) or do not need to be executed repeatedly. It should not
+be used for \f(CWSELECT\fR statements because it does not return a statement
+handle (so you can't fetch any data).
+.Sp
+The default \f(CWdo\fR method is logically similar to:
+.Sp
+.Vb 7
+\&  sub do {
+\&      my($dbh, $statement, $attr, @bind_values) = @_;
+\&      my $sth = $dbh->prepare($statement, $attr) or return undef;
+\&      $sth->execute(@bind_values) or return undef;
+\&      my $rows = $sth->rows;
+\&      ($rows == 0) ? "0E0" : $rows; # always return true if no error
+\&  }
+.Ve
+For example:
+.Sp
+.Vb 4
+\&  my $rows_deleted = $dbh->do(q{
+\&      DELETE FROM table
+\&      WHERE status = ?
+\&  }, undef, 'DONE') || die $dbh->errstr;
+.Ve
+Using placeholders and \f(CW@bind_values\fR with the \f(CWdo\fR method can be
+useful because it avoids the need to correctly quote any variables
+in the \f(CW$statement\fR. But if you'll be executing the statement many
+times then it's more efficient to \f(CWprepare\fR it once and call
+\f(CWexecute\fR many times instead.
+.Sp
+The \f(CWq{...}\fR style quoting used in this example avoids clashing with
+quotes that may be used in the \s-1SQL\s0 statement. Use the double-quote-like
+\f(CWqq{...}\fR operator if you want to interpolate variables into the string.
+See the section on \fIQuote and Quote-like Operators\fR in the \fIperlop\fR manpage for more details.
+.Ip "\f(CWselectrow_array\fR" 4
+.Sp
+.Vb 3
+\&  @row_ary = $dbh->selectrow_array($statement);
+\&  @row_ary = $dbh->selectrow_array($statement, \e%attr);
+\&  @row_ary = $dbh->selectrow_array($statement, \e%attr, @bind_values);
+.Ve
+This utility method combines the \f(CWprepare\fR, \f(CWexecute\fR,  and \f(CWfetchrow_array\fR entries elsewhere in this document into a single call. If called in a list context, it
+returns the first row of data from the statement. If called in a scalar
+context, it returns the first field of the first row. The \f(CW$statement\fR
+parameter can be a previously prepared statement handle, in which case
+the \f(CWprepare\fR is skipped.
+.Sp
+If any method fails, and the \f(CWRaiseError\fR entry elsewhere in this document is not set, \f(CWselectrow_array\fR
+will return an empty list.
+.Sp
+In a scalar context, \f(CWselectrow_array\fR returns the value of the first
+field. An \f(CWundef\fR is returned if there are no matching rows or an error
+occurred. Since that \f(CWundef\fR can't be distinguished from an \f(CWundef\fR returned
+because the first field value was \s-1NULL\s0, calling \f(CWselectrow_array\fR in
+a scalar context should be used with caution.
+.Ip "\f(CWselectall_arrayref\fR" 4
+.Sp
+.Vb 3
+\&  $ary_ref = $dbh->selectall_arrayref($statement);
+\&  $ary_ref = $dbh->selectall_arrayref($statement, \e%attr);
+\&  $ary_ref = $dbh->selectall_arrayref($statement, \e%attr, @bind_values);
+.Ve
+This utility method combines the \f(CWprepare\fR, \f(CWexecute\fR,  and \f(CWfetchall_arrayref\fR entries elsewhere in this document into a single call. It returns a reference to an
+array containing a reference to an array for each row of data fetched.
+.Sp
+The \f(CW$statement\fR parameter can be a previously prepared statement handle,
+in which case the \f(CWprepare\fR is skipped. This is recommended if the
+statement is going to be executed many times.
+.Sp
+If any method except \f(CWfetch\fR fails, and the \f(CWRaiseError\fR entry elsewhere in this document is not set,
+\f(CWselectall_arrayref\fR will return \f(CWundef\fR.  If \f(CWfetch\fR fails and
+the \f(CWRaiseError\fR entry elsewhere in this document is not set, then it will return with whatever data it
+has fetched thus far.
+.Ip "\f(CWselectcol_arrayref\fR" 4
+.Sp
+.Vb 3
+\&  $ary_ref = $dbh->selectcol_arrayref($statement);
+\&  $ary_ref = $dbh->selectcol_arrayref($statement, \e%attr);
+\&  $ary_ref = $dbh->selectcol_arrayref($statement, \e%attr, @bind_values);
+.Ve
+This utility method combines the \f(CWprepare\fR and \f(CWexecute\fR entries elsewhere in this document and fetching one
+column from all the rows, into a single call. It returns a reference to
+an array containing the values of the first column from each row.
+.Sp
+The \f(CW$statement\fR parameter can be a previously prepared statement handle,
+in which case the \f(CWprepare\fR is skipped. This is recommended if the
+statement is going to be executed many times.
+.Sp
+If any method except \f(CWfetch\fR fails, and the \f(CWRaiseError\fR entry elsewhere in this document is not set,
+\f(CWselectall_arrayref\fR will return \f(CWundef\fR.  If \f(CWfetch\fR fails and
+the \f(CWRaiseError\fR entry elsewhere in this document is not set, then it will return with whatever data it
+has fetched thus far.
+.Ip "\f(CWprepare\fR" 4
+.Sp
+.Vb 2
+\&  $sth = $dbh->prepare($statement)          || die $dbh->errstr;
+\&  $sth = $dbh->prepare($statement, \e%attr)  || die $dbh->errstr;
+.Ve
+Prepares a single statement for later execution by the database
+engine and returns a reference to a statement handle object.
+.Sp
+The returned statement handle can be used to get attributes of the
+statement and invoke the the \f(CWexecute\fR entry elsewhere in this document method. See the section on \fI/Statement Handle Methods\fR.
+.Sp
+Drivers for engines without the concept of preparing a
+statement will typically just store the statement in the returned
+handle and process it when \f(CW$sth-\fR>\f(CWexecute\fR is called. Such drivers are
+unlikely to give much useful information about the
+statement, such as \f(CW$sth-\fR>\f(CW{NUM_OF_FIELDS}\fR, until after \f(CW$sth-\fR>\f(CWexecute\fR
+has been called. Portable applications should take this into account.
+.Sp
+In general, \s-1DBI\s0 drivers do not parse the contents of the statement
+(other than simply counting any the \f(CWPlaceholders\fR entry elsewhere in this document ). The statement is
+passed directly to the database engine, sometimes known as pass-thru
+mode. This has advantages and disadvantages. On the plus side, you can
+access all the functionality of the engine being used. On the downside,
+you're limited if you're using a simple engine, and you need to take extra care if
+writing applications intended to be portable between engines.
+.Sp
+Portable applications should not assume that a new statement can be
+prepared and/or executed while still fetching results from a previous
+statement.
+.Sp
+Some command-line \s-1SQL\s0 tools use statement terminators, like a semicolon,
+to indicate the end of a statement. Such terminators should not normally
+be used with the \s-1DBI\s0.
+.Ip "\f(CWprepare_cached\fR" 4
+.Sp
+.Vb 3
+\&  $sth = $dbh->prepare_cached($statement)
+\&  $sth = $dbh->prepare_cached($statement, \e%attr)
+\&  $sth = $dbh->prepare_cached($statement, \e%attr, $allow_active)
+.Ve
+Like the \f(CWprepare\fR entry elsewhere in this document except that the statement handle returned will be
+stored in a hash associated with the \f(CW$dbh\fR. If another call is made to
+\f(CWprepare_cached\fR with the same \f(CW$statement\fR and \f(CW%attr\fR values, then the
+corresponding cached \f(CW$sth\fR will be returned without contacting the
+database server.
+.Sp
+This caching can be useful in some applications, but it can also cause
+problems and should be used with care. If the cached \f(CW$sth\fR being
+returned is active (i.e., is a \f(CWSELECT\fR that may still have data to be
+fetched) then a warning will be generated and \f(CWfinish\fR will be called
+for you.  The warning can be suppressed by setting \f(CW$allow_active\fR to
+true.  The cache can be accessed (and cleared) via the the \f(CWCachedKids\fR entry elsewhere in this document attribute.
+.Sp
+Here's an example of one possible use of \f(CWprepare_cached\fR:
+.Sp
+.Vb 8
+\&  while ( ($field, $value) = each %search_fields ) {
+\&      push @sql,   "$field = ?";
+\&      push @values, $value;
+\&  }
+\&  $qualifier = "";
+\&  $qualifier = "where ".join(" and ", @sql) if @sql;
+\&  $sth = $dbh->prepare_cached("SELECT * FROM table $qualifier");
+\&  $sth->execute(@values);
+.Ve
+.Ip "\f(CWcommit\fR" 4
+.Sp
+.Vb 1
+\&  $rc  = $dbh->commit     || die $dbh->errstr;
+.Ve
+Commit (make permanent) the most recent series of database changes
+if the database supports transactions and AutoCommit is off.
+.Sp
+If \f(CWAutoCommit\fR is on, then calling
+\f(CWcommit\fR will issue a \*(L"commit ineffective with AutoCommit\*(R" warning.
+.Sp
+See also the \f(CWTransactions\fR entry elsewhere in this document in the the section on \fI/\s-1FURTHER\s0 \s-1INFORMATION\s0\fR section below.
+.Ip "\f(CWrollback\fR" 4
+.Sp
+.Vb 1
+\&  $rc  = $dbh->rollback   || die $dbh->errstr;
+.Ve
+Rollback (undo) the most recent series of uncommitted database
+changes if the database supports transactions and AutoCommit is off.
+.Sp
+If \f(CWAutoCommit\fR is on, then calling
+\f(CWrollback\fR will issue a \*(L"rollback ineffective with AutoCommit\*(R" warning.
+.Sp
+See also the \f(CWTransactions\fR entry elsewhere in this document in the the section on \fI/\s-1FURTHER\s0 \s-1INFORMATION\s0\fR section below.
+.Ip "\f(CWdisconnect\fR" 4
+.Sp
+.Vb 1
+\&  $rc = $dbh->disconnect  || warn $dbh->errstr;
+.Ve
+Disconnects the database from the database handle. \f(CWdisconnect\fR is typically only used
+before exiting the program. The handle is of little use after disconnecting.
+.Sp
+The transaction behavior of the \f(CWdisconnect\fR method is, sadly,
+undefined.  Some database systems (such as Oracle and Ingres) will
+automatically commit any outstanding changes, but others (such as
+Informix) will rollback any outstanding changes.  Applications not
+using \f(CWAutoCommit\fR should explicitly call \f(CWcommit\fR or \f(CWrollback\fR before
+calling \f(CWdisconnect\fR.
+.Sp
+The database is automatically disconnected by the \f(CWDESTROY\fR method if
+still connected when there are no longer any references to the handle.
+The \f(CWDESTROY\fR method for each driver should implicitly call \f(CWrollback\fR to
+undo any uncommitted changes. This is vital behavior to ensure that
+incomplete transactions don't get committed simply because Perl calls
+\f(CWDESTROY\fR on every object before exiting. Also, do not rely on the order
+of object destruction during \*(L"global destruction\*(R", as it is undefined.
+.Sp
+Generally, if you want your changes to be commited or rolled back when
+you disconnect, then you should explicitly call the \f(CWcommit\fR entry elsewhere in this document or the \f(CWrollback\fR entry elsewhere in this document before disconnecting.
+.Sp
+If you disconnect from a database while you still have active statement
+handles, you will get a warning. The statement handles should either be
+cleared (destroyed) before disconnecting, or the \f(CWfinish\fR method 
+should be called on
+each one.
+.Ip "\f(CWping\fR" 4
+.Sp
+.Vb 1
+\&  $rc = $dbh->ping;
+.Ve
+Attempts to determine, in a reasonably efficient way, if the database
+server is still running and the connection to it is still working.
+Individual drivers should implement this function in the most suitable
+manner for their database engine.
+.Sp
+The current \fIdefault\fR implementation always returns true without
+actually doing anything. Actually, it returns \*(L"\f(CW0 but true\fR\*(R" which is
+true but zero. That way you can tell if the return value is genuine or
+just the default. Drivers should override this method with one that
+does the right thing for their type of database.
+.Sp
+Few applications would have use for this method. See the specialized
+Apache::\s-1DBI\s0 module for one example usage.
+.Ip "\f(CWtable_info\fR \fI\s-1NEW\s0\fR" 4
+\fBWarning:\fR This method is experimental and may change.
+.Sp
+.Vb 1
+\&  $sth = $dbh->table_info;
+.Ve
+Returns an active statement handle that can be used to fetch
+information about tables and views that exist in the database.
+.Sp
+The handle has at least the following fields in the order show
+below. Other fields, after these, may also be present.
+.Sp
+\fB\s-1TABLE_CAT\s0\fR: Table catalog identifier. This field is \s-1NULL\s0 (\f(CWundef\fR) if not
+applicable to the data source, which is usually the case. This field
+is empty if not applicable to the table.
+.Sp
+\fB\s-1TABLE_SCHEM\s0\fR: The name of the schema containing the \s-1TABLE_NAME\s0 value.
+This field is \s-1NULL\s0 (\f(CWundef\fR) if not applicable to data source, and
+empty if not applicable to the table.
+.Sp
+\fB\s-1TABLE_NAME\s0\fR: Name of the table (or view, synonym, etc).
+.Sp
+\fB\s-1TABLE_TYPE\s0\fR: One of the following: \*(L"\s-1TABLE\s0\*(R", \*(L"\s-1VIEW\s0\*(R", \*(L"\s-1SYSTEM\s0 \s-1TABLE\s0\*(R",
+\*(L"\s-1GLOBAL\s0 \s-1TEMPORARY\s0\*(R", \*(L"\s-1LOCAL\s0 \s-1TEMPORARY\s0\*(R", \*(L"\s-1ALIAS\s0\*(R", \*(L"\s-1SYNONYM\s0\*(R" or a type
+identifier that is specific to the data
+source.
+.Sp
+\fB\s-1REMARKS\s0\fR: A description of the table. May be \s-1NULL\s0 (\f(CWundef\fR).
+.Sp
+Note that \f(CWtable_info\fR might not return records for all tables.
+Applications can use any valid table regardless of whether it's
+returned by \f(CWtable_info\fR.  See also the \f(CWtables\fR entry elsewhere in this document .
+.Sp
+For more detailed information about the fields and their meanings,
+you can refer to:
+.Sp
+.Vb 1
+\&  http://msdn.microsoft.com/library/psdk/dasdk/odch6wqb.htm
+.Ve
+If that \s-1URL\s0 ceases to work then use the \s-1MSDN\s0 search facility at:
+.Sp
+.Vb 1
+\&  http://search.microsoft.com/us/dev/
+.Ve
+and search for \f(CWSQLTables returns\fR using the exact phrase option.
+The link you want will probably just be called \f(CWSQLTables\fR and will
+be part of the Data Access \s-1SDK\s0.
+.Ip "\f(CWtables\fR \fI\s-1NEW\s0\fR" 4
+\fBWarning:\fR This method is experimental and may change.
+.Sp
+.Vb 1
+\&  @names = $dbh->tables;
+.Ve
+Returns a list of table and view names, possibly including a schema prefix.
+This list should include all
+tables that can be used in a \f(CWSELECT\fR statement without further
+qualification.
+.Sp
+Note that \f(CWtable_info\fR might not return records for all tables.
+Applications can use any valid table regardless of whether it's
+returned by tables.  See also the \f(CWtable_info\fR entry elsewhere in this document .
+.Ip "\f(CWtype_info_all\fR \fI\s-1NEW\s0\fR" 4
+\fBWarning:\fR This method is experimental and may change.
+.Sp
+.Vb 1
+\&  $type_info_all = $dbh->type_info_all;
+.Ve
+Returns a reference to an array which holds information about each data
+type variant supported by the database and driver. The array and its
+contents should be treated as read-only.
+.Sp
+The first item is a reference to a hash of \f(CWName =\fR> \f(CWIndex\fR pairs. The
+following items are references to arrays, one per supported data type
+variant. The leading hash defines the names and order of the fields
+within the following list of arrays. For example:
+.Sp
+.Vb 25
+\&  $type_info_all = [
+\&    {   TYPE_NAME         => 0,
+\&        DATA_TYPE         => 1,
+\&        COLUMN_SIZE       => 2,     # was PRECISION originally
+\&        LITERAL_PREFIX    => 3,
+\&        LITERAL_SUFFIX    => 4,
+\&        CREATE_PARAMS     => 5,
+\&        NULLABLE          => 6,
+\&        CASE_SENSITIVE    => 7,
+\&        SEARCHABLE        => 8,
+\&        UNSIGNED_ATTRIBUTE=> 9,
+\&        FIXED_PREC_SCALE  => 10,    # was MONEY originally
+\&        AUTO_UNIQUE_VALUE => 11,    # was AUTO_INCREMENT originally
+\&        LOCAL_TYPE_NAME   => 12,
+\&        MINIMUM_SCALE     => 13,
+\&        MAXIMUM_SCALE     => 14,
+\&        NUM_PREC_RADIX    => 15,
+\&    },
+\&    [ 'VARCHAR', SQL_VARCHAR,
+\&        undef, "'","'", undef,0, 1,1,0,0,0,undef,1,255, undef
+\&    ],
+\&    [ 'INTEGER', SQL_INTEGER,
+\&        undef,  "", "", undef,0, 0,1,0,0,0,undef,0,  0, 10
+\&    ],
+\&  ];
+.Ve
+Note that more than one row may have the same value in the \f(CWDATA_TYPE\fR
+field if there are different ways to spell the type name and/or there
+are variants of the type with different attributes (e.g., with and
+without \f(CWAUTO_UNIQUE_VALUE\fR set, with and without \f(CWUNSIGNED_ATTRIBUTE\fR, etc).
+.Sp
+The rows are ordered by \f(CWDATA_TYPE\fR first and then by how closely each
+type maps to the corresponding \s-1ODBC\s0 \s-1SQL\s0 data type, closest first.
+.Sp
+The meaning of the fields is described in the documentation for
+the the \f(CWtype_info\fR entry elsewhere in this document method. The index values shown above (e.g.,
+\f(CWNULLABLE =\fR> \f(CW6\fR) are for illustration only. Drivers may define the
+fields with a different order.
+.Sp
+This method is not normally used directly. The the \f(CWtype_info\fR entry elsewhere in this document method
+provides a more useful interface to the data.
+.Ip "\f(CWtype_info\fR \fI\s-1NEW\s0\fR" 4
+\fBWarning:\fR This method is experimental and may change.
+.Sp
+.Vb 1
+\&  @type_info = $dbh->type_info($data_type);
+.Ve
+Returns a list of hash references holding information about one or more
+variants of \f(CW$data_type\fR. The list is ordered by \f(CWDATA_TYPE\fR first and
+then by how closely each type maps to the corresponding \s-1ODBC\s0 \s-1SQL\s0 data
+type, closest first.  If called in a scalar context then only the first
+(best) element is returned.
+.Sp
+If \f(CW$data_type\fR is undefined or \f(CWSQL_ALL_TYPES\fR, then the list will
+contain hashes for all data type variants supported by the database and driver.
+.Sp
+If \f(CW$data_type\fR is an array reference then \f(CWtype_info\fR returns the
+information for the \fIfirst\fR type in the array that has any matches.
+.Sp
+The keys of the hash follow the same letter case conventions as the
+rest of the \s-1DBI\s0 (see the section on \fI/Naming Conventions and Name Space\fR). The
+following items should exist:
+.Ip "\s-1TYPE_NAME\s0 (string)" 8
+Data type name for use in \s-1CREATE\s0 \s-1TABLE\s0 statements etc.
+.Ip "\s-1DATA_TYPE\s0 (integer)" 8
+\s-1SQL\s0 data type number.
+.Ip "\s-1COLUMN_SIZE\s0 (integer)" 8
+For numeric types, this is either the total number of digits (if the
+\s-1NUM_PREC_RADIX\s0 value is 10) or the total number of bits allowed in the
+column (if \s-1NUM_PREC_RADIX\s0 is 2).
+.Sp
+For string types, this is the maximum size of the string in bytes.
+.Sp
+For date and interval types, this is the maximum number of characters
+needed to display the value.
+.Ip "\s-1LITERAL_PREFIX\s0 (string)" 8
+Characters used to prefix a literal. A typical prefix is \*(L"\f(CW'\fR\*(R" for characters,
+or possibly \*(L"\f(CW0x\fR\*(R" for binary values passed as hexadecimal.  \s-1NULL\s0 (\f(CWundef\fR) is
+returned for data types for which this is not applicable.
+.Ip "\s-1LITERAL_SUFFIX\s0 (string)" 8
+Characters used to suffix a literal. Typically \*(L"\f(CW'\fR\*(R" for characters.
+\s-1NULL\s0 (\f(CWundef\fR) is returned for data types where this is not applicable.
+.Ip "\s-1CREATE_PARAMS\s0 (string)" 8
+Parameter names for data type definition. For example, \f(CWCREATE_PARAMS\fR for a
+\f(CWDECIMAL\fR would be \*(L"\f(CWprecision,scale\fR\*(R" if the \s-1DECIMAL\s0 type should be
+declared as \f(CWDECIMAL(\fR\fIprecision,scale\fR\f(CW)\fR where \fIprecision\fR and \fIscale\fR
+are integer values.  For a \f(CWVARCHAR\fR it would be \*(L"\f(CWmax length\fR\*(R".
+\s-1NULL\s0 (\f(CWundef\fR) is returned for data types for which this is not applicable.
+.Ip "\s-1NULLABLE\s0 (integer)" 8
+Indicates whether the data type accepts a \s-1NULL\s0 value:
+\f(CW0\fR or an empty string = no, \f(CW1\fR = yes, \f(CW2\fR = unknown.
+.Ip "\s-1CASE_SENSITIVE\s0 (boolean)" 8
+Indicates whether the data type is case sensitive in collations and
+comparisons.
+.Ip "\s-1SEARCHABLE\s0 (integer)" 8
+Indicates how the data type can be used in a \s-1WHERE\s0 clause, as
+follows:
+.Sp
+.Vb 4
+\&  0 - Cannot be used in a WHERE clause
+\&  1 - Only with a LIKE predicate
+\&  2 - All comparison operators except LIKE
+\&  3 - Can be used in a WHERE clause with any comparison operator
+.Ve
+.Ip "\s-1UNSIGNED_ATTRIBUTE\s0 (boolean)" 8
+Indicates whether the data type is unsigned.  \s-1NULL\s0 (\f(CWundef\fR) is returned
+for data types for which this is not applicable.
+.Ip "\s-1FIXED_PREC_SCALE\s0 (boolean)" 8
+Indicates whether the data type always has the same precision and scale
+(such as a money type).  \s-1NULL\s0 (\f(CWundef\fR) is returned for data types 
+for which
+this is not applicable.
+.Ip "\s-1AUTO_UNIQUE_VALUE\s0 (boolean)" 8
+Indicates whether a column of this data type is automatically set to a
+unique value whenever a new row is inserted.  \s-1NULL\s0 (\f(CWundef\fR) is returned
+for data types for which this is not applicable.
+.Ip "\s-1LOCAL_TYPE_NAME\s0 (string)" 8
+Localized version of the \f(CWTYPE_NAME\fR for use in dialog with users.
+\s-1NULL\s0 (\f(CWundef\fR) is returned if a localized name is not available (in which
+case \f(CWTYPE_NAME\fR should be used).
+.Ip "\s-1MINIMUM_SCALE\s0 (integer)" 8
+The minimum scale of the data type. If a data type has a fixed scale,
+then \f(CWMAXIMUM_SCALE\fR holds the same value.  \s-1NULL\s0 (\f(CWundef\fR) is returned for
+data types for which this is not applicable.
+.Ip "\s-1MAXIMUM_SCALE\s0 (integer)" 8
+The maximum scale of the data type. If a data type has a fixed scale,
+then \f(CWMINIMUM_SCALE\fR holds the same value.  \s-1NULL\s0 (\f(CWundef\fR) is returned for
+data types for which this is not applicable.
+.Ip "\s-1SQL_DATA_TYPE\s0 (integer)" 8
+This column is the same as the \f(CWDATA_TYPE\fR column, except for interval
+and datetime data types.  For interval and datetime data types, the
+\f(CWSQL_DATA_TYPE\fR field will return \f(CWSQL_INTERVAL\fR or \f(CWSQL_DATETIME\fR, and the
+\f(CWSQL_DATETIME_SUB\fR field below will return the subcode for the specific
+interval or datetime data type. If this field is \s-1NULL\s0, then the driver
+does not support or report on interval or date subtypes.
+.Ip "\s-1SQL_DATETIME_SUB\s0 (integer)" 8
+For interval or datetime data types, where the \f(CWSQL_DATA_TYPE\fR field
+above is \f(CWSQL_INTERVAL\fR or \f(CWSQL_DATETIME\fR, this field will hold the subcode
+for the specific interval or datetime data type. Otherwise it will be
+\s-1NULL\s0 (\f(CWundef\fR).
+.Ip "\s-1NUM_PREC_RADIX\s0 (integer)" 8
+The radix value of the data type. For approximate numeric types, 
+\f(CWNUM_PREC_RADIX\fR
+contains the value 2 and \f(CWCOLUMN_SIZE\fR holds the number of bits. For
+exact numeric types, \f(CWNUM_PREC_RADIX\fR contains the value 10 and \f(CWCOLUMN_SIZE\fR holds
+the number of decimal digits. \s-1NULL\s0 (\f(CWundef\fR) is returned either for data types
+for which this is not applicable or if the driver cannot report this information.
+.Ip "\s-1INTERVAL_PRECISION\s0 (integer)" 8
+The interval leading precision for interval types. \s-1NULL\s0 is returned
+either for data types for which this is not applicable or if the driver
+cannot report this information.
+.Sp
+Since \s-1DBI\s0 and \s-1ODBC\s0 drivers vary in how they map their types into the
+\s-1ISO\s0 standard types you may need to search for more than one type.
+Here's an example looking for a usable type to store a date:
+.Sp
+.Vb 1
+\&  $my_date_type = $dbh->type_info( [ SQL_DATE, SQL_TIMESTAMP ] );
+.Ve
+Similarly, to more reliably find a type to store small integers, you could
+use a list starting with \f(CWSQL_SMALLINT\fR, \f(CWSQL_INTEGER\fR, \f(CWSQL_DECIMAL\fR, etc.
+.Sp
+For more detailed information about these fields and their meanings, you
+can refer to:
+.Sp
+.Vb 1
+\&  http://msdn.microsoft.com/library/psdk/dasdk/odch6yy7.htm
+.Ve
+If that \s-1URL\s0 ceases to work then use the \s-1MSDN\s0 search facility at 
+ 
+    http://search.microsoft.com/us/dev/
+ 
+and search the \s-1MSDN\s0 Library for \f(CWSQLGetTypeInfo returns\fR using the exact phrase option.
+The link you want will probably just be called \f(CWSQLGetTypeInfo\fR (there
+may be more than one). 
+.Sp
+The individual data types are currently described here:
+.Sp
+.Vb 1
+\&  http://msdn.microsoft.com/library/psdk/dasdk/odap8fcj.htm
+.Ve
+If that \s-1URL\s0 ceases to work, or to get more general information, use the
+\s-1MSDN\s0 search facility as described above and search for \f(CWSQL Data Types\fR.
+.Ip "\f(CWquote\fR" 4
+.Sp
+.Vb 2
+\&  $sql = $dbh->quote($value);
+\&  $sql = $dbh->quote($value, $data_type);
+.Ve
+Quote a string literal for use as a literal value in an \s-1SQL\s0 statement,
+by escaping any special characters (such as quotation marks)
+contained within the string and adding the required type of outer
+quotation marks.
+.Sp
+.Vb 2
+\&  $sql = sprintf "SELECT foo FROM bar WHERE baz = %s",
+\&                $dbh->quote("Don't");
+.Ve
+For most database types, quote would return \f(CW'Don''t'\fR (including the
+outer quotation marks).
+.Sp
+An undefined \f(CW$value\fR value will be returned as the string \f(CWNULL\fR (without
+quotation marks) to match how NULLs are represented in \s-1SQL\s0.
+.Sp
+If \f(CW$data_type\fR is supplied, it is used to try to determine the required
+quoting behavior by using the information returned by the \f(CWtype_info\fR entry elsewhere in this document .
+As a special case, the standard numeric types are optimized to return
+\f(CW$value\fR without calling \f(CWtype_info\fR.
+.Sp
+Quote will probably \fInot\fR be able to deal with all possible input
+(such as binary data or data containing newlines), and is not related in
+any way with escaping or quoting shell meta-characters. There is no
+need to quote values being used with the section on \fI/"Placeholders and Bind Values\fR.
+.Sh "Database Handle Attributes"
+This section describes attributes specific to database handles.
+.PP
+Changes to these database handle attributes do not affect any other
+existing or future database handles.
+.PP
+Attempting to set or get the value of an unknown attribute is fatal,
+except for private driver-specific attributes (which all have names
+starting with a lowercase letter).
+.PP
+Example:
+.PP
+.Vb 2
+\&  $h->{AutoCommit} = ...;       # set/write
+\&  ... = $h->{AutoCommit};       # get/read
+.Ve
+.Ip "\f(CWAutoCommit\fR  (boolean)" 4
+If true, then database changes cannot be rolled-back (undone).  If false,
+then database changes automatically occur within a \*(L"transaction\*(R", which
+must either be committed or rolled back using the \f(CWcommit\fR or \f(CWrollback\fR
+methods.
+.Sp
+Drivers should always default to \f(CWAutoCommit\fR mode (an unfortunate
+choice largely forced on the \s-1DBI\s0 by \s-1ODBC\s0 and \s-1JDBC\s0 conventions.)
+.Sp
+Attempting to set \f(CWAutoCommit\fR to an unsupported value is a fatal error.
+This is an important feature of the \s-1DBI\s0. Applications that need
+full transaction behavior can set \f(CW$dbh-\fR>\f(CW{AutoCommit} = 0\fR (or
+set \f(CWAutoCommit\fR to 0 via the \f(CWconnect\fR entry elsewhere in this document ) 
+without having to check that the value was assigned successfully.
+.Sp
+For the purposes of this description, we can divide databases into three
+categories:
+.Sp
+.Vb 3
+\&  Databases which don't support transactions at all.
+\&  Databases in which a transaction is always active.
+\&  Databases in which a transaction must be explicitly started (C<'BEGIN WORK'>).
+.Ve
+\fB* Databases which don't support transactions at all\fR
+.Sp
+For these databases, attempting to turn \f(CWAutoCommit\fR off is a fatal error.
+\f(CWcommit\fR and \f(CWrollback\fR both issue warnings about being ineffective while
+\f(CWAutoCommit\fR is in effect.
+.Sp
+\fB* Databases in which a transaction is always active\fR
+.Sp
+These are typically mainstream commercial relational databases with
+\*(L"\s-1ANSI\s0 standard\*(R" transaction behavior.
+If \f(CWAutoCommit\fR is off, then changes to the database won't have any
+lasting effect unless the \f(CWcommit\fR entry elsewhere in this document is called (but see also
+the \f(CWdisconnect\fR entry elsewhere in this document ). If the \f(CWrollback\fR entry elsewhere in this document is called then any changes since the
+last commit are undone.
+.Sp
+If \f(CWAutoCommit\fR is on, then the effect is the same as if the \s-1DBI\s0 
+called \f(CWcommit\fR automatically after every successful database
+operation. In other words, calling \f(CWcommit\fR or \f(CWrollback\fR explicitly while
+\f(CWAutoCommit\fR is on would be ineffective because the changes would
+have already been commited.
+.Sp
+Changing \f(CWAutoCommit\fR from off to on should issue a the \f(CWcommit\fR entry elsewhere in this document in most drivers.
+.Sp
+Changing \f(CWAutoCommit\fR from on to off should have no immediate effect.
+.Sp
+For databases which don't support a specific auto-commit mode, the
+driver has to commit each statement automatically using an explicit
+\f(CWCOMMIT\fR after it completes successfully (and roll it back using an
+explicit \f(CWROLLBACK\fR if it fails).  The error information reported to the
+application will correspond to the statement which was executed, unless
+it succeeded and the commit or rollback failed.
+.Sp
+\fB* Databases in which a transaction must be explicitly started\fR
+.Sp
+For these databases, the intention is to have them act like databases in
+which a transaction is always active (as described above).
+.Sp
+To do this, the \s-1DBI\s0 driver will automatically begin a transaction when
+\f(CWAutoCommit\fR is turned off (from the default \*(L"on\*(R" state) and will
+automatically begin another transaction after a the \f(CWcommit\fR entry elsewhere in this document or the \f(CWrollback\fR entry elsewhere in this document .
+In this way, the application does not have to treat these databases as a
+special case.
+.Sp
+See the \f(CWdisconnect\fR entry elsewhere in this document for other important notes about transactions.
+.Ip "\f(CWDriver\fR  (handle)" 4
+Holds the handle of the parent driver. The only recommended use for this
+is to find the name of the driver using:
+.Sp
+.Vb 1
+\&  $dbh->{Driver}->{Name}
+.Ve
+.Ip "\f(CWName\fR  (string)" 4
+Holds the \*(L"name\*(R" of the database. Usually (and recommended to be) the
+same as the \*(L"\f(CWdbi:DriverName:...\fR\*(R" string used to connect to the database,
+but with the leading \*(L"\f(CWdbi:DriverName:\fR\*(R" removed.
+.Ip "\f(CWRowCacheSize\fR  (integer) \fI\s-1NEW\s0\fR" 4
+A hint to the driver indicating the size of the local row cache that the
+application would like the driver to use for future \f(CWSELECT\fR statements.
+If a row cache is not implemented, then setting \f(CWRowCacheSize\fR is ignored
+and getting the value returns \f(CWundef\fR.
+.Sp
+Some \f(CWRowCacheSize\fR values have special meaning, as follows:
+.Sp
+.Vb 4
+\&  0 - Automatically determine a reasonable cache size for each C<SELECT>
+\&  1 - Disable the local row cache
+\& >1 - Cache this many rows
+\& <0 - Cache as many rows that will fit into this much memory for each C<SELECT>.
+.Ve
+Note that large cache sizes may require a very large amount of memory
+(\fIcached rows * maximum size of row\fR). Also, a large cache will cause
+a longer delay not only for the first fetch, but also whenever the 
+cache needs refilling.
+.Sp
+See also the the \f(CWRowsInCache\fR entry elsewhere in this document statement handle attribute.
+.SH "DBI STATEMENT HANDLE OBJECTS"
+This section lists the methods and attributes associated with DBI
+statement handles.
+.Sh "Statement Handle Methods"
+The \s-1DBI\s0 defines the following methods for use on \s-1DBI\s0 statement handles:
+.Ip "\f(CWbind_param\fR" 4
+.Sp
+.Vb 3
+\&  $rc = $sth->bind_param($p_num, $bind_value)  || die $sth->errstr;
+\&  $rv = $sth->bind_param($p_num, $bind_value, \e%attr)     || ...
+\&  $rv = $sth->bind_param($p_num, $bind_value, $bind_type) || ...
+.Ve
+The \f(CWbind_param\fR method can be used to bind a value
+with a placeholder embedded in the prepared statement. Placeholders
+are indicated with question mark character (\f(CW?\fR). For example:
+.Sp
+.Vb 5
+\&  $dbh->{RaiseError} = 1;        # save having to check each method call
+\&  $sth = $dbh->prepare("SELECT name, age FROM people WHERE name LIKE ?");
+\&  $sth->bind_param(1, "John%");  # placeholders are numbered from 1
+\&  $sth->execute;
+\&  DBI::dump_results($sth);
+.Ve
+Note that the \f(CW?\fR is not enclosed in quotation marks, even when the
+placeholder represents a string.  Some drivers also allow placeholders
+like \f(CW:\fR\fIname\fR and \f(CW:\fR\fIn\fR (e.g., \f(CW:1\fR, \f(CW:2\fR, and so on)
+in addition to \f(CW?\fR, but their use
+is not portable.  Undefined bind values or \f(CWundef\fR can be used to
+indicate null values.
+.Sp
+Some drivers do not support placeholders.
+.Sp
+With most drivers, placeholders can't be used for any element of a
+statement that would prevent the database server from validating the
+statement and creating a query execution plan for it. For example:
+.Sp
+.Vb 2
+\&  "SELECT name, age FROM ?"         # wrong (will probably fail)
+\&  "SELECT name, ?   FROM people"    # wrong (but may not 'fail')
+.Ve
+Also, placeholders can only represent single scalar values.
+For example, the following
+statement won't work as expected for more than one value:
+.Sp
+.Vb 1
+\&  "SELECT name, age FROM people WHERE name IN (?)"    # wrong
+.Ve
+\fBData Types for Placeholders\fR
+.Sp
+The \f(CW\e%attr\fR parameter can be used to hint at the data type the
+placeholder should have. Typically, the driver is only interested in
+knowing if the placeholder should be bound as a number or a string.
+.Sp
+.Vb 1
+\&  $sth->bind_param(1, $value, { TYPE => SQL_INTEGER });
+.Ve
+As a short-cut for this common case, the data type can be passed
+directly, in place of the \f(CW\e%attr\fR hash reference. This example is
+equivalent to the one above:
+.Sp
+.Vb 1
+\&  $sth->bind_param(1, $value, SQL_INTEGER);
+.Ve
+The \f(CWTYPE\fR value indicates the standard (non-driver-specific) type for
+this parameter. To specify the driver-specific type, the driver may
+support a driver-specific attribute, such as \f(CW{ ora_type =\fR>\f(CW 97 }\fR.  The
+data type for a placeholder cannot be changed after the first
+\f(CWbind_param\fR call. However, it can be left unspecified, in which case it
+defaults to the previous value.
+.Sp
+Perl only has string and number scalar data types. All database types
+that aren't numbers are bound as strings and must be in a format the
+database will understand.
+.Sp
+As an alternative to specifying the data type in the \f(CWbind_param\fR call,
+you can let the driver pass the value as the default type (\f(CWVARCHAR\fR).
+You can then use an \s-1SQL\s0 function to convert the type within the statement.
+For example:
+.Sp
+.Vb 1
+\&  INSERT INTO price(code, price) VALUES (?, CONVERT(MONEY,?))
+.Ve
+The \f(CWCONVERT\fR function used here is just an example. The actual function
+and syntax will vary between different databases and is non-portable.
+.Sp
+See also the section on \fI/"Placeholders and Bind Values\fR for more information.
+.Ip "\f(CWbind_param_inout\fR" 4
+.Sp
+.Vb 3
+\&  $rc = $sth->bind_param_inout($p_num, \e$bind_value, $max_len)  || die $sth->errstr;
+\&  $rv = $sth->bind_param_inout($p_num, \e$bind_value, $max_len, \e%attr)     || ...
+\&  $rv = $sth->bind_param_inout($p_num, \e$bind_value, $max_len, $bind_type) || ...
+.Ve
+This method acts like the \f(CWbind_param\fR entry elsewhere in this document but also enables values to be
+updated by the statement. The statement is typically
+a call to a stored procedure. The \f(CW$bind_value\fR must be passed as a
+reference to the actual value to be used.
+.Sp
+Note that unlike the \f(CWbind_param\fR entry elsewhere in this document the \f(CW$bind_value\fR variable is not
+read when \f(CWbind_param_inout\fR is called. Instead, the value in the
+variable is read at the time the \f(CWexecute\fR entry elsewhere in this document is called.
+.Sp
+The additional \f(CW$max_len\fR parameter specifies the minimum amount of
+memory to allocate to \f(CW$bind_value\fR for the new value. If the value
+returned from the database is too
+big to fit, then the execution should fail. If unsure what value to use,
+pick a generous length, i.e., a length larger than the longest value that would ever be
+returned.  The only cost of using a larger value than needed is wasted memory.
+.Sp
+It is expected that few drivers will support this method. The only
+driver currently known to do so is \s-1DBD::\s0Oracle (\s-1DBD::ODBC\s0 may support
+it in a future release). Therefore it should not be used for database
+independent applications.
+.Sp
+Undefined values or \f(CWundef\fR are used to indicate null values.
+See also the section on \fI/"Placeholders and Bind Values\fR for more information.
+.Ip "\f(CWexecute\fR" 4
+.Sp
+.Vb 2
+\&  $rv = $sth->execute                || die $sth->errstr;
+\&  $rv = $sth->execute(@bind_values)  || die $sth->errstr;
+.Ve
+Perform whatever processing is necessary to execute the prepared
+statement.  An \f(CWundef\fR is returned if an error occurs.  A successful
+\f(CWexecute\fR always returns true regardless of the number of rows affected,
+even if it's zero (see below). It is always important to check the
+return status of \f(CWexecute\fR (and most other \s-1DBI\s0 methods) for errors.
+.Sp
+For a \fInon\fR\-\f(CWSELECT\fR statement, \f(CWexecute\fR returns the number of rows
+affected, if known. If no rows were affected, then \f(CWexecute\fR returns
+\*(L"\f(CW0E0\fR\*(R", which Perl will treat as 0 but will regard as true. Note that it
+is \fInot\fR an error for no rows to be affected by a statement. If the
+number of rows affected is not known, then \f(CWexecute\fR returns \-1.
+.Sp
+For \f(CWSELECT\fR statements, execute simply \*(L"starts\*(R" the query within the
+database engine. Use one of the fetch methods to retreive the data after
+calling \f(CWexecute\fR.  The \f(CWexecute\fR method does \fInot\fR return the number of
+rows that will be returned by the query (because most databases can't
+tell in advance), it simply returns a true value.
+.Sp
+If any arguments are given, then \f(CWexecute\fR will effectively call
+the \f(CWbind_param\fR entry elsewhere in this document for each value before executing the statement.
+Values bound in this way are usually treated as \f(CWSQL_VARCHAR\fR types
+unless the driver can determine the correct type (which is rare), or
+unless
+\f(CWbind_param\fR (or \f(CWbind_param_inout\fR) has already been used to specify the
+type.
+.Ip "\f(CWfetchrow_arrayref\fR" 4
+.Sp
+.Vb 2
+\&  $ary_ref = $sth->fetchrow_arrayref;
+\&  $ary_ref = $sth->fetch;    # alias
+.Ve
+Fetches the next row of data and returns a reference to an array
+holding the field values.  Null fields are returned as \f(CWundef\fR
+values in the array.
+This is the fastest way to fetch data, particularly if used with
+\f(CW$sth-\fR>\f(CWbind_columns\fR.
+.Sp
+If there are no more rows or if an error occurs, then \f(CWfetchrow_arrayref\fR
+returns an \f(CWundef\fR. You should check \f(CW$sth-\fR>\f(CWerr\fR afterwards (or use the
+\f(CWRaiseError\fR attribute) to discover if the \f(CWundef\fR returned was due to an
+error.
+.Sp
+Note that the same array reference will currently be returned for each
+fetch, so don't store the reference and then use it after a later fetch.
+.Ip "\f(CWfetchrow_array\fR" 4
+.Sp
+.Vb 1
+\& @ary = $sth->fetchrow_array;
+.Ve
+An alternative to \f(CWfetchrow_arrayref\fR. Fetches the next row of data
+and returns it as a list containing the field values.  Null fields
+are returned as \f(CWundef\fR values in the list.
+.Sp
+If there are no more rows or if an error occurs, then \f(CWfetchrow_array\fR
+returns an empty list. You should check \f(CW$sth-\fR>\f(CWerr\fR afterwards (or use
+the \f(CWRaiseError\fR attribute) to discover if the empty list returned was
+due to an error.
+.Sp
+In a scalar context, \f(CWfetchrow_array\fR returns the value of the first
+field. An \f(CWundef\fR is returned if there are no more rows or if an error
+occurred. Since that \f(CWundef\fR can't be distinguished from an \f(CWundef\fR returned
+because the first field value was \s-1NULL\s0, you should exercise some
+caution if you use \f(CWfetchrow_array\fR in a scalar context.
+.Ip "\f(CWfetchrow_hashref\fR" 4
+.Sp
+.Vb 2
+\& $hash_ref = $sth->fetchrow_hashref;
+\& $hash_ref = $sth->fetchrow_hashref($name);
+.Ve
+An alternative to \f(CWfetchrow_arrayref\fR. Fetches the next row of data
+and returns it as a reference to a hash containing field name and field
+value pairs.  Null fields are returned as \f(CWundef\fR values in the hash.
+.Sp
+If there are no more rows or if an error occurs, then \f(CWfetchrow_hashref\fR
+returns an \f(CWundef\fR. You should check \f(CW$sth-\fR>\f(CWerr\fR afterwards (or use the
+\f(CWRaiseError\fR attribute) to discover if the \f(CWundef\fR returned was due to an
+error.
+.Sp
+The optional \f(CW$name\fR parameter specifies the name of the statement handle
+attribute. For historical reasons it defaults to \*(L"\f(CWNAME\fR\*(R", however using either
+\*(L"\f(CWNAME_lc\fR\*(R" or \*(L"\f(CWNAME_uc\fR\*(R" is recomended for portability.
+.Sp
+The keys of the hash are the same names returned by \f(CW$sth-\fR>\f(CW{$name}\fR. If
+more than one field has the same name, there will only be one entry in
+the returned hash for those fields.
+.Sp
+Because of the extra work \f(CWfetchrow_hashref\fR and Perl have to perform, it
+is not as efficient as \f(CWfetchrow_arrayref\fR or \f(CWfetchrow_array\fR.
+.Sp
+Currently, a new hash reference is returned for each row.  \fIThis will
+change\fR in the future to return the same hash ref each time, so don't
+rely on the current behaviour.
+.Ip "\f(CWfetchall_arrayref\fR" 4
+.Sp
+.Vb 3
+\&  $tbl_ary_ref = $sth->fetchall_arrayref;
+\&  $tbl_ary_ref = $sth->fetchall_arrayref( $slice_array_ref );
+\&  $tbl_ary_ref = $sth->fetchall_arrayref( $slice_hash_ref  );
+.Ve
+The \f(CWfetchall_arrayref\fR method can be used to fetch all the data to be
+returned from a prepared and executed statement handle. It returns a
+reference to an array that contains one reference per row.
+.Sp
+If there are no rows to return, \f(CWfetchall_arrayref\fR returns a reference
+to an empty array. If an error occurs, \f(CWfetchall_arrayref\fR returns the
+data fetched thus far, which may be none.  You should check \f(CW$sth-\fR>\f(CWerr\fR
+afterwards (or use the \f(CWRaiseError\fR attribute) to discover if the data is
+complete or was truncated due to an error.
+.Sp
+When passed an array reference, \f(CWfetchall_arrayref\fR uses the \f(CWfetchrow_arrayref\fR entry elsewhere in this document to fetch each row as an array ref. If the parameter array is not empty
+then it is used as a slice to select individual columns by index number.
+.Sp
+With no parameters, \f(CWfetchall_arrayref\fR acts as if passed an empty array ref.
+.Sp
+When passed a hash reference, \f(CWfetchall_arrayref\fR uses the \f(CWfetchrow_hashref\fR entry elsewhere in this document to fetch each row as a hash reference. If the parameter hash is not empty,
+then it is used as a slice to select individual columns by name. The
+names should be lower case regardless of the letter case in \f(CW$sth-\fR>\f(CW{NAME}\fR.
+The values of the hash should be set to 1.
+.Sp
+For example, to fetch just the first column of every row:
+.Sp
+.Vb 1
+\&  $tbl_ary_ref = $sth->fetchall_arrayref([0]);
+.Ve
+To fetch the second to last and last column of every row:
+.Sp
+.Vb 1
+\&  $tbl_ary_ref = $sth->fetchall_arrayref([-2,-1]);
+.Ve
+To fetch all fields of every row as a hash ref:
+.Sp
+.Vb 1
+\&  $tbl_ary_ref = $sth->fetchall_arrayref({});
+.Ve
+To fetch only the fields called \*(L"foo\*(R" and \*(L"bar\*(R" of every row as a hash ref:
+.Sp
+.Vb 1
+\&  $tbl_ary_ref = $sth->fetchall_arrayref({ foo=>1, bar=>1 });
+.Ve
+The first two examples return a reference to an array of array refs. The last
+returns a reference to an array of hash refs.
+.Ip "\f(CWfinish\fR" 4
+.Sp
+.Vb 1
+\&  $rc  = $sth->finish;
+.Ve
+Indicates that no more data will be fetched from this statement handle
+before it is either executed again or destroyed.  The \f(CWfinish\fR method
+is rarely needed,
+but can sometimes be helpful in very specific situations to
+allow the server to free up resources (such as
+sort buffers).
+.Sp
+When all the data has been fetched from a \f(CWSELECT\fR statement, the driver
+should automatically call \f(CWfinish\fR for you. So you should not normally
+need to call it explicitly.
+.Sp
+Consider a query like:
+.Sp
+.Vb 1
+\&  SELECT foo FROM table WHERE bar=? ORDER BY foo
+.Ve
+where you want to select just the first (smallest) \*(L"foo\*(R" value from a
+very large table. When executed, the database server will have to use
+temporary buffer space to store the sorted rows. If, after executing
+the handle and selecting one row, the handle won't be re-executed for
+some time and won't be destroyed, the \f(CWfinish\fR method can be used to tell
+the server that the buffer space can be freed.
+.Sp
+Calling \f(CWfinish\fR resets the the \f(CWActive\fR entry elsewhere in this document attribute for the statement.  It
+may also make some statement handle attributes (such as \f(CWNAME\fR and \f(CWTYPE\fR)
+unavailable if they have not already been accessed (and thus cached).
+.Sp
+The \f(CWfinish\fR method does not affect the transaction status of the
+database connection.  It has nothing to do with transactions. It's mostly an
+internal \*(L"housekeeping\*(R" method that is rarely needed. There's no need
+to call \f(CWfinish\fR if you're about to destroy or re-execute the statement
+handle.  See also the \f(CWdisconnect\fR entry elsewhere in this document and the the \f(CWActive\fR entry elsewhere in this document attribute.
+.Ip "\f(CWrows\fR" 4
+.Sp
+.Vb 1
+\&  $rv = $sth->rows;
+.Ve
+Returns the number of rows affected by the last row affecting command,
+or \-1 if the number of rows is not known or not available.
+.Sp
+Generally, you can only rely on a row count after a \fInon\fR\-\f(CWSELECT\fR
+\f(CWexecute\fR (for some specific operations like \f(CWUPDATE\fR and \f(CWDELETE\fR), or
+after fetching all the rows of a \f(CWSELECT\fR statement.
+.Sp
+For \f(CWSELECT\fR statements, it is generally not possible to know how many
+rows will be returned except by fetching them all.  Some drivers will
+return the number of rows the application has fetched so far, but
+others may return \-1 until all rows have been fetched.  So use of the
+\f(CWrows\fR method or \f(CW$DBI::rows\fR with \f(CWSELECT\fR statements is not
+recommended.
+.Sp
+One alternative method to get a row count for a \f(CWSELECT\fR is to execute a
+\*(L"\s-1SELECT\s0 \fI\s-1COUNT\s0\fR\|(*) \s-1FROM\s0 ...\*(R" \s-1SQL\s0 statement with the same \*(L"...\*(R" as your
+query and then fetch the row count from that.
+.Ip "\f(CWbind_col\fR" 4
+.Sp
+.Vb 1
+\&  $rc = $sth->bind_col($column_number, \e$var_to_bind);
+.Ve
+Binds an output column (field) of a \f(CWSELECT\fR statement to a Perl variable.
+See \f(CWbind_columns\fR below for an example.  Note that column numbers count
+up from 1.
+.Sp
+Whenever a row is fetched from the database, the corresponding Perl
+variable is automatically updated. There is no need to fetch and assign
+the values manually.  The binding is performed at a very low level
+using Perl aliasing so there is no extra copying taking place.  This
+makes using bound variables very efficient.
+.Sp
+For maximum portability between drivers, \f(CWbind_col\fR should be called after
+\f(CWexecute\fR. This restriction may be removed in a later version of the \s-1DBI\s0.
+.Sp
+You do not need to bind output columns in order to fetch data, but it
+can be useful for some applications which need either maximum performance
+or greater clarity of code.  The the \f(CWbind_param\fR entry elsewhere in this document method
+performs a similar but opposite function for input variables.
+.Ip "\f(CWbind_columns\fR" 4
+.Sp
+.Vb 1
+\&  $rc = $sth->bind_columns(@list_of_refs_to_vars_to_bind);
+.Ve
+Calls the \f(CWbind_col\fR entry elsewhere in this document for each column of the \f(CWSELECT\fR statement.
+The \f(CWbind_columns\fR method will die if the number of references does not
+match the number of fields.
+.Sp
+For maximum portability between drivers, \f(CWbind_columns\fR should be called
+after \f(CWexecute\fR.
+.Sp
+For example:
+.Sp
+.Vb 4
+\&  $dbh->{RaiseError} = 1; # do this, or check every call for errors
+\&  $sth = $dbh->prepare(q{ SELECT region, sales FROM sales_by_region });
+\&  $sth->execute;
+\&  my ($region, $sales);
+.Ve
+.Vb 2
+\&  # Bind Perl variables to columns:
+\&  $rv = $sth->bind_columns(\e$region, \e$sales);
+.Ve
+.Vb 2
+\&  # you can also use Perl's \e(...) syntax (see perlref docs):
+\&  #     $sth->bind_columns(\e($region, $sales));
+.Ve
+.Vb 4
+\&  # Column binding is the most efficient way to fetch data
+\&  while ($sth->fetch) {
+\&      print "$region: $sales\en";
+\&  }
+.Ve
+For compatibility with old scripts, the first parameter will be
+ignored if it is \f(CWundef\fR or
+a hash reference.
+.Ip "\f(CWdump_results\fR" 4
+.Sp
+.Vb 1
+\&  $rows = $sth->dump_results($maxlen, $lsep, $fsep, $fh);
+.Ve
+Fetches all the rows from \f(CW$sth\fR, calls \f(CWDBI::neat_list\fR for each row, and
+prints the results to \f(CW$fh\fR (defaults to \f(CWSTDOUT\fR) separated by \f(CW$lsep\fR
+(default \f(CW"\en"\fR). \f(CW$fsep\fR defaults to \f(CW", "\fR and \f(CW$maxlen\fR defaults to 35.
+.Sp
+This method is designed as a handy utility for prototyping and
+testing queries. Since it uses the \f(CWneat_list\fR entry elsewhere in this document to
+format and edit the string for reading by humans, it is not recomended
+for data transfer applications.
+.Sh "Statement Handle Attributes"
+This section describes attributes specific to statement handles. Most
+of these attributes are read-only.
+.PP
+Changes to these statement handle attributes do not affect any other
+existing or future statement handles.
+.PP
+Attempting to set or get the value of an unknown attribute is fatal,
+except for private driver specific attributes (which all have names
+starting with a lowercase letter).
+.PP
+Example:
+.PP
+.Vb 1
+\&  ... = $h->{NUM_OF_FIELDS};    # get/read
+.Ve
+Note that some drivers cannot provide valid values for some or all of
+these attributes until after \f(CW$sth-\fR>\f(CWexecute\fR has been called.
+.PP
+See also the \f(CWfinish\fR entry elsewhere in this document to learn more about the effect it 
+may have on some attributes.
+.Ip "\f(CWNUM_OF_FIELDS\fR  (integer, read-only)" 4
+Number of fields (columns) the prepared statement will return. Non-\f(CWSELECT\fR
+statements will have \f(CWNUM_OF_FIELDS == 0\fR.
+.Ip "\f(CWNUM_OF_PARAMS\fR  (integer, read-only)" 4
+The number of parameters (placeholders) in the prepared statement.
+See \s-1SUBSTITUTION\s0 \s-1VARIABLES\s0 below for more details.
+.Ip "\f(CWNAME\fR  (array-ref, read-only)" 4
+Returns a reference to an array of field names for each column. The
+names may contain spaces but should not be truncated or have any
+trailing space. Note that the names have the letter case (upper, lower
+or mixed) as returned by the driver being used. Portable applications
+should use the \f(CWNAME_lc\fR entry elsewhere in this document or the \f(CWNAME_uc\fR entry elsewhere in this document .
+.Sp
+.Vb 1
+\&  print "First column name: $sth->{NAME}->[0]\en";
+.Ve
+.Ip "\f(CWNAME_lc\fR  (array-ref, read-only)" 4
+Like the \f(CWNAME\fR entry elsewhere in this document but always returns lowercase names.
+.Ip "\f(CWNAME_uc\fR  (array-ref, read-only)" 4
+Like the \f(CWNAME\fR entry elsewhere in this document but always returns uppercase names.
+.Ip "\f(CWTYPE\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR" 4
+Returns a reference to an array of integer values for each
+column. The value indicates the data type of the corresponding column.
+.Sp
+The values correspond to the international standards (\s-1ANSI\s0 X3.135
+and \s-1ISO/IEC\s0 9075) which, in general terms, means \s-1ODBC\s0. Driver-specific
+types that don't exactly match standard types should generally return
+the same values as an \s-1ODBC\s0 driver supplied by the makers of the
+database. That might include private type numbers in ranges the vendor
+has officially registered. See:
+.Sp
+.Vb 1
+\&  ftp://jerry.ece.umassd.edu/isowg3/dbl/SQL_Registry
+.Ve
+Where there's no vendor-supplied \s-1ODBC\s0 driver to be compatible with, the
+\s-1DBI\s0 driver can use type numbers in the range that is now officially reserved
+for use by the \s-1DBI\s0: \-9999 to \-9000.
+.Sp
+All possible values for \f(CWTYPE\fR should have at least one entry in the
+output of the \f(CWtype_info_all\fR method (see the \f(CWtype_info_all\fR entry elsewhere in this document ).
+.Ip "\f(CWPRECISION\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR" 4
+Returns a reference to an array of integer values for each
+column.  For non-numeric columns, the value generally refers to either
+the maximum length or the defined length of the column.  For numeric
+columns, the value refers to the maximum number of significant digits
+used by the data type (without considering a sign character or decimal
+point).  Note that for floating point types (\s-1REAL\s0, \s-1FLOAT\s0, \s-1DOUBLE\s0), the
+\*(L"display size\*(R" can be up to 7 characters greater than the precision.
+(for the sign + decimal point + the letter E + a sign + 2 or 3 digits).
+.Ip "\f(CWSCALE\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR" 4
+Returns a reference to an array of integer values for each column.
+\s-1NULL\s0 (\f(CWundef\fR) values indicate columns where scale is not applicable.
+.Ip "\f(CWNULLABLE\fR  (array-ref, read-only)" 4
+Returns a reference to an array indicating the possibility of each
+column returning a null.  Possible values are \f(CW0\fR = no, \f(CW1\fR = yes, \f(CW2\fR = unknown.
+.Sp
+.Vb 1
+\&  print "First column may return NULL\en" if $sth->{NULLABLE}->[0];
+.Ve
+.Ip "\f(CWCursorName\fR  (string, read-only)" 4
+Returns the name of the cursor associated with the statement handle, if
+available. If not available or if the database driver does not support the
+\f(CW"where current of ..."\fR \s-1SQL\s0 syntax, then it returns \f(CWundef\fR.
+.Ip "\f(CWStatement\fR  (string, read-only) \fI\s-1NEW\s0\fR" 4
+Returns the statement string passed to the the \f(CWprepare\fR entry elsewhere in this document method.
+.Ip "\f(CWRowsInCache\fR  (integer, read-only)" 4
+If the driver supports a local row cache for \f(CWSELECT\fR statements, then
+this attribute holds the number of un-fetched rows in the cache. If the
+driver doesn't, then it returns \f(CWundef\fR. Note that some drivers pre-fetch
+rows on execute, whereas others wait till the first fetch.
+.Sp
+See also the the \f(CWRowCacheSize\fR entry elsewhere in this document database handle attribute.
+.SH "FURTHER INFORMATION"
+.Sh "Transactions"
+Transactions are a fundamental part of any robust database system. They
+protect against errors and database corruption by ensuring that sets of
+related changes to the database take place in atomic (indivisible,
+all-or-nothing) units.
+.PP
+This section applies to databases that support transactions and where
+\f(CWAutoCommit\fR is off.  See the \f(CWAutoCommit\fR entry elsewhere in this document for details of using \f(CWAutoCommit\fR
+with various types of databases.
+.PP
+The recommended way to implement robust transactions in Perl
+applications is to use \f(CWRaiseError\fR and \f(CWeval { ... }\fR
+(which is very fast, unlike \f(CWeval "..."\fR). For example:
+.PP
+.Vb 13
+\&  $dbh->{AutoCommit} = 0;  # enable transactions, if possible
+\&  $dbh->{RaiseError} = 1;
+\&  eval {
+\&      foo(...)        # do lots of work here
+\&      bar(...)        # including inserts
+\&      baz(...)        # and updates
+\&      $dbh->commit;   # commit the changes if we get this far
+\&  };
+\&  if ($@) {
+\&      warn "Transaction aborted because $@";
+\&      $dbh->rollback; # undo the incomplete changes
+\&      # add other application on-error-clean-up code here
+\&  }
+.Ve
+If the \f(CWRaiseError\fR attribute is not set, then \s-1DBI\s0 calls would need to be
+manually checked for errors, typically like this:
+.PP
+.Vb 1
+\&  $h->method(@args) || die $h->errstr;
+.Ve
+With \f(CWRaiseError\fR set, the \s-1DBI\s0 will automatically \f(CWdie\fR if any \s-1DBI\s0 method
+call on that handle (or a child handle) fails, so you don't have to
+test the return value of each method call. See the \f(CWRaiseError\fR entry elsewhere in this document for more
+details.
+.PP
+A major advantage of the \f(CWeval\fR approach is that the transaction will be
+properly rolled back if \fIany\fR code (not just \s-1DBI\s0 calls) in the inner
+application dies for any reason. The major advantage of using the
+\f(CW$h-\fR>\f(CW{RaiseError}\fR attribute is that all \s-1DBI\s0 calls will be checked
+automatically. Both techniques are strongly recommended.
+.Sh "Handling \s-1BLOB\s0 / \s-1LONG\s0 / Memo Fields"
+Many databases support \*(L"blob\*(R" (binary large objects), \*(L"long\*(R", or similar
+datatypes for holding very long strings or large amounts of binary
+data in a single field. Some databases support variable length long
+values over 2,000,000,000 bytes in length.
+.PP
+Since values of that size can't usually be held in memory, and because
+databases can't usually know in advance the length of the longest long
+that will be returned from a \f(CWSELECT\fR statement (unlike other data
+types), some special handling is required.
+.PP
+In this situation, the value of the \f(CW$h-\fR>\f(CW{LongReadLen}\fR attribute is used
+to determine how much buffer space to allocate when fetching such
+fields.  The \f(CW$h-\fR>\f(CW{LongTruncOk}\fR attribute is used to determine how to
+behave if a fetched value can't fit into the buffer.
+.PP
+When trying to insert long or binary values, placeholders should be used
+since there are often limits on the maximum size of an \f(CWINSERT\fR
+statement and the the \f(CWquote\fR entry elsewhere in this document method generally can't cope with binary
+data.  See the section on \fI/Placeholders and Bind Values\fR.
+.Sh "Simple Examples"
+Here's a complete example program to select and fetch some data:
+.PP
+.Vb 2
+\&  my $dbh = DBI->connect("dbi:DriverName:db_name", $user, $password)
+\&      || die "Can't connect to $data_source: $DBI::errstr";
+.Ve
+.Vb 4
+\&  my $sth = $dbh->prepare( q{
+\&          SELECT name, phone
+\&          FROM mytelbook
+\&  }) || die "Can't prepare statement: $DBI::errstr";
+.Ve
+.Vb 2
+\&  my $rc = $sth->execute
+\&      || die "Can't execute statement: $DBI::errstr";
+.Ve
+.Vb 2
+\&  print "Query will return $sth->{NUM_OF_FIELDS} fields.\en\en";
+\&  print "Field names: @{ $sth->{NAME} }\en";
+.Ve
+.Vb 5
+\&  while (($name, $phone) = $sth->fetchrow_array) {
+\&      print "$name: $phone\en";
+\&  }
+\&  # check for problems which may have terminated the fetch early
+\&  die $sth->errstr if $sth->err;
+.Ve
+.Vb 1
+\&  $dbh->disconnect;
+.Ve
+Here's a complete example program to insert some data from a file.
+(This example uses \f(CWRaiseError\fR to avoid needing to check each call).
+.PP
+.Vb 3
+\&  my $dbh = DBI->connect("dbi:DriverName:db_name", $user, $password, {
+\&      RaiseError => 1, AutoCommit => 0
+\&  });
+.Ve
+.Vb 3
+\&  my $sth = $dbh->prepare( q{
+\&      INSERT INTO table (name, phone) VALUES (?, ?)
+\&  });
+.Ve
+.Vb 7
+\&  open FH, "<phone.csv" or die "Unable to open phone.csv: $!";
+\&  while (<FH>) {
+\&      chop;
+\&      my ($name, $phone) = split /,/;
+\&      $sth->execute($name, $phone);
+\&  }
+\&  close FH;
+.Ve
+.Vb 2
+\&  $dbh->commit;
+\&  $dbh->disconnect;
+.Ve
+Here's how to convert fetched NULLs (undefined values) into empty strings:
+.PP
+.Vb 5
+\&  while($row = $sth->fetchrow_arrayref) {
+\&    # this is a fast and simple way to deal with nulls:
+\&    foreach (@$row) { $_ = '' unless defined }
+\&    print "@$row\en";
+\&  }
+.Ve
+The \f(CWq{...}\fR style quoting used in these examples avoids clashing with
+quotes that may be used in the \s-1SQL\s0 statement. Use the double-quote like
+\f(CWqq{...}\fR operator if you want to interpolate variables into the string.
+See the section on \fIQuote and Quote-like Operators\fR in the \fIperlop\fR manpage for more details.
+.Sh "Threads and Thread Safety"
+Perl versions 5.004_50 and later include optional experimental support
+for multiple threads on many platforms.  If the \s-1DBI\s0 is built using a
+Perl that has threads enabled then it will use a per-driver mutex to
+ensure that only one thread is with a driver at any one time.
+Please note that support for threads in Perl is still experimental and
+is known to have some significant problems. It's use is not recommended.
+.Sh "Signal Handling and Canceling Operations"
+The first thing to say is that signal handling in Perl is currently
+\fInot\fR safe. There is always a small risk of Perl crashing and/or
+core dumping when, or after, handling a signal.  (The risk was reduced
+with 5.004_04 but is still present.)
+.PP
+The two most common uses of signals in relation to the \s-1DBI\s0 are for
+canceling operations when the user types Ctrl-C (interrupt), and for
+implementing a timeout using \f(CWalarm()\fR and \f(CW$SIG{ALRM}\fR.
+.PP
+To assist in implementing these operations, the \s-1DBI\s0 provides a \f(CWcancel\fR
+method for statement handles. The \f(CWcancel\fR method should abort the current
+operation and is designed to be called from a signal handler.
+.PP
+However, it must be stressed that: a) few drivers implement this at
+the moment (the \s-1DBI\s0 provides a default method that just returns \f(CWundef\fR);
+and b) even if implemented, there is still a possibility that the statement
+handle, and possibly the parent database handle, will not be usable
+afterwards.
+.PP
+If \f(CWcancel\fR returns true, then it has successfully
+invoked the database engine's own cancel function.  If it returns false,
+then \f(CWcancel\fR failed. If it returns \f(CWundef\fR, then the database
+engine does not have cancel implemented.
+.SH "DEBUGGING"
+In addition to the the \f(CWtrace\fR entry elsewhere in this document method, you can enable the same trace
+information by setting the \f(CWDBI_TRACE\fR environment variable before
+starting Perl.
+.PP
+On Unix-like systems using a Bourne-like shell, you can do this easily
+on the command line:
+.PP
+.Vb 1
+\&  DBI_TRACE=2 perl your_test_script.pl
+.Ve
+If \f(CWDBI_TRACE\fR is set to a non-numeric value, then it is assumed to
+be a file name and the trace level will be set to 2 with all trace
+output appended to that file. If the name begins with a number
+followed by an equal sign (\f(CW=\fR), then the number and the equal sign are
+stripped off from the name, and the number is used to set the trace
+level. For example:
+.PP
+.Vb 1
+\&  DBI_TRACE=1=dbitrace.log perl your_test_script.pl
+.Ve
+See also the the \f(CWtrace\fR entry elsewhere in this document method.
+.SH "WARNING AND ERROR MESSAGES"
+.Sh "Fatal Errors"
+.Ip "Can't call method \*(N"prepare\*(T" without a package or object reference" 4
+The \f(CW$dbh\fR handle you're using to call \f(CWprepare\fR is probably undefined because
+the preceding \f(CWconnect\fR failed. You should always check the return status of
+\s-1DBI\s0 methods, or use the the \f(CWRaiseError\fR entry elsewhere in this document attribute.
+.Ip "Can't call method \*(N"execute\*(T" without a package or object reference" 4
+The \f(CW$sth\fR handle you're using to call \f(CWexecute\fR is probably undefined because
+the preceeding \f(CWprepare\fR failed. You should always check the return status of
+\s-1DBI\s0 methods, or use the the \f(CWRaiseError\fR entry elsewhere in this document attribute.
+.Ip "\s-1DBI/DBD\s0 internal version mismatch" 4
+The \s-1DBD\s0 driver module was built with a different version of \s-1DBI\s0 than
+the one currently being used.  You should rebuild the \s-1DBD\s0 module under
+the current version of \s-1DBI\s0.
+.Sp
+(Some rare platforms require \*(L"static linking\*(R". On those platforms, there
+may be an old \s-1DBI\s0 or \s-1DBD\s0 driver version actually embedded in the Perl
+executable being used.)
+.Ip "\s-1DBD\s0 driver has not implemented the AutoCommit attribute" 4
+The \s-1DBD\s0 driver implementation is incomplete. Consult the author.
+.Ip "Can't [sg]et %s->{%s}: unrecognised attribute" 4
+You attempted to set or get an unknown attribute of a handle.  Make
+sure you have spelled the attribute name correctly; case is significant
+(e.g., \*(L"Autocommit\*(R" is not the same as \*(L"AutoCommit").
+.Sh "Warnings"
+.Ip "Database handle destroyed without explicit disconnect" 4
+A \f(CW$dbh\fR handle went out of scope or the program ended before the handle
+was disconnected from the database.  You should always explicitly call
+\f(CWdisconnect\fR when you are finished using a database handle. If using
+transactions then you should also explicitly call \f(CWcommit\fR or \f(CWrollback\fR
+before \f(CWdisconnect\fR.
+.Ip "\s-1DBI\s0 Handle cleared whilst still holding %d cached kids!" 4
+Most probably due to a \s-1DBI\s0 bug. Possibly a \s-1DBD\s0 driver bug. Please report it.
+.Ip "\s-1DBI\s0 Handle cleared whilst still active!" 4
+Most probably due to a \s-1DBI\s0 bug. Possibly a \s-1DBD\s0 driver bug. Please report it.
+.Ip "\s-1DBI\s0 Handle has uncleared implementors data" 4
+Most probably a \s-1DBD\s0 driver bug. Please report it.
+.Ip "\s-1DBI\s0 Handle has %d uncleared child handles" 4
+Most probably due to a \s-1DBI\s0 bug. Possibly a \s-1DBD\s0 driver bug. Please report it.
+.SH "SEE ALSO"
+.Sh "Driver and Database Documentation"
+Refer to the documentation for the \s-1DBD\s0 driver that you are using.
+.PP
+Refer to the \s-1SQL\s0 Language Reference Manual for the database engine that you are using.
+.Sh "Books and Journals"
+.PP
+.Vb 1
+\& Programming the Perl DBI, by Alligator Descartes and Tim Bunce.
+.Ve
+.Vb 1
+\& Programming Perl 2nd Ed. by Larry Wall, Tom Christiansen & Randal Schwartz.
+.Ve
+.Vb 1
+\& Learning Perl by Randal Schwartz.
+.Ve
+.Vb 1
+\& Dr Dobb's Journal, November 1996.
+.Ve
+.Vb 1
+\& The Perl Journal, April 1997.
+.Ve
+.Sh "Manual Pages"
+the \fIperl(1)\fR manpage, the \fIperlmod(1)\fR manpage, the \fIperlbook(1)\fR manpage
+.Sh "Mailing List"
+The \fIdbi-users\fR mailing list is the primary means of communication among
+users of the \s-1DBI\s0 and its related modules. Subscribe and unsubscribe via:
+.PP
+.Vb 1
+\& http://www.isc.org/dbi-lists.html
+.Ve
+There are typically between 700 and 900 messages per month.  You have
+to subscribe in order to be able to post. However you can opt for a
+\&'post-only\*(R' subscription.
+.PP
+Mailing list archives are held at:
+.PP
+.Vb 3
+\& http://www.xray.mpe.mpg.de/mailing-lists/dbi/
+\& http://www.egroups.com/list/dbi-users/info.html
+\& http://www.bitmechanic.com/mail-archives/dbi-users/
+.Ve
+.Sh "Assorted Related \s-1WWW\s0 Links"
+The \s-1DBI\s0 \*(L"Home Page":
+.PP
+.Vb 1
+\& http://www.symbolstone.org/technology/perl/DBI
+.Ve
+Other \s-1DBI\s0 related links:
+.PP
+.Vb 5
+\& http://tegan.deltanet.com/~phlip/DBUIdoc.html
+\& http://dc.pm.org/perl_db.html
+\& http://wdvl.com/Authoring/DB/Intro/toc.html
+\& http://www.hotwired.com/webmonkey/backend/tutorials/tutorial1.html
+\& http://bumppo.net/lists/macperl/1999/06/msg00197.html
+.Ve
+Other database related links:
+.PP
+.Vb 2
+\& http://www.jcc.com/sql_stnd.html
+\& http://cuiwww.unige.ch/OSG/info/FreeDB/FreeDB.home.html
+.Ve
+Commercial and Data Warehouse Links
+.PP
+.Vb 6
+\& http://www.dwinfocenter.org
+\& http://www.datawarehouse.com
+\& http://www.datamining.org
+\& http://www.olapcouncil.org
+\& http://www.idwa.org
+\& http://www.knowledgecenters.org/dwcenter.asp
+.Ve
+Recommended Perl Programming Links
+.PP
+.Vb 1
+\& http://language.perl.com/style/
+.Ve
+.Sh "\s-1FAQ\s0"
+Please also read the \s-1DBI\s0 \s-1FAQ\s0 which is installed as a \s-1DBI::FAQ\s0 module. 
+You can use \fIperldoc\fR to read it by executing the \f(CWperldoc DBI::FAQ\fR command.
+.SH "AUTHORS"
+DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop,
+Jonathan Leffler and others.  Perl by Larry Wall and the
+\f(CWperl5-porters\fR.
+.SH "COPYRIGHT"
+The DBI module is Copyright (c) 1994-2000 Tim Bunce. England.
+All rights reserved.
+.PP
+You may distribute under the terms of either the GNU General Public
+License or the Artistic License, as specified in the Perl README file.
+.SH "ACKNOWLEDGEMENTS"
+I would like to acknowledge the valuable contributions of the many
+people I have worked with on the DBI project, especially in the early
+years (1992-1994). In no particular order: Kevin Stock, Buzz Moschetti,
+Kurt Andersen, Ted Lemon, William Hails, Garth Kennedy, Michael Peppler,
+Neil S. Briscoe, Jeff Urlwin, David J. Hughes, Jeff Stander,
+Forrest D Whitcher, Larry Wall, Jeff Fried, Roy Johnson, Paul Hudson,
+Georg Rehfeld, Steve Sizemore, Ron Pool, Jon Meek, Tom Christiansen,
+Steve Baumgarten, Randal Schwartz, and a whole lot more.
+.PP
+Then, of course, there are the poor souls who have struggled through
+untold and undocumented obstacles to actually implement DBI drivers.
+Among their ranks are Jochen Wiedmann, Alligator Descartes, Jonathan
+Leffler, Jeff Urlwin, Michael Peppler, Henrik Tougaard, Edwin Pratomo,
+Davide Migliavacca, Jan Pazdziora, Peter Haworth, Edmund Mergl, Steve
+Williams, Thomas Lowery, and Phlip Plumlee. Without them, the DBI would
+not be the practical reality it is today.  I'm also especially grateful
+to Alligator Descartes for starting work on the \*(L"Programming the Perl
+DBI\*(R" book and letting me jump on board.
+.SH "TRANSLATIONS"
+A German translation of this manual and other Perl module docs (all
+probably slightly out of date) is available, thanks to O'Reilly, at:
+.PP
+.Vb 1
+\&  http://www.oreilly.de/catalog/perlmodger/
+.Ve
+Some other translations:
+.PP
+.Vb 2
+\& http://cronopio.net/perl/                              - Spanish
+\& http://member.nifty.ne.jp/hippo2000/dbimemo.htm        - Japanese
+.Ve
+.SH "SUPPORT / WARRANTY"
+The DBI is free software. IT COMES WITHOUT WARRANTY OF ANY KIND.
+.PP
+Commercial support for Perl and the DBI, DBD::Oracle and
+Oraperl modules can be arranged via The Perl Clinic.
+For more details visit:
+.PP
+.Vb 1
+\&  http://www.perlclinic.com
+.Ve
+.SH "TRAINING"
+References to DBI related training resources. No recommendation implied.
+.PP
+.Vb 2
+\&  http://www.treepax.co.uk/
+\&  http://www.keller.com/dbweb/
+.Ve
+.SH "FREQUENTLY ASKED QUESTIONS"
+See the DBI FAQ for a more comprehensive list of FAQs. Use the
+\f(CWperldoc DBI::FAQ\fR command to read it.
+.Sh "How fast is the \s-1DBI\s0?"
+To measure the speed of the \s-1DBI\s0 and \s-1DBD::\s0Oracle code, I modified
+\s-1DBD::\s0Oracle so you can set an attribute that will cause the
+same row to be fetched from the row cache over and over again (without
+involving Oracle code but exercising *all* the \s-1DBI\s0 and \s-1DBD::\s0Oracle code
+in the code path for a fetch).
+.PP
+The results (on my lightly loaded old Sparc 10) fetching 50000 rows using:
+.PP
+.Vb 1
+\&        1 while $csr->fetch;
+.Ve
+were:
+	one field:   5300 fetches per cpu second (approx)
+	ten fields:  4000 fetches per cpu second (approx)
+.PP
+Obviously results will vary between platforms (newer faster platforms
+can reach around 50000 fetches per second), but it does give a feel for
+the maximum performance: fast.  By way of comparison, using the code:
+.PP
+.Vb 1
+\&        1 while @row = $csr->fetchrow_array;
+.Ve
+(\f(CWfetchrow_array\fR is roughly the same as \f(CWora_fetch\fR) gives:
+.PP
+.Vb 2
+\&        one field:   3100 fetches per cpu second (approx)
+\&        ten fields:  1000 fetches per cpu second (approx)
+.Ve
+Notice the slowdown and the more dramatic impact of extra fields.
+(The fields were all one char long. The impact would be even bigger for
+longer strings.)
+.PP
+Changing that slightly to represent actually doing something in Perl
+with the fetched data:
+.PP
+.Vb 3
+\&    while(@row = $csr->fetchrow_array) {
+\&        $hash{++$i} = [ @row ];
+\&    }
+.Ve
+gives:	ten fields:  500 fetches per cpu second (approx)
+.PP
+That simple addition has *halved* the performance.
+.PP
+I therefore conclude that \s-1DBI\s0 and \s-1DBD::\s0Oracle overheads are small
+compared with Perl language overheads (and probably database overheads).
+.PP
+So, if you think the \s-1DBI\s0 or your driver is slow, try replacing your
+fetch loop with just:
+.PP
+.Vb 1
+\&        1 while $csr->fetch;
+.Ve
+and time that. If that helps then point the finger at your own code. If
+that doesn't help much then point the finger at the database, the
+platform, the network etc. But think carefully before pointing it at
+the \s-1DBI\s0 or your driver.
+.PP
+(Having said all that, if anyone can show me how to make the \s-1DBI\s0 or
+drivers even more efficient, I'm all ears.)
+.Sh "Why doesn't my \s-1CGI\s0 script work right?"
+Read the information in the references below.  Please do \fInot\fR post
+\s-1CGI\s0 related questions to the \fIdbi-users\fR mailing list (or to me).
+.PP
+.Vb 5
+\& http://www.perl.com/cgi-bin/pace/pub/doc/FAQs/cgi/perl-cgi-faq.html
+\& http://www3.pair.com/webthing/docs/cgi/faqs/cgifaq.shtml
+\& http://www-genome.wi.mit.edu/WWW/faqs/www-security-faq.html
+\& http://www.boutell.com/faq/
+\& http://www.perl.com/perl/faq/
+.Ve
+General problems and good ideas:
+.PP
+.Vb 2
+\& Use the CGI::ErrorWrap module.
+\& Remember that many env vars won't be set for CGI scripts.
+.Ve
+.Sh "How can I maintain a \s-1WWW\s0 connection to a database?"
+For information on the Apache httpd server and the \f(CWmod_perl\fR module see
+.PP
+.Vb 1
+\&  http://perl.apache.org/
+.Ve
+.Sh "What about \s-1ODBC\s0?"
+A \s-1DBD::ODBC\s0 module is available.
+.Sh "Does the \s-1DBI\s0 have a year 2000 problem?"
+No. The \s-1DBI\s0 has no knowledge or understanding of dates at all.
+.PP
+Individual drivers (\s-1DBD\s0::*) may have some date handling code but are
+unlikely to have year 2000 related problems within their code. However,
+your application code which \fIuses\fR the \s-1DBI\s0 and \s-1DBD\s0 drivers may have
+year 2000 related problems if it has not been designed and written well.
+.PP
+See also the \*(L"Does Perl have a year 2000 problem?\*(R" section of the Perl \s-1FAQ\s0:
+.PP
+.Vb 1
+\&  http://www.perl.com/CPAN/doc/FAQs/FAQ/PerlFAQ.html
+.Ve
+.SH "OTHER RELATED WORK AND PERL MODULES"
+.Ip "Apache::\s-1DBI\s0 by E.Mergl@bawue.de" 4
+To be used with the Apache daemon together with an embedded Perl
+interpreter like \f(CWmod_perl\fR. Establishes a database connection which
+remains open for the lifetime of the \s-1HTTP\s0 daemon. This way the \s-1CGI\s0
+connect and disconnect for every database access becomes superfluous.
+.Ip "\s-1JDBC\s0 Server by Stuart \*(N'Zen\*(T' Bishop zen@bf.rmit.edu.au" 4
+The server is written in Perl. The client classes that talk to it are 
+of course in Java. Thus, a Java applet or application will be able to 
+comunicate via the \s-1JDBC\s0 \s-1API\s0 with any database that has a \s-1DBI\s0 driver installed.
+The \s-1URL\s0 used is in the form \f(CWjdbc:dbi://host.domain.etc:999/Driver/DBName\fR.
+It seems to be very similar to some commercial products, such as jdbcKona.
+.Ip "Remote Proxy \s-1DBD\s0 support" 4
+As of \s-1DBI\s0 1.02, a complete implementation of a \s-1DBD::\s0Proxy driver and the
+\s-1DBI::\s0ProxyServer are part of the \s-1DBI\s0 distribution.
+.Ip "\s-1SQL\s0 Parser" 4
+.Sp
+.Vb 2
+\&        Hugo van der Sanden <hv@crypt.compulink.co.uk>
+\&        Stephen Zander <stephen.zander@mckesson.com>
+.Ve
+Based on the O'Reilly lex/yacc book examples and \f(CWbyacc\fR.
+.Sp
+See also the \s-1SQL::\s0Statement module, a very simple \s-1SQL\s0 parser and engine,
+base of the \s-1DBD::CSV\s0 driver.
+
+.rn }` ''
+.IX Title "DBI 3"
+.IX Name "DBI - Database independent interface for Perl"
+
+.IX Header "NAME"
+
+.IX Header "SYNOPSIS"
+
+.IX Subsection "\s-1GETTING\s0 \s-1HELP\s0"
+
+.IX Subsection "\s-1NOTE\s0"
+
+.IX Subsection "\s-1RECENT\s0 \s-1CHANGES\s0 "
+
+.IX Item "Between \s-1DBI\s0 1.00 and \s-1DBI\s0 1.09:"
+
+.IX Header "DESCRIPTION"
+
+.IX Subsection "Architecture of a \s-1DBI\s0 Application"
+
+.IX Subsection "Notation and Conventions"
+
+.IX Subsection "Outline Usage"
+
+.IX Subsection "General Interface Rules & Caveats"
+
+.IX Subsection "Naming Conventions and Name Space"
+
+.IX Subsection "\s-1SQL\s0 \- A Query Language"
+
+.IX Subsection "Placeholders and Bind Values"
+
+.IX Header "THE DBI CLASS"
+
+.IX Subsection "\s-1DBI\s0 Class Methods"
+
+.IX Item "\f(CWconnect\fR"
+
+.IX Item "\f(CWconnect_cached\fR \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWavailable_drivers\fR"
+
+.IX Item "\f(CWdata_sources\fR"
+
+.IX Item "\f(CWtrace\fR"
+
+.IX Subsection "\s-1DBI\s0 Utility Functions"
+
+.IX Item "\f(CWneat\fR"
+
+.IX Item "\f(CWneat_list\fR"
+
+.IX Item "\f(CWlooks_like_number\fR"
+
+.IX Subsection "\s-1DBI\s0 Dynamic Attributes"
+
+.IX Item "\f(CW$DBI::err\fR"
+
+.IX Item "\f(CW$DBI::errstr\fR"
+
+.IX Item "\f(CW$DBI::state\fR"
+
+.IX Item "\f(CW$DBI::rows\fR"
+
+.IX Header "METHODS COMMON TO ALL HANDLES"
+
+.IX Item "\f(CWerr\fR"
+
+.IX Item "\f(CWerrstr\fR"
+
+.IX Item "\f(CWstate\fR"
+
+.IX Item "\f(CWtrace\fR"
+
+.IX Item "\f(CWtrace_msg\fR"
+
+.IX Item "\f(CWfunc\fR"
+
+.IX Header "ATTRIBUTES COMMON TO ALL HANDLES"
+
+.IX Item "\f(CWWarn\fR (boolean, inherited)"
+
+.IX Item "\f(CWActive\fR (boolean, read-only)"
+
+.IX Item "\f(CWKids\fR (integer, read-only)"
+
+.IX Item "\f(CWActiveKids\fR (integer, read-only)"
+
+.IX Item "\f(CWCachedKids\fR (hash ref)"
+
+.IX Item "\f(CWCompatMode\fR (boolean, inherited)"
+
+.IX Item "\f(CWInactiveDestroy\fR (boolean)"
+
+.IX Item "\f(CWPrintError\fR (boolean, inherited)"
+
+.IX Item "\f(CWRaiseError\fR (boolean, inherited)"
+
+.IX Item "\f(CWChopBlanks\fR (boolean, inherited)"
+
+.IX Item "\f(CWLongReadLen\fR (unsigned integer, inherited)"
+
+.IX Item "\f(CWLongTruncOk\fR (boolean, inherited)"
+
+.IX Item "\f(CWTaint\fR (boolean, inherited)"
+
+.IX Item "\f(CWprivate_*\fR"
+
+.IX Header "DBI DATABASE HANDLE OBJECTS"
+
+.IX Subsection "Database Handle Methods"
+
+.IX Item "\f(CWdo\fR"
+
+.IX Item "\f(CWselectrow_array\fR"
+
+.IX Item "\f(CWselectall_arrayref\fR"
+
+.IX Item "\f(CWselectcol_arrayref\fR"
+
+.IX Item "\f(CWprepare\fR"
+
+.IX Item "\f(CWprepare_cached\fR"
+
+.IX Item "\f(CWcommit\fR"
+
+.IX Item "\f(CWrollback\fR"
+
+.IX Item "\f(CWdisconnect\fR"
+
+.IX Item "\f(CWping\fR"
+
+.IX Item "\f(CWtable_info\fR \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWtables\fR \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWtype_info_all\fR \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWtype_info\fR \fI\s-1NEW\s0\fR"
+
+.IX Item "\s-1TYPE_NAME\s0 (string)"
+
+.IX Item "\s-1DATA_TYPE\s0 (integer)"
+
+.IX Item "\s-1COLUMN_SIZE\s0 (integer)"
+
+.IX Item "\s-1LITERAL_PREFIX\s0 (string)"
+
+.IX Item "\s-1LITERAL_SUFFIX\s0 (string)"
+
+.IX Item "\s-1CREATE_PARAMS\s0 (string)"
+
+.IX Item "\s-1NULLABLE\s0 (integer)"
+
+.IX Item "\s-1CASE_SENSITIVE\s0 (boolean)"
+
+.IX Item "\s-1SEARCHABLE\s0 (integer)"
+
+.IX Item "\s-1UNSIGNED_ATTRIBUTE\s0 (boolean)"
+
+.IX Item "\s-1FIXED_PREC_SCALE\s0 (boolean)"
+
+.IX Item "\s-1AUTO_UNIQUE_VALUE\s0 (boolean)"
+
+.IX Item "\s-1LOCAL_TYPE_NAME\s0 (string)"
+
+.IX Item "\s-1MINIMUM_SCALE\s0 (integer)"
+
+.IX Item "\s-1MAXIMUM_SCALE\s0 (integer)"
+
+.IX Item "\s-1SQL_DATA_TYPE\s0 (integer)"
+
+.IX Item "\s-1SQL_DATETIME_SUB\s0 (integer)"
+
+.IX Item "\s-1NUM_PREC_RADIX\s0 (integer)"
+
+.IX Item "\s-1INTERVAL_PRECISION\s0 (integer)"
+
+.IX Item "\f(CWquote\fR"
+
+.IX Subsection "Database Handle Attributes"
+
+.IX Item "\f(CWAutoCommit\fR  (boolean)"
+
+.IX Item "\f(CWDriver\fR  (handle)"
+
+.IX Item "\f(CWName\fR  (string)"
+
+.IX Item "\f(CWRowCacheSize\fR  (integer) \fI\s-1NEW\s0\fR"
+
+.IX Header "DBI STATEMENT HANDLE OBJECTS"
+
+.IX Subsection "Statement Handle Methods"
+
+.IX Item "\f(CWbind_param\fR"
+
+.IX Item "\f(CWbind_param_inout\fR"
+
+.IX Item "\f(CWexecute\fR"
+
+.IX Item "\f(CWfetchrow_arrayref\fR"
+
+.IX Item "\f(CWfetchrow_array\fR"
+
+.IX Item "\f(CWfetchrow_hashref\fR"
+
+.IX Item "\f(CWfetchall_arrayref\fR"
+
+.IX Item "\f(CWfinish\fR"
+
+.IX Item "\f(CWrows\fR"
+
+.IX Item "\f(CWbind_col\fR"
+
+.IX Item "\f(CWbind_columns\fR"
+
+.IX Item "\f(CWdump_results\fR"
+
+.IX Subsection "Statement Handle Attributes"
+
+.IX Item "\f(CWNUM_OF_FIELDS\fR  (integer, read-only)"
+
+.IX Item "\f(CWNUM_OF_PARAMS\fR  (integer, read-only)"
+
+.IX Item "\f(CWNAME\fR  (array-ref, read-only)"
+
+.IX Item "\f(CWNAME_lc\fR  (array-ref, read-only)"
+
+.IX Item "\f(CWNAME_uc\fR  (array-ref, read-only)"
+
+.IX Item "\f(CWTYPE\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWPRECISION\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWSCALE\fR  (array-ref, read-only) \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWNULLABLE\fR  (array-ref, read-only)"
+
+.IX Item "\f(CWCursorName\fR  (string, read-only)"
+
+.IX Item "\f(CWStatement\fR  (string, read-only) \fI\s-1NEW\s0\fR"
+
+.IX Item "\f(CWRowsInCache\fR  (integer, read-only)"
+
+.IX Header "FURTHER INFORMATION"
+
+.IX Subsection "Transactions"
+
+.IX Subsection "Handling \s-1BLOB\s0 / \s-1LONG\s0 / Memo Fields"
+
+.IX Subsection "Simple Examples"
+
+.IX Subsection "Threads and Thread Safety"
+
+.IX Subsection "Signal Handling and Canceling Operations"
+
+.IX Header "DEBUGGING"
+
+.IX Header "WARNING AND ERROR MESSAGES"
+
+.IX Subsection "Fatal Errors"
+
+.IX Item "Can't call method \*(N"prepare\*(T" without a package or object reference"
+
+.IX Item "Can't call method \*(N"execute\*(T" without a package or object reference"
+
+.IX Item "\s-1DBI/DBD\s0 internal version mismatch"
+
+.IX Item "\s-1DBD\s0 driver has not implemented the AutoCommit attribute"
+
+.IX Item "Can't [sg]et %s->{%s}: unrecognised attribute"
+
+.IX Subsection "Warnings"
+
+.IX Item "Database handle destroyed without explicit disconnect"
+
+.IX Item "\s-1DBI\s0 Handle cleared whilst still holding %d cached kids!"
+
+.IX Item "\s-1DBI\s0 Handle cleared whilst still active!"
+
+.IX Item "\s-1DBI\s0 Handle has uncleared implementors data"
+
+.IX Item "\s-1DBI\s0 Handle has %d uncleared child handles"
+
+.IX Header "SEE ALSO"
+
+.IX Subsection "Driver and Database Documentation"
+
+.IX Subsection "Books and Journals"
+
+.IX Subsection "Manual Pages"
+
+.IX Subsection "Mailing List"
+
+.IX Subsection "Assorted Related \s-1WWW\s0 Links"
+
+.IX Subsection "\s-1FAQ\s0"
+
+.IX Header "AUTHORS"
+
+.IX Header "COPYRIGHT"
+
+.IX Header "ACKNOWLEDGEMENTS"
+
+.IX Header "TRANSLATIONS"
+
+.IX Header "SUPPORT / WARRANTY"
+
+.IX Header "TRAINING"
+
+.IX Header "FREQUENTLY ASKED QUESTIONS"
+
+.IX Subsection "How fast is the \s-1DBI\s0?"
+
+.IX Subsection "Why doesn't my \s-1CGI\s0 script work right?"
+
+.IX Subsection "How can I maintain a \s-1WWW\s0 connection to a database?"
+
+.IX Subsection "What about \s-1ODBC\s0?"
+
+.IX Subsection "Does the \s-1DBI\s0 have a year 2000 problem?"
+
+.IX Header "OTHER RELATED WORK AND PERL MODULES"
+
+.IX Item "Apache::\s-1DBI\s0 by E.Mergl@bawue.de"
+
+.IX Item "\s-1JDBC\s0 Server by Stuart \*(N'Zen\*(T' Bishop zen@bf.rmit.edu.au"
+
+.IX Item "Remote Proxy \s-1DBD\s0 support"
+
+.IX Item "\s-1SQL\s0 Parser"
+
