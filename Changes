@@ -1,11 +1,9 @@
-begin_work?
-add details of the DBI book to the docs
-test shell /connect user etc
-added dbi_fetchall attrib to $dbh->selectall_arrayref($sql, { dbi_fetchall=>{} }, @bind); - add test
+Changes in DBI 1.14,	14th June 1999
 
+  NOTE: This version is the one the DBI book is based on.
+  NOTE: This version requires at least Perl 5.004.
   Perl 5.6 ithreads changes with thanks to Doug MacEachern.
   Changed trace output to use PerlIO thanks to Paul Moore.
-  This version requires at least Perl 5.004.
   Fixed bug in RaiseError/PrintError handling.
     (% chars in the error string could cause a core dump.)
   Fixed Win32 PerlEx IIS concurrency bugs thanks to Murray Nesbitt.

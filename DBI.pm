@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.30 2000/06/11 02:27:27 timbo Exp $
+# $Id: DBI.pm,v 10.32 2000/06/14 20:04:03 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.1380"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.14"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -93,8 +93,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.13
-(C<$Date: 2000/06/11 02:27:27 $>).
+This is the DBI specification that corresponds to the DBI version 1.14
+(C<$Date: 2000/06/14 20:04:03 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -142,7 +142,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.30 $, 10);
+my $Revision = substr(q$Revision: 10.32 $, 10);
 
 
 use Carp;
@@ -951,8 +951,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 			      : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
-	my $slice;
-	$slice = $attr->{dbi_fetchall} if $attr;
+	my $slice = $attr->{dbi_fetchall_arrayref_attr}; # typically undef
 	return $sth->fetchall_arrayref($slice);
     }
 

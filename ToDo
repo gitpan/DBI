@@ -1,11 +1,16 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
-hash ref as first arg to mean use named params?
+begin_work
+add details of the DBI book to the docs
+test shell /connect user etc
+
+document dbi_fetchall_arrayref_attr attr of selectall_arrayref().
 
 passing \$sql or \"...sql..." to $dbh->select methods to mean use prepare_cached?
 
-Count execute()s. Reset count in commit/rollback.
+Count execute()s (and do's?) (in ima struct?).
+Reset count in commit/rollback.
 In $dbh->DESTROY don't issue warning if count == 0.
 
 #define a large negative number to mean 'error' from st_execute and
