@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.56 1996/07/10 02:20:56 timbo Exp $
+/* $Id: DBI.xs,v 1.58 1996/09/23 18:20:45 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -184,8 +184,10 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     if (!SvROK(orv) || SvTYPE(SvRV(orv)) != SVt_PVHV) {
 	if (!what)
 	    return NULL;
-	croak("%s handle '%s' is not a hash reference",
-		what, SvPV(orv,na));
+	if (!SvOK(orv))
+	    croak("%s given an undefined handle (perhaps returned from a previous call which failed)",
+		    what);
+	croak("%s handle '%s' is not a DBI handle", what, SvPV(orv,na));
     }
     if (!SvMAGICAL(SvRV(orv))) {
 	sv_dump(orv);
@@ -198,7 +200,7 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
 	if (mg_find(SvRV(orv), DBI_MAGIC) == NULL) {
 	    if (!what)
 		return NULL;
-	    croak("%s handle '%s' is not a DBI handle",
+	    croak("%s handle '%s' is not a valid DBI handle",
 		    what, SvPV(orv,na));
 	}
 	hrv = orv; /* was already a DBI handle inner hash */
@@ -404,6 +406,12 @@ dbih_dumpcom(imp_xxh, msg)
     warn("    KIDS %ld (%ld active)\n",
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
     warn("    IMP_DATA %s\n",	neatsvpv(DBIc_IMP_DATA(imp_xxh),0));
+
+	if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
+		imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
+		warn("    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
+		warn("    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
+	}
 }
 
 

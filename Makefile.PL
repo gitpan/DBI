@@ -1,5 +1,5 @@
 #!/usr/local/bin/perl -w
-# $Id: Makefile.PL,v 1.54 1996/07/10 02:20:56 timbo Exp $
+# $Id: Makefile.PL,v 1.55 1996/09/23 18:20:45 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -19,8 +19,8 @@ $opts{'DEFINE'} = '-Wall -Wno-comment'
 
 # Set some private WriteMakefile options if this is 'me' :-)
 if ($ENV{LOGNAME} eq 'timbo' and $ENV{S_ARCH_SW}){	# a reasonable guess
-    $opts{'INST_LIB'}     = '$(INSTALLSITELIB)';
-    $opts{'INST_ARCHLIB'} = '$(INSTALLSITEARCH)';
+    # $opts{'INST_LIB'}     = '$(INSTALLSITELIB)';
+    # $opts{'INST_ARCHLIB'} = '$(INSTALLSITEARCH)';
 	$opts{'DEFINE'}       .= ' -g -Wpointer-arith -Wcast-align -Wconversion';
 }
 

@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.71';
+$VERSION = '0.72';
 
-my $Revision = substr(q$Revision: 1.57 $, 10);
+my $Revision = substr(q$Revision: 1.58 $, 10);
 
-# $Id: DBI.pm,v 1.57 1996/07/10 02:20:56 timbo Exp $
+# $Id: DBI.pm,v 1.58 1996/09/23 18:20:45 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -82,7 +82,7 @@ my %DBI_IF = (	# Define the DBI Interface:
     db => {		# Database Session Class Interface
 	commit     =>	{ U =>[1,1] },
 	rollback   =>	{ U =>[1,1] },
-	'do'       =>	{ U =>[2,3,'$statement [, \%attribs]'] },
+	'do'       =>	{ U =>[2,0,'$statement [, \%attribs [, @bind_params ] ]'] },
 	prepare    =>	{ U =>[2,3,'$statement [, \%attribs]'] },
 	handler    =>	{ U =>[2,2,'\&handler'] },
 	errstate   =>	{ U =>[1,1], O=>0x04 },
@@ -481,9 +481,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub rows	{ -1 }
 
     sub do {
-	my($dbh, $statement) = @_;
+	my($dbh, $statement, $attribs, @params) = @_;
+	Carp::carp "\$h->do() attribs unused\n" if $attribs;
 	my $sth = $dbh->prepare($statement) or return undef;
-	$sth->execute or return undef;
+	$sth->execute(@params) or return undef;
 	my $rows = $sth->rows;
 	($rows == 0) ? "0E0" : $rows;
     }

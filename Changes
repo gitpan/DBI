@@ -9,10 +9,16 @@ Current DBI Implementation Notes:
     *** MANY THINGS MAY CHANGE *** See README file ***
 
 
+Changes in DBI 0.72,	23 Sep 1996
+
+	Using an undefined value as a handle now gives a better
+	error message (mainly useful for emulators like Oraperl).
+	$dbh->do($sql, @params) now works for binding placeholders.
+
 Changes in DBI 0.71,	10 July 1996
 
 	Removed spurious abort() from invalid handle check.
-	Added quote method to DBI interface.
+	Added quote method to DBI interface and added test.
 
 Changes in DBI 0.70,	16 June 1996
 

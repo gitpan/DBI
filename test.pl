@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.15 1996/07/10 02:20:56 timbo Exp $
+# $Id: test.pl,v 1.16 1996/09/23 18:20:45 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,7 +11,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.15 $}."\n";
+	print q{DBI test application $Revision: 1.16 $}."\n";
 	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
 }
 
@@ -48,7 +48,7 @@ print "DebugDispatch: $switch->{'DebugDispatch'}\n";
 
 print "Available Drivers: ",join(", ",DBI->available_drivers()),"\n";
 
-print "Read DBI special variables (expect 0, 99, 99):\n";
+print "Read DBI special variables (expect: empty string, 99, 99):\n";
 print "err:    ";	print "$DBI::err\n";
 DBI::set_err($switch, "99");
 print "err:    ";	print "$DBI::err\n";
