@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.59 1996/10/10 15:55:12 timbo Exp $
+/* $Id: DBI.xs,v 1.60 1997/01/14 17:45:23 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -20,6 +20,14 @@ extern int perl_destruct_level;
 /* Cast increases required alignment of target type	*/
 /* not a problem since we created the pointers anyway.	*/
 #define DBIh_FROM_MG(mg) ((imp_xxh_t*)SvPVX((mg)->mg_obj))
+
+#ifndef PerlIO_setlinebuf
+#ifdef HAS_SETLINEBUF
+#define PerlIO_setlinebuf(f)        setlinebuf(f);
+#else
+#define PerlIO_setlinebuf(f)        setvbuf(f, Nullch, _IOLBF, 0);
+#endif
+#endif
 
 static imp_xxh_t *dbih_getcom _((SV *h));
 static void       dbih_clearcom _((imp_xxh_t *imp_xxh));
@@ -75,7 +83,7 @@ dbi_bootinit()
 
     dbis->logfp	= stderr;
     dbis->debug	= 0;
-    dbis->debugpvlen = 200;
+    dbis->debugpvlen = 400;
     /* store some function pointers so DBD's can call our functions	*/
     dbis->getcom   = dbih_getcom;
     dbis->clearcom = dbih_clearcom;
@@ -367,9 +375,9 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug");	/* scalar (int)	*/
 
     if (DBIc_TYPE(imp) == DBIt_ST) {
-        imp_sth_t *imp_sth = (imp_sth_t*)imp;
-	DBIc_NUM_FIELDS(imp_sth) = -1;	/* num of fields not known yet	*/
-    	DBIc_FIELDS_AV(imp_sth)  = Nullav;
+	imp_sth_t *imp_sth = (imp_sth_t*)imp;
+	DBIc_NUM_FIELDS(imp_sth) = 0;	/* num of fields not known yet	*/
+	DBIc_FIELDS_AV(imp_sth)  = Nullav;
     }
 
     DBIc_COMSET_on(imp);	/* common data now set up		*/
@@ -591,7 +599,7 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
-	if (DBIc_NUM_FIELDS(imp_sth) >= 0)	/* don't change NUM_FIELDS! */
+	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
 	    croak("NUM_OF_FIELDS already set (%d)", DBIc_NUM_FIELDS(imp_sth));
 	DBIc_NUM_FIELDS(imp_sth) = SvIV(valuesv);
 	cacheit = 1;
@@ -780,7 +788,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     SV		*qsv       = NULL; /* quick result from a shortcut method   */
 
 
-    if (debug >= 2) {
+    if (debug >= 3) {
         fprintf(DBILOGFP,"    >> %-11s DISPATCH (%s @%ld g%x a%lx r%d)\n",
 			    meth_name, neatsvpv(h,0), items,
 			    (int)gimme, (long)ima, (int)runlevel);
@@ -870,8 +878,11 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	DBIh_CLEAR_ERROR(imp_xxh);
     }
 
-    if ( (i = DBIc_DEBUGIV(imp_xxh)) > debug)
-	debug = i;	    /* bump up debugging if handle wants it	*/
+    if ( (i = DBIc_DEBUGIV(imp_xxh)) > debug) {
+	/* bump up debugging if handle wants it	*/
+	SAVEI32(dbis->debug);	/* fall back to orig value later */
+	dbis->debug = debug = i;
+    }
 
     /* Now check if we can provide a shortcut implementation here. */
     /* At the moment we only offer a quick fetch mechanism.        */
@@ -951,7 +962,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	/* We might perform some fancy error handling here one day	*/
     }
 
-    if (debug >= 2) {
+    if (debug >= 1) {
 	FILE *logfp = DBILOGFP;
 	fprintf(logfp,"    <- %s=", meth_name);
 	if (gimme & G_ARRAY)
@@ -1106,7 +1117,7 @@ _debug_dispatch(sv, level=dbis->debug, file=Nullch)
 	else {
 	    if (DBILOGFP != stderr)
 		fclose(DBILOGFP);
-	    setbuf(fp, NULL);	/* force upbuffered output */
+	    PerlIO_setlinebuf(fp);	/* force line buffered output */
 	    DBILOGFP = fp;
 	}
     }
@@ -1115,8 +1126,7 @@ _debug_dispatch(sv, level=dbis->debug, file=Nullch)
 	fprintf(DBILOGFP,"    DBI dispatch debug level set to %d\n", level);
 	dbis->debug = level;
 	sv_setiv(perl_get_sv("DBI::dbi_debug",0x5), level);
-	if (level >= 2)
-	    perl_destruct_level = 2;
+	perl_destruct_level = (level >= 4) ? 2 : 0;
     }
     OUTPUT:
     RETVAL
@@ -1252,7 +1262,7 @@ FETCH(sv)
     }
 /* something here is not quite right ! (wrong number of args to method for example) */
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
-    perl_call_sv(imp_gv, GIMME);
+    perl_call_sv((SV*)imp_gv, GIMME);
 
 
 

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.29 1996/01/29 20:02:50 timbo Exp $
+/* $Id: DBIXS.h,v 1.30 1997/01/14 17:45:23 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -235,7 +235,7 @@ typedef struct {
     U16 size;
     U16 xs_version;	/* version of the overall DBIXS / DBD interface	*/
 
-    int debug;
+    I32 debug;
     int debugpvlen;	/* only show dbgpvlen chars when debugging pv's	*/
     FILE *logfp;
 

@@ -3,11 +3,19 @@ Current DBI Implementation Notes:
 	$ary_ref = $sth->fetch; currently always returns the same array ref.
 	This may be a feature that stays, then again it may not.
 
-	$sth->bind_param currently takes a variable value not a reference.
-	That may change later.
-
     *** MANY THINGS MAY CHANGE *** See README file ***
 
+
+Changes in DBI 0.74,	14th Jan 1996
+
+	Dispatch now sets dbi_debug to the level of the current handle
+	(this makes tracing/debugging individual handles much easier).
+	The '>> DISPATCH' log line now only logged at debug >= 3 (was 2).
+	The $csr->NUM_OF_FIELDS attribute can be set if not >0 already.
+	You can log to a file using the env var PERL_DBI_DEBUG=/tmp/dbi.log.
+	Added a type cast needed by IRIX.
+	No longer sets perl_destruct_level unless debug set >= 4.
+	Make compatible with PerlIO and sfio.
 
 Changes in DBI 0.73,	10th Oct 1996
 

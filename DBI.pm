@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.73';
+$VERSION = '0.74';
 
-my $Revision = substr(q$Revision: 1.59 $, 10);
+my $Revision = substr(q$Revision: 1.60 $, 10);
 
-# $Id: DBI.pm,v 1.59 1996/10/10 15:55:12 timbo Exp $
+# $Id: DBI.pm,v 1.60 1997/01/14 17:45:23 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -27,11 +27,22 @@ use Exporter ();
 use strict;
 
 $DBI::dbi_debug = $ENV{PERL_DBI_DEBUG} || 0;
-carp "Loaded DBI.pm" if $DBI::dbi_debug;
+carp "Loaded DBI.pm (debug $DBI::dbi_debug)" if $DBI::dbi_debug;
 
 bootstrap DBI;
 
-DBI->_debug_dispatch($DBI::dbi_debug) if $DBI::dbi_debug;
+if ($DBI::dbi_debug) {
+    # this is a bit of a handy hack for "PERL_DBI_DEBUG=/tmp/dbi.log"
+    if ($DBI::dbi_debug =~ m/^\d/) {
+	# dbi_debug is number so debug to stderr at that level
+	DBI->_debug_dispatch($DBI::dbi_debug);
+    }
+    else {
+	# dbi_debug is a file name to debug to file at level 2
+	# the function will reset $dbi_debug to the value 2.
+	DBI->_debug_dispatch(2, $DBI::dbi_debug);
+    }
+}
 
 %DBI::installed_drh = ();  # maps driver names to installed driver handles
 
@@ -123,11 +134,11 @@ foreach $class (keys %DBI_IF){
 
 
 END {
-    warn "DBI::END\n" if $DBI::dbi_debug;
+    print STDERR "    DBI::END\n" if $DBI::dbi_debug >= 2;
     # Let drivers know why we are calling disconnect_all:
     $DBI::PERL_ENDING = 1;	# Perl is END'ing
     DBI->disconnect_all();
-    warn "DBI::END complete\n" if $DBI::dbi_debug;
+    print STDERR "    DBI::END complete\n" if $DBI::dbi_debug >= 2;
 }
 
 

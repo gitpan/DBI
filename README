@@ -6,9 +6,10 @@ You may distribute under the terms of either the GNU General Public
 License or the Artistic License, as specified in the Perl README file.
 
 
-WARNING: THIS IS ALPHA SOFTWARE. IT IS POSSIBLY UNRELIABLE!
+WARNING: THIS IS ALPHA SOFTWARE.
+         IT IS POSSIBLY UNRELIABLE (but not known to be)
 
-WARNING: THIS SOFTWARE IS ABOUT TO CHANGE DRAMATICALLY!
+WARNING: THIS SOFTWARE IS DUE TO CHANGE DRAMATICALLY.
          See the 'New Directions' message at the end of this file.
 
 
@@ -21,9 +22,9 @@ emulation interface.
 
 
 For more information and to keep informed about progress you can join
-the a mailing list via http://www.fugue.com/dbi (if you are unable to use
-the web you can subscribe by sending a message to dbi-request@fugue.com,
-it may take a few days to be processed).
+the a mailing list via http://www.fugue.com/dbi (if you are unable to
+use the web you can subscribe by sending a message to
+dbi-users-request@fugue.com, it may take a few days to be processed).
 
 Much useful information and online archives of the mailing lists can be
 found at http://www.hermetica.com/technologia/DBI
@@ -33,7 +34,7 @@ See also ftp.demon.co.uk:/pub/perl/db and "CPAN" ftp sites.
 
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
 
-    Build, test and install Perl 5 (at least version 5.002beta2).
+    Build, test and install Perl 5 (at least version 5.003).
     It is very important to test it and install it!
 
 BUILDING
@@ -84,8 +85,8 @@ Tim Bunce.
 
 Drivers planned or being developed:
 
-Oracle		- Tim Bunce <Tim.Bunce@ig.co.uk>
-Ingres		- Tim Bunce <Tim.Bunce@ig.co.uk>
+Oracle		- Tim Bunce <Tim.Bunce@ig.co.uk> (used widely)
+Ingres		- Tim Bunce <Tim.Bunce@ig.co.uk> (no current plans to implement)
 mSQL		- Alligator Descartes <descarte@mcqueen.com>
 Informix	- Alligator Descartes <descarte@mcqueen.com> 
 Interbase	- Bill Karwin <bkarwin@interbase.borland.com>
