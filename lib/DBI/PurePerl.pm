@@ -91,6 +91,13 @@ use constant SQL_WCHAR => (-8);
 use constant SQL_WLONGVARCHAR => (-10);
 use constant SQL_WVARCHAR => (-9);
 
+# for Cursor types
+use constant SQL_CURSOR_FORWARD_ONLY  => 0;
+use constant SQL_CURSOR_KEYSET_DRIVEN => 1;
+use constant SQL_CURSOR_DYNAMIC       => 2;
+use constant SQL_CURSOR_STATIC        => 3;
+use constant SQL_CURSOR_TYPE_DEFAULT  => SQL_CURSOR_FORWARD_ONLY;
+
 use constant IMA_HAS_USAGE	=> 0x0001; #/* check parameter usage	*/
 use constant IMA_FUNC_REDIRECT	=> 0x0002; #/* is $h->func(..., "method")*/
 use constant IMA_KEEP_ERR	=> 0x0004; #/* don't reset err & errstr	*/
@@ -140,16 +147,20 @@ my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
 	Kids
 	LongReadLen
 	NAME NAME_uc NAME_lc NAME_uc_hash NAME_lc_hash
+	NULLABLE
 	NUM_OF_FIELDS
 	NUM_OF_PARAMS
 	Name
+	PRECISION
 	ParamValues
 	Profile
 	Provider
 	RootClass
-	RowsInCache
 	RowCacheSize
+	RowsInCache
+	SCALE
 	Statement
+	TYPE
 	TraceLevel
 	Username
 	Version
@@ -170,8 +181,8 @@ sub initial_setup {
     untie $DBI::err;
     untie $DBI::errstr;
     untie $DBI::state;
+    untie $DBI::rows;
     #tie $DBI::lasth,  'DBI::var', '!lasth';  # special case: return boolean
-    #tie $DBI::rows,   'DBI::var', '&rows';   # call &rows   in last used pkg
 }
 
 sub  _install_method {
@@ -182,16 +193,15 @@ sub  _install_method {
     my $bitmask = $param_hash->{'O'} || 0;
     my @pre_call_frag;
 
-    push @pre_call_frag, q{
-	return if $h_inner; # ignore DESTROY for outer handle
-    } if $method_name eq 'DESTROY';
+    return if $method_name eq 'can';
 
     push @pre_call_frag, q{
+	return if $h_inner; # ignore DESTROY for outer handle
 	# copy err/errstr/state up to driver so $DBI::err etc still work
 	if ($h->{err} and my $drh = $h->{Driver}) {
 	    $drh->{$_} = $h->{$_} for ('err','errstr','state');
 	}
-    } if $method eq 'DBI::db::DESTROY';
+    } if $method_name eq 'DESTROY';
 
     push @pre_call_frag, q{
 	return $h->{$_[0]} if exists $h->{$_[0]};
@@ -269,12 +279,14 @@ sub  _install_method {
     my @post_call_frag;
 
     push @post_call_frag, q{
-        if ($DBI::dbi_debug & 0xF) {
+        if (my $trace_level = ($DBI::dbi_debug & 0xF)) {
 	    if ($h->{err}) {
 		printf $DBI::tfh "    !! ERROR: %s %s\n", $h->{err}, $h->{errstr};
 	    }
 	    my $ret = join " ", map { DBI::neat($_) } @ret;
-	    printf $DBI::tfh "    < $method_name= %s\n", $ret;
+	    my $msg = "    < $method_name= $ret";
+	    $msg = ($trace_level >= 2) ? Carp::shortmess($msg) : "$msg\n";
+	    print $DBI::tfh $msg;
 	}
     } if exists $ENV{DBI_TRACE}; # note use of exists
 
@@ -393,7 +405,7 @@ sub _setup_handle {
     my $h_inner = tied(%$h) || $h;
     if (($DBI::dbi_debug & 0xF) >= 4) {
 	local $^W;
-	print $DBI::tfh "_setup_handle(@_)";
+	print $DBI::tfh "      _setup_handle(@_)\n";
     }
     $h_inner->{"imp_data"} = $imp_data;
     $h_inner->{"ImplementorClass"} = $imp_class;
@@ -410,6 +422,7 @@ sub _setup_handle {
 	if (ref($parent) =~ /::db$/) {
 	    $h_inner->{Database} = $parent;
 	    $parent->{Statement} = $h_inner->{Statement};
+	    $h_inner->{NUM_OF_PARAMS} = 0;
 	}
 	elsif (ref($parent) =~ /::dr$/){
 	    $h_inner->{Driver} = $parent;
@@ -434,12 +447,15 @@ sub constant {
 }
 sub trace {
     my ($h, $level, $file) = @_;
+    $level = $h->parse_trace_flags($level)
+	if defined $level and !DBI::looks_like_number($level);
     my $old_level = $DBI::dbi_debug;
     _set_trace_file($file);
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
-                . "dispatch trace level set to $DBI::dbi_debug\n" if $DBI::dbi_debug;
+                . "dispatch trace level set to $DBI::dbi_debug\n"
+		if $DBI::dbi_debug & 0xF;
         if ($level==0 and fileno($DBI::tfh)) {
 	    _set_trace_file("");
         }
@@ -529,19 +545,16 @@ sub looks_like_number {
         if (!defined $thing or $thing eq '') {
             push @new, undef;
         }
-	elsif ( ($thing & ~ $thing) eq "0") { # magic from Randal
-            push @new, 1;
-	}
         else {
-	    push @new, 0;
-	}
+            push @new, ($thing =~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/) ? 1 : 0;
+        }
     }
     return (@_ >1) ? @new : $new[0];
 }
 sub neat {
     my $v = shift;
     return "undef" unless defined $v;
-    return $v      if looks_like_number($v);
+    return $v if (($v & ~ $v) eq "0"); # is SvNIOK
     my $maxlen = shift || $DBI::neat_maxlen;
     if ($maxlen && $maxlen < length($v) + 2) {
 	$v = substr($v,0,$maxlen-5);
@@ -557,7 +570,7 @@ sub FETCH {
     my($key)=shift;
     return $DBI::err     if $$key eq '*err';
     return $DBI::errstr  if $$key eq '&errstr';
-    Carp::croak("FETCH $key not supported when using DBI::PurePerl");
+    Carp::confess("FETCH $key not supported when using DBI::PurePerl");
 }
 
 package
@@ -565,6 +578,8 @@ package
 
 sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;
+    $level = $h->parse_trace_flags($level)
+	if defined $level and !DBI::looks_like_number($level);
     my $old_level = $DBI::dbi_debug;
     DBI::_set_trace_file($file) if defined $file;
     if (defined $level) {
@@ -597,7 +612,7 @@ sub FETCH {
     }
     if ($key =~ /^NAME.*_hash$/) {
         my $i=0;
-        for my $c(@{$h->FETCH('NAME')}) {
+        for my $c(@{$h->FETCH('NAME')||[]}) {
             $h->{'NAME_hash'}->{$c}    = $i;
             $h->{'NAME_lc_hash'}->{"\L$c"} = $i;
             $h->{'NAME_uc_hash'}->{"\U$c"} = $i;
@@ -749,7 +764,7 @@ sub fetchrow_hashref {
 sub dbih_setup_fbav {
     my $h = shift;
     return $h->{'_fbav'} || do {
-        $DBI::PurePerl::var->{rows} = $h->{'_rows'} = 0;
+        $DBI::rows = $h->{'_rows'} = 0;
         my $fields = $h->{'NUM_OF_FIELDS'}
                   or DBI::croak("NUM_OF_FIELDS not set");
         my @row = (undef) x $fields;
@@ -759,14 +774,14 @@ sub dbih_setup_fbav {
 sub _get_fbav {
     my $h = shift;
     my $av = $h->{'_fbav'} ||= dbih_setup_fbav($h);
-    ++$h->{'_rows'};
+    $DBI::rows = ++$h->{'_rows'};
     return $av;
 }
 sub _set_fbav {
     my $h = shift;
     my $fbav = $h->{'_fbav'};
     if ($fbav) {
-	++$h->{'_rows'};
+	$DBI::rows = ++$h->{'_rows'};
     }
     else {
 	$fbav = $h->_get_fbav;
@@ -800,7 +815,7 @@ sub finish {
 }
 sub rows {
     my $h = shift;
-    my $rows = $h->{'_rows'} || $DBI::PurePerl::var->{rows};
+    my $rows = $h->{'_rows'};
     return -1 unless defined $rows;
     return $rows;
 }
@@ -832,7 +847,7 @@ of DBI without needing any changes in your scripts.
 
 =head1 EXPERIMENTAL STATUS
 
-DBI::PurePerl is very new so please treat it as experimental pending
+DBI::PurePerl is new so please treat it as experimental pending
 more extensive testing.  So far it has passed all tests with DBD::CSV,
 DBD::AnyData, DBD::XBase, DBD::Sprite, DBD::mysqlPP.  Please send
 bug reports to Jeff Zucker at <jeff@vpservices.com> with a cc to
@@ -952,7 +967,9 @@ does not work 100% (which is sad because that would be far more useful :)
 Try re-enabling t/80proxy.t for DBI::PurePerl to see if the problem
 that remains will affect you're usage.
 
-=head2 Undoubtedly Others
+=head2 Others
+
+  can() - doesn't have any special behaviour
 
 Please let us know if you find any other differences between DBI
 and DBI::PurePerl.

@@ -20,7 +20,7 @@ sub ok ($$;$) {
 }
 
 
-use DBI qw(:sql_types :utils);
+use DBI qw(:sql_types :utils :sql_cursor_types);
 
 warn "   Using DBI::PurePerl (DBI_PUREPERL=$DBI::PurePerl) on $Config{archname}\n"
     if $DBI::PurePerl;
@@ -79,20 +79,28 @@ ok(0, $switch->{Active});
 $switch->trace_msg("Test \$h->trace_msg text.\n", 1);
 DBI->trace_msg("Test DBI->trace_msg text.\n", 1);
 
+# spot check a few of the sql data types
 ok(0, SQL_VARCHAR == 12);
 ok(0, SQL_ALL_TYPES == 0);
-ok(0, neat(1+1) eq "2");
-ok(0, neat("2") eq "'2'");
-ok(0, neat(undef) eq "undef");
-ok(0, neat_list([1+1, "2", undef, "foobarbaz"], 8, "|") eq "2|'2'|undef|'foo...'");
 
-my @is_num = looks_like_number(undef, "", "foo", 1, ".");
+# spot check a few of the sql cursor types
+ok(0, SQL_CURSOR_FORWARD_ONLY == 0);
+ok(0, SQL_CURSOR_DYNAMIC == 2);
+
+my @is_num = looks_like_number(undef, "", "foo", 1, ".", 2, "2");
 ok(0, !defined $is_num[0]);	# undef -> undef
 ok(0, !defined $is_num[1]);	# "" -> undef (eg "don't know")
 ok(0,  defined $is_num[2]);	# "foo" -> defined false
 ok(0,         !$is_num[2]);	# "foo" -> defined false
 ok(0,          $is_num[3]); # 1 -> true
 ok(0,         !$is_num[4]); # "." -> false
+ok(0,          $is_num[5]); # 1 -> true
+ok(0,          $is_num[6]); # 1 -> true
+
+ok(0, neat(1+1) eq "2");
+ok(0, neat("2") eq "'2'");
+ok(0, neat(undef) eq "undef");
+ok(0, neat_list([1+1, "2", undef, "foobarbaz"], 8, "|") eq "2|'2'|undef|'foo...'");
 
 ok(0, DBI::hash("foo1"  ) == -1077531989,  DBI::hash("foo1"));
 ok(0, DBI::hash("foo1",0) == -1077531989,  DBI::hash("foo1",0));
@@ -108,14 +116,25 @@ else {
   ok(0, DBI::hash("foo2",1) == -1263462437,  DBI::hash("foo2",1));
 }
 
-print "test DBI->installed_versions (for @drivers)\n";
-print "(a bad driver can kill the process here)\n";
+if (-d ".svn") { # restrict this test to developers
+print "Test DBI->installed_versions (for @drivers)\n";
+print "(If one of those drivers, or the configuration for it, is bad\n";
+print "then these tests can kill or freeze the process here. That's not the DBI's fault.)\n";
+$SIG{ALRM} = sub {
+    die "Test aborted because a driver (one of: @drivers) hung while loading"
+       ." (almost certainly NOT a DBI problem)";
+};
+alarm(20);
 my $installed_versions = DBI->installed_versions;
 ok(0, ref $installed_versions eq 'HASH');
 ok(0, %$installed_versions);
 my @installed_drivers = DBI->installed_versions;
 ok(0, @installed_drivers >= 1);
 ok(0, grep { $_ eq 'Sponge' } @installed_drivers);
+}
+else {
+ok(0,1) for (1..4);
+}
 
-BEGIN { $tests = 43 }
+BEGIN { $tests = 47 }
 exit 0;

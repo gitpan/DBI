@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.41"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.42"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -118,7 +118,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.41
+This is the DBI specification that corresponds to the DBI version 1.42
 (C<$Date: 2004/02/01 11:16:16 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
@@ -222,6 +222,13 @@ BEGIN {
 	SQL_INTERVAL_HOUR_TO_SECOND
 	SQL_INTERVAL_MINUTE_TO_SECOND
    ) ],
+   sql_cursor_types => [ qw(
+	 SQL_CURSOR_FORWARD_ONLY
+	 SQL_CURSOR_KEYSET_DRIVEN
+	 SQL_CURSOR_DYNAMIC
+	 SQL_CURSOR_STATIC
+	 SQL_CURSOR_TYPE_DEFAULT
+   ) ], # for ODBC cursor types
    utils     => [ qw(
 	neat neat_list dump_results looks_like_number
    ) ],
@@ -230,7 +237,7 @@ BEGIN {
    ) ], # notionally "in" DBI::Profile and normally imported from there
 );
 
-$DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
+$DBI::dbi_debug = 0;
 $DBI::neat_maxlen = 400;
 
 # If you get an error here like "Can't find loadable object ..."
@@ -251,10 +258,15 @@ Exporter::export_ok_tags(keys %EXPORT_TAGS);
 
 }
 
-*trace_msg = \&DBD::_::common::trace_msg;
-*set_err   = \&DBD::_::common::set_err;
+# Alias some handle methods to also be DBI class methods
+for (qw(trace_msg set_err parse_trace_flags parse_trace_flag)) {
+  no strict;
+  *$_ = \&{"DBD::_::common::$_"};
+}
 
 use strict;
+
+DBI->trace(split '=', $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
 
 $DBI::connect_via = "connect";
 
@@ -264,23 +276,7 @@ if ($INC{'Apache/DBI.pm'} && $ENV{MOD_PERL}) {
     DBI->trace_msg("DBI connect via $DBI::connect_via in $INC{'Apache/DBI.pm'}\n");
 }
 
-
-if ($DBI::dbi_debug) {
-    @DBI::dbi_debug = ($DBI::dbi_debug);
-
-    unless (DBI::looks_like_number($DBI::dbi_debug)) {
-	# dbi_debug is a file name to write trace log to.
-	# Default level is 2 but if file starts with "digits=" then the
-	# digits (and equals) are stripped off and used as the level
-	unshift @DBI::dbi_debug, 2;
-	@DBI::dbi_debug = ($1,$2) if $DBI::dbi_debug =~ m/^(\d+)=(.*)/;
-	$DBI::dbi_debug = $DBI::dbi_debug[0];
-    }
-    DBI->trace(@DBI::dbi_debug);
-}
-
 %DBI::installed_drh = ();  # maps driver names to installed driver handles
-
 
 # Setup special DBI dynamic variables. See DBI::var::FETCH for details.
 # These are dynamically associated with the last handle used.
@@ -307,6 +303,7 @@ my $dbd_prefix_registry = {
   best_    => { class => 'DBD::BestWins',	},
   csv_     => { class => 'DBD::CSV',		},
   db2_     => { class => 'DBD::DB2',		},
+  dbm_     => { class => 'DBD::DBM',		},
   dbi_     => { class => 'DBI',			},
   df_      => { class => 'DBD::DF',		},
   f_       => { class => 'DBD::File',		},
@@ -345,35 +342,32 @@ sub dump_dbd_registry {
 
 my $keeperr = { O=>0x0004 };
 
-my @TieHash_IF = (	# Generic Tied Hash Interface
-	'STORE'   => { O=>0x0418 | 0x4 },
-	'FETCH'   => { O=>0x0404 },
-	'FIRSTKEY'=> $keeperr,
-	'NEXTKEY' => $keeperr,
-	'EXISTS'  => $keeperr,
-	'CLEAR'   => $keeperr,
-	'DESTROY' => $keeperr,
-);
-my @Common_IF = (	# Interface functions common to all DBI classes
-	func    =>	{				O=>0x0006	},
-	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
-	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
-	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
-	dump_handle  =>	{ U =>[1,3,'[$message [, $level]]'],	O=>0x0004 },
-	private_data =>	{ U =>[1,1],			O=>0x0004 },
-	err     =>	$keeperr,
-	errstr  =>	$keeperr,
-	state   =>	{ U =>[1,1],	O=>0x0004 },
-	set_err =>	{		O=>0x0010 },
-	_not_impl =>	undef,
-	can	=>	{ O=>0x0100 }, # special case, see dispatch
-);
-
 %DBI::DBI_methods = ( # Define the DBI interface methods per class:
 
+    common => {		# Interface methods common to all DBI handle classes
+	'DESTROY'	=> $keeperr,
+	'CLEAR'  	=> $keeperr,
+	'EXISTS' 	=> $keeperr,
+	'FETCH'		=> { O=>0x0404 },
+	'FIRSTKEY'	=> $keeperr,
+	'NEXTKEY'	=> $keeperr,
+	'STORE'		=> { O=>0x0418 | 0x4 },
+	_not_impl	=> undef,
+	can		=> { O=>0x0100 }, # special case, see dispatch
+	debug 	 	=> { U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
+	dump_handle 	=> { U =>[1,3,'[$message [, $level]]'],	O=>0x0004 },
+	err		=> $keeperr,
+	errstr		=> $keeperr,
+	state		=> $keeperr,
+	func	   	=> { O=>0x0006	},
+	parse_trace_flag   => { U =>[2,2,'$name'],	O=>0x0404, T=>8 },
+	parse_trace_flags  => { U =>[2,2,'$flags'],	O=>0x0404, T=>8 },
+	private_data	=> { U =>[1,1],			O=>0x0004 },
+	set_err		=> { U =>[3,6,'$err, $errmsg [, $state, $method, $rv]'], O=>0x0010 },
+	trace		=> { U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
+	trace_msg	=> { U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
+    },
     dr => {		# Database Driver Interface
-	@Common_IF,
-	@TieHash_IF,
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
 	'connect_cached'=>{U=>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
 	'disconnect_all'=>{ U =>[1,1], O=>0x0800 },
@@ -381,8 +375,6 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	default_user => { U =>[3,4,'$user, $pass [, \%attr]' ] },
     },
     db => {		# Database Session Class Interface
-	@Common_IF,
-	@TieHash_IF,
 	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
 	take_imp_data	=> { U =>[1,1], },
 	clone   	=> { U =>[1,1,''] },
@@ -390,36 +382,34 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
 	commit     	=> { U =>[1,1], O=>0x0480|0x0800 },
 	rollback   	=> { U =>[1,1], O=>0x0480|0x0800 },
-	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x1200 },
-	last_insert_id	=> { U =>[3,4,'$table_name, $field_name [, \%attr ]'], O=>0x0100 },
+	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x3200 },
+	last_insert_id	=> { U =>[3,4,'$table_name, $field_name [, \%attr ]'],     O=>0x2100 },
 	preparse    	=> {  }, # XXX
-	prepare    	=> { U =>[2,3,'$statement [, \%attr]'], O=>0x0200 },
-	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $if_active ] ]'] },
-	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	selectrow_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'] },
-	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	prepare    	=> { U =>[2,3,'$statement [, \%attr]'],                    O=>0x2200 },
+	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $if_active ] ]'],   O=>0x2200 },
+	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
+	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
+	selectrow_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
+	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
+	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'], O=>0x2000 },
+	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	ping       	=> { U =>[1,1], O=>0x0404 },
 	disconnect 	=> { U =>[1,1], O=>0x0400|0x0800 },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
 	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ],    O=>0x0430 },
 	rows       	=> $keeperr,
 
-	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x0200 },
-	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x0200|0x0800 },
-	column_info     => { U =>[5,6,'$catalog, $schema, $table, $column [, \%attr ]'],O=>0x0200|0x0800 },
-	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200|0x0800 },
-	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200 },
-	foreign_key_info=> { U =>[7,8,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table [, \%attr ]' ], O=>0x0200|0x0800 },
-	type_info_all	=> { U =>[1,1], O=>0x0200|0x0800 },
-	type_info	=> { U =>[1,2,'$data_type'], O=>0x0200 },
-	get_info	=> { U =>[2,2,'$info_type'], O=>0x0200|0x0800 },
+	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x2200 },
+	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x2200|0x0800 },
+	column_info     => { U =>[5,6,'$catalog, $schema, $table, $column [, \%attr ]'],O=>0x2200|0x0800 },
+	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200|0x0800 },
+	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200 },
+	foreign_key_info=> { U =>[7,8,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table [, \%attr ]' ], O=>0x2200|0x0800 },
+	type_info_all	=> { U =>[1,1], O=>0x2200|0x0800 },
+	type_info	=> { U =>[1,2,'$data_type'], O=>0x2200 },
+	get_info	=> { U =>[2,2,'$info_type'], O=>0x2200|0x0800 },
     },
     st => {		# Statement Class Interface
-	@Common_IF,
-	@TieHash_IF,
 	bind_col	=> { U =>[3,4,'$column, \\$var [, \%attr]'] },
 	bind_columns	=> { U =>[2,0,'\\$var1 [, \\$var2, ...]'] },
 	bind_param	=> { U =>[3,4,'$parameter, $var [, \%attr]'] },
@@ -462,6 +452,12 @@ foreach $class (keys %DBI::DBI_methods){
     }
 }
 
+{
+    package DBI::common;
+    @DBI::dr::ISA = ('DBI::common');
+    @DBI::db::ISA = ('DBI::common');
+    @DBI::st::ISA = ('DBI::common');
+}
 
 # End of init code
 
@@ -1233,6 +1229,38 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	DBI->_install_method("DBI::${subtype}::$method", "$filename at line $line", \%attr);
     }
 
+    sub parse_trace_flags {
+	my ($h, $spec) = @_;
+	my $level = 0;
+	my $flags = 0;
+	my @unknown;
+	for my $word (split /\s*[|&]\s*/, $spec) {
+	    if (DBI::looks_like_number($word) && $word <= 0xF && $word >= 0) {
+		$level = $word;
+	    } elsif ($word eq 'ALL') {
+		$flags = 0x7FFFFFFF; # XXX last bit causes negative headaches
+		last;
+	    } elsif (my $flag = $h->parse_trace_flag($word)) {
+		$flags |= $flag;
+	    }
+	    else {
+		push @unknown, $word;
+	    }
+	}
+	if (@unknown && (ref $h ? $h->FETCH('Warn') : 1)) {
+	    Carp::carp("$h->parse_trace_flags($spec) ignored unknown trace flags: ".
+		join(" ", map { DBI::neat($_) } @unknown));
+	}
+	$flags |= $level;
+	return $flags;
+    }
+
+    sub parse_trace_flag {
+	my ($h, $name) = @_;
+	#      0xddDDDDrL (driver, DBI, reserved, Level)
+	return 0x00000100 if $name eq 'SQL';
+	return;
+    }
 }
 
 
@@ -2295,6 +2323,7 @@ handle, or it I<dies> with an error message that includes the string
 will die
 on a driver installation failure and will only return C<undef> on a
 connect failure, in which case C<$DBI::errstr> will hold the error message.
+Use C<eval { ... }> if you need to catch the "C<install_driver>" error.
 
 The C<$data_source> argument (with the "C<dbi:...:>" prefix removed) and the
 C<$username> and C<$password> arguments are then passed to the driver for
@@ -2417,8 +2446,10 @@ print out a formatted list of the hash contents, one per line.
 Due to the potentially high memory cost and unknown risks of loading
 in an unknown number of drivers that just happen to be installed
 on the system, this method is nor recommended for general use.
-It is primarily intended as a quick way to see from the command
-line what's installed. For example:
+Use available_drivers() instead.
+
+The installed_versions() method is primarily intended as a quick
+way to see from the command line what's installed. For example:
 
   perl -MDBI -e 'DBI->installed_versions'
 
@@ -2449,47 +2480,19 @@ There is also a data_sources() method defined for database handles.
 
 =item C<trace>
 
-  DBI->trace($trace_level)
-  DBI->trace($trace_level, $trace_filename)
-  $trace_level = DBI->trace;
+  DBI->trace($trace_setting)
+  DBI->trace($trace_setting, $trace_filename)
+  $trace_setting = DBI->trace;
 
-DBI trace information can be enabled for all handles using the C<trace>
-DBI class method. It sets the I<global default minimum> trace level.
-To enable trace information for a specific handle, use the similar
-C<$h-E<gt>trace> method described elsewhere.
+The C<DBI-E<gt>trace> method sets the I<global default> trace
+settings and returns the I<previous> trace settings. It can also
+be used to change where the trace output is sent.
 
-Trace levels are as follows:
+There's a similar method, C<$h-E<gt>trace>, which sets the trace
+settings for the specific handle it's called on.
 
-  0 - Trace disabled.
-  1 - Trace DBI method calls returning with results or errors.
-  2 - Trace method entry with parameters and returning with results.
-  3 - As above, adding some high-level information from the driver
-      and some internal information from the DBI.
-  4 - As above, adding more detailed information from the driver.
-  5 and above - As above but with more and more obscure information.
-
-Trace level 1 is best for a simple overview of what's happening.
-Trace level 2 is a good choice for general purpose tracing.  Levels 3
-and above (up to 9) are best reserved for investigating a
-specific problem, when you need to see "inside" the driver and DBI.
-
-The trace output is detailed and typically very useful. Much of the
-trace output is formatted using the L</neat> function, so strings
-in the trace output may be edited and truncated.
-
-Initially trace output is written to C<STDERR>.  If C<$trace_filename> is
-specified and can be opened in append mode then all trace
-output (including that from other handles) is redirected to that file.
-A warning is generated is the file can't be opened.
-Further calls to C<trace> without a C<$trace_filename> do not alter where
-the trace output is sent. If C<$trace_filename> is undefined, then
-trace output is sent to C<STDERR> and the previous trace file is closed.
-The C<trace> method returns the I<previous> tracelevel.
-
-See also the C<$h-E<gt>trace> and C<$h-E<gt>trace_msg> methods and the
-L</DEBUGGING> section
-for information about the C<DBI_TRACE> environment variable.
-
+See the L</TRACING> section for full details about the DBI's powerful
+tracing facilities.
 
 =back
 
@@ -2718,7 +2721,7 @@ above are replaced by the corresponding values.
 The handle C<err> value is set to $err if: $err is true; or handle
 C<err> value is undef; or $err is defined and the length is greater
 than the handle C<err> length. The effect is that an 'information'
-state only overides undef; a 'warning' overrides undef or 'information',
+state only overrides undef; a 'warning' overrides undef or 'information',
 and an 'error' state overrides anything.
 
 The handle C<state> value is set to $state if $state is true and
@@ -2728,46 +2731,30 @@ Support for warning and information states was added in DBI 1.41.
 
 =item C<trace>
 
-  $h->trace($trace_level);
-  $h->trace($trace_level, $trace_filename);
+  $h->trace($trace_settings);
+  $h->trace($trace_settings, $trace_filename);
+  $trace_settings = $h->trace;
 
-DBI trace information can be enabled for a specific handle (and any
-future children of that handle) by setting the trace level using the
-C<trace> method.
+The trace() method is used to alter the trace settings for a handle
+(and any future children of that handle).  It can also be used to
+change where the trace output is sent.
 
-Trace level 1 is best for a simple overview of what's happening.
-Trace level 2 is a good choice for general purpose tracing.  Levels 3
-and above (up to 9) are best reserved for investigating a
-specific problem, when you need to see "inside" the driver and DBI.
-Set C<$trace_level> to 0 to disable the trace.
+There's a similar method, C<DBI-E<gt>trace>, which sets the global
+default trace settings.
 
-The trace output is detailed and typically very useful. Much of the
-trace output is formatted using the L</neat> function, so strings
-in the trace output may be edited and truncated.
-
-Initially, trace output is written to C<STDERR>.  If C<$trace_filename> is
-specified, then the file is opened in append mode and I<all> trace
-output (including that from other handles) is redirected to that file.
-Further calls to trace without a C<$trace_filename> do not alter where
-the trace output is sent. If C<$trace_filename> is undefined, then
-trace output is sent to C<STDERR> and the previous trace file is closed.
-
-See also the C<DBI-E<gt>trace> method, the C<$h-E<gt>{TraceLevel}> attribute,
-and L</DEBUGGING> for information about the C<DBI_TRACE> environment variable.
-
+See the L</TRACING> section for full details about the DBI's powerful
+tracing facilities.
 
 =item C<trace_msg>
 
   $h->trace_msg($message_text);
   $h->trace_msg($message_text, $min_level);
 
-Writes C<$message_text> to the trace file if trace is enabled for C<$h> or
-for the DBI as a whole. Can also be called as C<DBI-E<gt>trace_msg($msg)>.
-See L</trace>.
+Writes C<$message_text> to the trace file if the trace level is
+greater than or equal to $min_level (which defaults to 1).
+Can also be called as C<DBI-E<gt>trace_msg($msg)>.
 
-If C<$min_level> is defined, then the message is output only if the trace
-level is equal to or greater than that level. C<$min_level> defaults to 1.
-
+See L</TRACING> for more details.
 
 =item C<func>
 
@@ -2827,7 +2814,7 @@ Example:
 =item C<Warn> (boolean, inherited)
 
 The C<Warn> attribute enables useful warnings for certain bad
-practices. It is enabled by default and should only be disable is
+practices. It is enabled by default and should only be disabled in
 rare circumstances.  Since warnings are generated using the Perl
 C<warn> function, they can be intercepted using the Perl C<$SIG{__WARN__}>
 hook.
@@ -2857,7 +2844,7 @@ attribute on the parent $dbh.
 The C<Executed> attribute for a database handle is cleared by the
 commit() and rollback() methods. The C<Executed> attribute of a
 statement handle is not cleared by the DBI under any circumstances
-and so acts as a permenant record of whether the statement handle
+and so acts as a permanent record of whether the statement handle
 was ever used.
 
 The C<Executed> attribute was added in DBI 1.41.
@@ -2938,6 +2925,13 @@ handler or modules like CGI::Carp and CGI::ErrorWrap.
 
 See also L</set_err> for how warnings are recorded and L</HandleSetErr>
 for how to influence it.
+
+Fetching the full details of warnings can require an extra round-trip
+to the database server for some drivers. In which case the driver
+may opt to only fetch the full details of warnings if the C<PrintWarn>
+attribute is true. If C<PrintWarn> is false then these drivers should
+still indicate the fact that there were warnings by setting the
+warning string to, for example: "3 warnings".
 
 =item C<PrintError> (boolean, inherited)
 
@@ -3070,7 +3064,7 @@ closures. See L</HandleError> for an example.
 The C<HandleSetErr> and C<HandleError> subroutines differ in subtle
 but significant ways. HandleError is only invoked at the point where
 the DBI is about to return to the application with C<err> set true.
-It's not invoked by the failure of a method that's been caled by
+It's not invoked by the failure of a method that's been called by
 another DBI method.  HandleSetErr, on the other hand, is called
 whenever set_err() is called with a defined C<err> value, even if false.
 So it's not just for errors, despite the name, but also warn and info states.
@@ -3113,8 +3107,9 @@ end of the Statement text in the error message.
 
 =item C<TraceLevel> (integer, inherited)
 
-The C<TraceLevel> attribute can be used as an alternative to the L</trace> method
-to set the DBI trace level for a specific handle.
+The C<TraceLevel> attribute can be used as an alternative to the
+L</trace> method to set the DBI trace level and trace flags for a
+specific handle. See L</TRACING> for more details.
 
 =item C<FetchHashKeyName> (string, inherited)
 
@@ -3179,7 +3174,7 @@ For example:
       SELECT long_column_name, ... FROM table WHERE ...
   });
 
-You may need to take etra care if the table can be modified between
+You may need to take extra care if the table can be modified between
 the first select and the second being executed.
 
 See L</LongTruncOk> for more information on truncation behaviour.
@@ -5043,12 +5038,19 @@ For example:
 
   my $sel = $dbh1->prepare("select foo, bar from table1");
   $sel->execute;
+
   my $ins = $dbh2->prepare("insert into table2 (foo, bar) values (?,?)");
-  $ins->execute;
   my $fetch_tuple_sub = sub { $sel->fetchrow_arrayref };
+
   my @tuple_status;
   $rc = $ins->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
   my @errors = grep { ref $_ } @tuple_status;
+
+Similarly, if you already have an array containing the data rows
+to be processed you'd use a subroutine to shift off and return
+each array ref in turn:
+
+  $ins->execute_for_fetch( sub { shift @array_of_arrays }, \@tuple_status);
 
 The C<execute_for_fetch> method was added in DBI 1.38.
 
@@ -5330,7 +5332,7 @@ formatting the column should have. For example, you can use:
 to specify that you'd like the column (which presumably is some
 kind of datetime type) to be returned in the standard format for
 SQL_DATETIME, which is 'YYYY-MM-DD HH:MM:SS', rather than the
-native formatting the database would normaly use.
+native formatting the database would normally use.
 
 There's no $var_to_bind in that example to emphasize the point
 that bind_col() works on the underlying column value and not just
@@ -6135,34 +6137,91 @@ via C<$h-E<gt>{private_..._*}>.  See the entry under L</ATTRIBUTES
 COMMON TO ALL HANDLES> for info and important caveats.
 
 
-=head1 DEBUGGING
+=head1 TRACING
+
+The DBI has a powerful tracing mechanism built in. It enables you
+to see what's going on 'behind the scenes', both within the DBI and
+the drivers you're using.
+
+=head2 Trace Settings
+
+Which details are written to the trace output is controlled by a
+combination of a I<trace level>, an integer from 0 to 15, and a set
+of I<trace flags> that are either on or off. Together these are known
+as the I<trace settings> and are stored together in a single integer.
+For normal use you only need to set the trace level, and generally
+only to a value between 1 and 4.
+
+Each handle has it's own trace settings, and so does the DBI.
+When you call a method the DBI merges the handles settings into its
+own for the duration of the call: the trace flags of the handle are
+OR'd into the trace flags of the DBI, and if the handle has a higher
+trace level then the DBI trace level is raised to match it.
+The previous DBI trace setings are restored when the called method
+returns.
+
+=head1 Enabling Trace
+
+The C<$h-E<gt>trace> method sets the trace settings for a handle
+and C<DBI-E<gt>trace> does the same for the DBI.
 
 In addition to the L</trace> method, you can enable the same trace
-information by setting the C<DBI_TRACE> environment variable before
-starting Perl.
+information, and direct the output to a file, by setting the
+C<DBI_TRACE> environment variable before starting Perl.
+See L</DBI_TRACE> for more information.
 
-On Unix-like systems using a Bourne-like shell, you can do this easily
-on the command line:
+Finally, you can set, or get, the trace settings for a handle using
+the C<TraceLevel> attribute.
 
-  DBI_TRACE=2 perl your_test_script.pl
+=head2 Trace Levels
 
-If C<DBI_TRACE> is set to a non-numeric value, then it is assumed to
-be a file name and the trace level will be set to 2 with all trace
-output appended to that file. If the name begins with a number
-followed by an equal sign (C<=>), then the number and the equal sign are
-stripped off from the name, and the number is used to set the trace
-level. For example:
+Trace levels are as follows:
 
-  DBI_TRACE=1=dbitrace.log perl your_test_script.pl
+  0 - Trace disabled.
+  1 - Trace DBI method calls returning with results or errors.
+  2 - Trace method entry with parameters and returning with results.
+  3 - As above, adding some high-level information from the driver
+      and some internal information from the DBI.
+  4 - As above, adding more detailed information from the driver.
+  5 and above - As above but with more and more obscure information.
 
-See also the L</trace> method.
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.
+Levels 3 and above are best reserved for investigating a specific
+problem, when you need to see "inside" the driver and DBI.
+
+The trace output is detailed and typically very useful. Much of the
+trace output is formatted using the L</neat> function, so strings
+in the trace output may be edited and truncated by that function.
+
+=head2 Trace Output
+
+Initially trace output is written to C<STDERR>.  Both the
+C<$h-E<gt>trace> and C<DBI-E<gt>trace> methods take an optional
+$trace_filename parameter. If specified, and can be opened in
+append mode, then I<all> trace output (currently including that
+from other handles) is redirected to that file.  A warning is
+generated if the file can't be opened.
+
+Further calls to trace() without a $trace_filename do not alter where
+the trace output is sent. If $trace_filename is undefined, then
+trace output is sent to C<STDERR> and the previous trace file is closed.
+
+Currently $trace_filename can't be a filehandle. But meanwhile you
+can use the special strings C<"STDERR"> and C<"STDOUT"> to select
+those filehandles.
+
+=head2 Tracing Tips
+
+You can add tracing to your own application code using the
+L</trace_msg> method.
 
 It can sometimes be handy to compare trace files from two different
 runs of the same script. However using a tool like C<diff> doesn't work
 well because the trace file is full of object addresses that may
 differ each run. Here's a handy little command to strip those out:
 
- perl -pe 's/\b0x[\da-f]{6,}/0xNNNN/gi; s/\b[\da-f]{6,}/<long number>/gi'
+  perl -pe 's/\b0x[\da-f]{6,}/0xNNNN/gi; s/\b[\da-f]{6,}/<long number>/gi'
 
 
 =head1 DBI ENVIRONMENT VARIABLES
@@ -6215,9 +6274,28 @@ when no value is provided for the first (database name) argument.
 
 =head2 DBI_TRACE
 
-The DBI_TRACE environment variable takes an integer value that
-specifies the trace level for DBI at startup. Can also be used to
-direct trace output to a file. See L</DEBUGGING> for more information.
+The DBI_TRACE environment variable specifies the global default
+trace settings for the DBI at startup. Can also be used to direct
+trace output to a file. When the DBI is loaded it does:
+
+  DBI->trace(split '=', $ENV{DBI_TRACE}, 2) if $ENV{DBI_TRACE};
+
+So if C<DBI_TRACE> contains an "C<=>" character then what follows
+it is used as the name of the file to append the trace to.
+
+output appended to that file. If the name begins with a number
+followed by an equal sign (C<=>), then the number and the equal sign are
+stripped off from the name, and the number is used to set the trace
+level. For example:
+
+  DBI_TRACE=1=dbitrace.log perl your_test_script.pl
+
+On Unix-like systems using a Bourne-like shell, you can do this easily
+on the command line:
+
+  DBI_TRACE=2 perl your_test_script.pl
+
+See L</TRACING> for more information.
 
 =head2 PERL_DBI_DEBUG (obsolete)
 
@@ -6501,7 +6579,12 @@ code, do:
   svn checkout http://svn.perl.org/modules/dbi/trunk
 
 If it prompts for a username and password use your perl.org account
-if you have one, else just 'guest' and 'guest'.
+if you have one, else just 'guest' and 'guest'. The source code will
+be in a new subdirectory called C<trunk>.
+
+To keep informed about changes to the source you can send an empty email
+to dbi-changes@perl.org after which you'll get an email with the
+change log message and diff of each change checked-in to the source.
 
 After making your changes you can generate a patch file, but before
 you do, make sure your source is still upto date using:
@@ -6509,7 +6592,7 @@ you do, make sure your source is still upto date using:
   svn update http://svn.perl.org/modules/dbi/trunk
 
 If you get any conflicts reported you'll need to fix them first.
-Then generate the patch file using:
+Then generate the patch file from within the C<trunk> directory using:
 
   svn diff > foo.patch
 

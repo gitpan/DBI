@@ -63,8 +63,6 @@ my $drh;
 	main::ok($h);
 	main::ok(!tied $h);
 
-	#$h->trace(9);
-
 	print "Driver for inner handles needs to be the Drivers inner handle\n";
 	my $drh_i = $h->{Driver};
 	main::ok($drh_i);
@@ -76,8 +74,6 @@ my $drh;
 	main::ok($drh_o);
 	main::ok(ref $drh_o);
 	main::ok(tied %$drh_o) unless $DBI::PurePerl && main::ok(1);
-
-	#$h->trace(0);
     }
 
     sub data_sources {	# just used to run tests 'inside' a driver
@@ -133,7 +129,7 @@ $drh->set_err(2, "test error 2", "IM999");
 ok($DBI::state, "IM999");
 
 eval { $DBI::rows = 1 };
-ok($@ =~ m/Can't modify/);
+ok($@ =~ m/Can't modify/) unless $DBI::PurePerl && main::ok(1);
 
 ok($drh->{FetchHashKeyName}, 'NAME');
 $drh->{FetchHashKeyName} = 'NAME_lc';
@@ -149,7 +145,6 @@ my $name = &$can($drh,"Name");
 ok($name);
 ok($name eq "Test");
 print "FETCH'd $name\n";
-DBI->trace(0);
 ok($drh->can('disconnect_all') ? 1 : 0, 0);	# not implemented
 }
 else { ok(1) for (1..5) }

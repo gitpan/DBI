@@ -1258,6 +1258,26 @@ In particular you should consider a (possibly empty) I<disconnect>
 method and possibly a I<quote> method if DBI's default isn't correct for
 you.
 
+Where reasonable use $h->SUPER::foo() to call the DBI's method in
+some or all cases and just wrap your custom behavior around that.
+
+If you want to use private trace flags you'll probably want to be
+able to set them by name. To do that you'll need to define a
+parse_trace_flag() method (note that's parse_trace_flag not parse_trace_flags).
+
+  sub parse_trace_flag {
+      my ($h, $name) = @_;
+      return 0x01000000 if $name eq 'foo';
+      return 0x02000000 if $name eq 'bar';
+      return 0x04000000 if $name eq 'baz';
+      return 0x08000000 if $name eq 'boo';
+      return 0x10000000 if $name eq 'bop';
+      return $h->SUPER::parse_trace_flag($name);
+  }
+
+All private flag names must be lowercase, and all private flags
+must be in the top 8 of the 32 bits.
+
 =cut
 
 #=head3 The DBD::Driver::st package
@@ -1399,6 +1419,10 @@ I<fetchrow_arrayref>:
 Note the use of the method I<_set_fbav>: This is required so that
 I<bind_col> and I<bind_columns> work.
 
+If an error occurs which leaves the $sth in a state where remaining rows
+can't be fetched then Active should be turned off
+before the method returns.
+
 =cut
 
 #=head4 Statement attributes
@@ -1451,10 +1475,16 @@ A C<table_info> method to return details of available tables.
 
 A C<type_info_all> method to return details of supported types.
 
+If you've defined a parse_trace_flag() method in ::db you'll also want
+it in ::st, so just alias it in:
+
+  *parse_trace_flag = \&DBD::foo:db::parse_trace_flag;
+
 And perhaps some other methods that are not part of the DBI
 specification, in particular to make metadata available.
-Considering Tim's recent postings, do yourself a favour and follow the
-ODBC driver.
+Remember that they must have names that begin with your drivers
+registered prefix so they can be installed using install_method().
+
 
 =cut
 
@@ -2141,20 +2171,20 @@ should be replaced with the C<DBIc_STATE(imp_xxh)> macro.
 The name DBILOGFP, which was also used in previous  versions of this document, should be
 replaced by DBIc_LOGPIO(imp_xxh).
 
-Your code should not call the C C<E<lt>stdio.hE<gt>> I/O functions; you should either use
-C<PerlIO_printf>() as shown, or standard Perl functions such as C<warn>():
+Your code should not call the C C<E<lt>stdio.hE<gt>> I/O functions; you should use
+C<PerlIO_printf>() as shown:
 
-      if (DBIc_DBISTATE(imp_xxh)->debug >= 2)
-          PerlIO_printf(DBIc_LOGPIO(imp_xxh), "%s error %d recorded: %s\n",
-              what, rc, SvPV(errstr,na));
+      if (DBIc_TRACE_LEVEL(imp_xxh) >= 2)
+          PerlIO_printf(DBIc_LOGPIO(imp_xxh), "foobar %s: %s\n",
+              foo, neatsvpv(errstr,0));
 
-Or:
+That's the first time we see how tracing works within a DBI
+driver.  Make use of this as often as you can! But don't output anything
+at a trace level less than 3. Levels 1 and 2 are reserved for the DBI.
 
-      if (DBIc_DBISTATE(imp_xxh)->debug >= 2)
-          warn("%s error %d recorded: %s\n", what, rc, SvPV(errstr,na));
-
-That's the first time we see how debug/trace logging works within a DBI
-driver.  Make use of this as often as you can!
+You can define up to 8 private trace flags using the top 8 bits of
+DBIc_TRACE_FLAGS(imp), that is: 0xFF000000. See the parse_trace_flag() method
+elsewhere in this document.
 
 =cut
 
@@ -2745,6 +2775,10 @@ Are errors permitted if another fetch occurs after the first fetch
 that reports no more data. (Permitted, not required.)
 
 =back
+
+If an error occurs which leaves the $sth in a state where remaining
+rows can't be fetched then Active should be turned off before the
+method returns.
 
 =cut
 

@@ -4,6 +4,52 @@ DBI::Changes - List of significant changes to the DBI
 
 =cut
 
+Document $t->parse_trace_flags etc
+
+=head1 CHANGES in DBI 1.42 (svn rev 222),    12th March 2004
+
+  Fixed $sth->{NUM_OF_FIELDS} of non-executed statement handle
+    to be undef as per the docs (it was 0).
+  Fixed t/41prof_dump.t to work with perl5.9.1.
+  Fixed DBD_ATTRIB_DELETE macro thanks to Marco Paskamp.
+  Fixed DBI::PurePerl looks_like_number() and $DBI::rows.
+  Fixed ref($h)->can("foo") to not croak.
+
+  Changed attributes (NAME, TYPE etc) of non-executed statement
+    handle to be undef instead of triggering an error.
+  Changed ShowErrorStatement to apply to more $dbh methods.
+  Changed DBI_TRACE env var so just does this at load time:
+    DBI->trace(split '=', $ENV{DBI_TRACE}, 2);
+  Improved "invalid number of parameters" error message.
+  Added DBI::common as base class for DBI::db, DBD::st etc.
+  Moved methods common to all handles into DBI::common.
+
+  Major tracing enhancement:
+
+  Added $h->parse_trace_flags("foo|SQL|7") to map a group of
+    trace flags into the corresponding trace flag bits.
+  Added automatic calling of parse_trace_flags() if
+    setting the trace level to a non-numeric value:
+    $h->{TraceLevel}="foo|SQL|7"; $h->trace("foo|SQL|7");
+    DBI->connect("dbi:Driver(TraceLevel=SQL|foo):...", ...);
+    Currently no trace flags have been defined.
+  Added to, and reworked, the trace documentation.
+  Added dbivport.h for driver authors to use.
+
+  Major driver additions that Jeff Zucker and I have been working on:
+
+  Added DBI::SQL::Nano a 'smaller than micro' SQL parser
+    with an SQL::Statement compatible API. If SQL::Statement
+    is installed then DBI::SQL::Nano becomes an empty subclass
+    of SQL::Statement, unless the DBI_SQL_NANO env var is true.
+  Added DBD::File, modified to use DBI::SQL::Nano.
+  Added DBD::DBM, an SQL interface to DBM files using DBD::File.
+
+  Documentation changes:
+
+  Corrected typos in docs thanks to Steffen Goeldner.
+  Corrected execute_for_fetch example thanks to Dean Arnold.
+
 =head1 CHANGES in DBI 1.41 (svn rev 130),    22nd February 2004
 
   Fixed execute_for_array() so tuple_status parameter is optional
@@ -30,7 +76,6 @@ DBI::Changes - List of significant changes to the DBI
   Added way for drivers to indicate 'success with info' or 'warning'
     by setting err to "0" for warning and "" for information.
     Both values are false and so don't trigger RaiseError etc.
-    Warnings (err="0") are automatically printed if PrintError is set.
     Thanks to Steffen Goeldner for the original idea.
   Added $h->{HandleSetErr} = sub { ... } to be called at the
     point that an error, warn, or info state is recorded.
