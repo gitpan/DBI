@@ -53,7 +53,7 @@ my $config_file = "dbiproxy$i.conf";
     or die "Failed to create config file $config_file: $!";
 
 my($handle, $port);
-my $numTests = 129;
+my $numTests = 111;
 if (@ARGV) {
     $port = $ARGV[0];
 } else {
@@ -293,21 +293,20 @@ Test(keys %missing == 0)
 
 
 # Test large recordsets
-for (my $i = 0;  $i < 300;  $i += 30) {
-    Test($csr_a = $dbh->prepare("SELECT * FROM long_list_$i"));
-    Test($csr_a->execute());
-    my $ok = 1;
-    my $j = $i;
-    my $ref;
-    while (--$j >= 0) {
-	if (!($ref = $csr_a->fetchrow_hashref())
-	    ||  $ref->{'name'} ne "file$j") {
-	    $ok = 0;
-	    last;
-	}
+for (my $i = 0;  $i < 300;  $i += 100) {
+    print "Testing the fake directories ($i).\n";
+    Test($csr_a = $dbh->prepare("SELECT name, mode FROM long_list_$i"));
+    Test($csr_a->execute(), $DBI::errstr);
+    my $ary = $csr_a->fetchall_arrayref;
+    Test(@$ary == $i);
+    if ($i) {
+        my @n1 = map { $_->[0] } @$ary;
+        my @n2 = reverse map { "file$_" } 1..$i;
+        Test("@n1" eq "@n2");
     }
-    $ok = 0 if $csr_a->fetchrow_hashref();
-    Test($ok);
+    else {
+        Test(1);
+    }
 }
 
 

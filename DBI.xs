@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.23 1999/06/29 22:49:21 timbo Exp $
+/* $Id: DBI.xs,v 10.24 1999/07/12 02:02:33 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -105,6 +105,7 @@ typedef struct {
     SV   *dbi_last_h;
     int   imp_maxsize;
     void *dbi_watch;
+    dbistate_t* dbi_state;
 } PERINTERP_t;
 
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT) || defined(PERL_CAPI)
@@ -127,6 +128,9 @@ typedef struct {
       dPERINTERP;                                          \
       Newz(0,PERINTERP,1,PERINTERP_t);                     \
       sv_setiv(perinterp_sv, (IV)PERINTERP)
+
+#   undef DBIS
+#   define DBIS			(PERINTERP->dbi_state)
 
 #else
     static PERINTERP_t Interp;
@@ -152,6 +156,7 @@ check_version(name, dbis_cv, dbis_cs, need_dbixs_cv, drc_s, dbc_s, stc_s, fdc_s)
     int drc_s, dbc_s, stc_s, fdc_s;
 #endif
 {
+    dPERINTERP;
     char *msg = "you probably need to rebuild the DBD driver (or possibly the DBI)";
     if (dbis_cv != DBISTATE_VERSION || dbis_cs != sizeof(*DBIS))
 	croak("DBI/DBD internal version mismatch (DBI is v%d/s%d, DBD %s expected v%d/s%d) %s.\n",
@@ -165,7 +170,6 @@ check_version(name, dbis_cv, dbis_cs, need_dbixs_cv, drc_s, dbc_s, stc_s, fdc_s)
 		drc_s, sizeof(dbih_drc_t), dbc_s, sizeof(dbih_dbc_t),
 		stc_s, sizeof(dbih_stc_t), fdc_s, sizeof(dbih_fdc_t), msg);
 }
-
 
 static void
 dbi_bootinit()
@@ -237,6 +241,7 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     SV * sv;
     STRLEN maxlen;
 {
+    dPERINTERP;
     STRLEN len;
     SV *nsv = Nullsv;
     SV *infosv = Nullsv;
@@ -385,6 +390,7 @@ static void
 set_trace_file(file)
     SV *file;
 {
+    dPERINTERP;
     STRLEN lna;
     char *filename;
     FILE *fp;
@@ -414,6 +420,7 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     SV *orv;         	/* ref of outer hash */
     char *what;		/* error msg, NULL=no croak and return NULL */
 {
+    dPERINTERP;
     MAGIC *mg;
     SV *hrv;
     STRLEN lna;
@@ -531,6 +538,7 @@ dbih_setup_attrib(h, attrib, parent, read_only)
     SV *parent;
     int read_only;
 {
+    dPERINTERP;
     STRLEN len = strlen(attrib);
     STRLEN lna;
 
@@ -568,6 +576,7 @@ dbih_make_fdsv(sth, imp_class, imp_size, col_name)
     STRLEN imp_size;
     char *col_name;
 {
+    dPERINTERP;
     STRLEN cn_len = strlen(col_name);
     imp_fdh_t *imp_fdh;
     SV *fdsv;
@@ -739,6 +748,7 @@ dbih_dumpcom(imp_xxh, msg)
     imp_xxh_t *imp_xxh;
     char *msg;
 {
+    dPERINTERP;
     SV *flags = newSVpv("",0);
     STRLEN lna;
     char *pad = "      ";
@@ -791,6 +801,7 @@ static void
 dbih_clearcom(imp_xxh)
     imp_xxh_t *imp_xxh;
 {
+    dPERINTERP;
     dTHR;
     int dump = FALSE;
     int auto_dump = (DBIS->debug >= 6);
@@ -887,6 +898,7 @@ static AV *
 dbih_setup_fbav(imp_sth)
     imp_sth_t *imp_sth;
 {
+    dPERINTERP;
     int i;
     AV *av;
 
@@ -944,6 +956,7 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     SV *ref;
     SV *attribs;
 {
+    dPERINTERP;
     D_imp_sth(sth);
     AV *av;
     int idx = SvIV(col);
@@ -1017,6 +1030,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     int dbikey;
     SV *valuesv;
 {
+    dPERINTERP;
     dTHR;
     D_imp_xxh(h);
     STRLEN lna;
@@ -1146,6 +1160,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     SV *keysv;
     int dbikey;
 {
+    dPERINTERP;
     /* dTHR; not currently needed */
     D_imp_xxh(h);
     STRLEN lna;
@@ -1323,6 +1338,7 @@ dbih_event(hrv, evtype, a1, a2)
     char *evtype;
     SV *a1, *a2;
 {
+    dPERINTERP;
     dSP;
     D_imp_xxh(hrv);
     /* We arrive here via DBIh_EVENT* macros (see DBIXS.h) called from	*/
@@ -1454,6 +1470,7 @@ clear_cached_kids(h, imp_xxh, meth_name, trace_level)
     char *meth_name;
     int trace_level;
 {
+    dPERINTERP;
     if (DBIc_TYPE(imp_xxh) <= DBIt_DB && DBIc_CACHED_KIDS((imp_drh_t*)imp_xxh)) {
 	if (trace_level >= 2) {
 	    fprintf(DBILOGFP,"    >> %s %s clearing %d CachedKids\n",
@@ -1922,6 +1939,10 @@ constant()
 	SQL_LONGVARBINARY = SQL_LONGVARBINARY
 	SQL_TINYINT	= SQL_TINYINT
 	SQL_BIGINT	= SQL_BIGINT
+	SQL_WCHAR       = SQL_WCHAR
+	SQL_WVARCHAR    = SQL_WVARCHAR
+	SQL_WLONGVARCHAR = SQL_WLONGVARCHAR
+	SQL_BIT         = SQL_BIT
     CODE:
     RETVAL = ix;
     OUTPUT:
@@ -2030,8 +2051,9 @@ _install_method(class, meth_name, file, attribs=Nullsv)
     SV *	attribs
     CODE:
     {
+    dPERINTERP;
     /* install another method name/interface for the DBI dispatcher	*/
-    int debug = (DBIS->debug >= 5);
+    int debug = (DBIS->debug >= 7);
     CV *cv;
     SV **svp;
     dbi_ima_t *ima = NULL;
@@ -2082,17 +2104,20 @@ _install_method(class, meth_name, file, attribs=Nullsv)
 
 
 int
-trace(sv, level=DBIS->debug, file=Nullsv)
+trace(sv, level=-1, file=Nullsv)
     SV *	sv
     int	level
     SV *	file
     ALIAS:
     _debug_dispatch = 1
     CODE:
+    {
+    dPERINTERP;
     if (!DBIS) {
 	sv=sv; ix=ix;		/* avoid 'unused variable' warnings	*/
 	croak("DBI not initialised");
     }
+    if (level == -1) level = DBIS->debug;
     /* Return old/current value. No change if new value not given.	*/
     RETVAL = DBIS->debug;
     set_trace_file(file);	/* always call this regardless of level */
@@ -2106,6 +2131,7 @@ trace(sv, level=DBIS->debug, file=Nullsv)
 	}
 	DBIS->debug = level;
 	sv_setiv(perl_get_sv("DBI::dbi_debug",0x5), level);
+    }
     }
     OUTPUT:
     RETVAL
@@ -2127,10 +2153,13 @@ void
 _svdump(sv)
     SV *	sv
     CODE:
+    {
+    dPERINTERP;
     fprintf(DBILOGFP, "DBI::_svdump(%s)", SvPV(sv,na));
 #ifdef DEBUGGING
     sv_dump(sv);
 #endif
+    }
 
 
 MODULE = DBI   PACKAGE = DBI::var
@@ -2147,8 +2176,10 @@ FETCH(sv)
     GV *imp_gv;
     int ok  = DBI_LAST_HANDLE_OK;
     imp_xxh_t *imp_xxh = (ok) ? DBIh_COM(DBI_LAST_HANDLE) : NULL;
+    int trace = 0;
 
     if (DBIS->debug >= 2 || (ok && DBIc_DEBUGIV(imp_xxh) >= 2)) {
+	trace = 2;
 	fprintf(DBILOGFP,"    -> $DBI::%s (%c) FETCH from lasth=", meth, type);
 	if (ok) {
 	    SvROK_on(DBI_LAST_HANDLE);
@@ -2167,7 +2198,7 @@ FETCH(sv)
 	/* This handle should only be used for true/false tests	*/
 	SvROK_on(DBI_LAST_HANDLE);
 	ST(0) = sv_mortalcopy(DBI_LAST_HANDLE);
-	if (DBIS->debug >= 2)
+	if (trace)
 	    fprintf(DBILOGFP,"    <- $DBI::%s= %s (inner)\n",
 				meth, SvPV(DBI_LAST_HANDLE,na));
 	SvROK_off(DBI_LAST_HANDLE);
@@ -2180,7 +2211,7 @@ FETCH(sv)
 
     if (type == '*') {	/* special case for $DBI::err, see also err method	*/
 	SV *errsv = DBIc_ERR(imp_xxh);
-	if (DBIS->debug >= 2)
+	if (trace)
 	    fprintf(DBILOGFP,"    <- err= %s\n", neatsvpv(errsv,0));
 	ST(0) = sv_mortalcopy(errsv);
 	XSRETURN(1);
@@ -2189,14 +2220,14 @@ FETCH(sv)
 	STRLEN lna;
 	SV *state = DBIc_STATE(imp_xxh);
 	ST(0) = DBIc_STATE_adjust(imp_xxh, state);
-	if (DBIS->debug >= 2)
+	if (trace)
 	    fprintf(DBILOGFP,"    <- state= %s\n", neatsvpv(ST(0),0));
 	XSRETURN(1);
     }
     if (type == '$') { /* lookup scalar variable in implementors stash */
 	char *vname = mkvname(DBIc_IMP_STASH(imp_xxh), meth, 0);
 	SV *vsv = perl_get_sv(vname, 1);
-	if (DBIS->debug >= 2)
+	if (trace)
 	    fprintf(DBILOGFP,"    <- %s = %s\n", vname, neatsvpv(vsv,0));
 	ST(0) = sv_mortalcopy(vsv);
 	XSRETURN(1);
@@ -2210,7 +2241,6 @@ FETCH(sv)
 	croak("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",
 	    meth, meth, HvNAME(imp_stash));
     }
-/* something here is not quite right ! (wrong number of args to method for example) XXX? */
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
     perl_call_sv((SV*)GvCV(imp_gv), GIMME);
 
@@ -2270,7 +2300,7 @@ bind_columns(sth, ...)
     int i;
     if (fields <= 0 && !DBIc_ACTIVE(imp_sth))
 	croak("Statement has no result columns to bind %s",
-		"(perhaps you need to call execute first)");
+		"(perhaps you need to successfully call execute first)");
     ST(0) = &sv_yes;
     /* Backwards compatibility for old-style call with attribute hash	*/
     /* ref as first arg. Skip arg if undef or a hash ref.		*/
@@ -2297,6 +2327,7 @@ fetchrow_array(sth)
     ALIAS:
     fetchrow = 1
     PPCODE:
+    dPERINTERP;
     SV *retsv;
     if (CvDEPTH(cv) == 99) {
 	ix = ix;	/* avoid 'unused variable' warning'		*/
@@ -2425,7 +2456,10 @@ event(h, type, a1=&sv_undef, a2=&sv_undef)
     SV *	a1
     SV *	a2
     CODE:
+    {
+    dPERINTERP;
     ST(0) = sv_mortalcopy(DBIh_EVENT2(h, type, a1, a2));
+    }
 
 
 void
@@ -2475,11 +2509,12 @@ trace(sv, level=0, file=Nullsv)
     debug = 1
     CODE:
     {
+    dPERINTERP;
     D_imp_xxh(sv);
     SV *dsv = DBIc_DEBUG(imp_xxh);
     STRLEN lna;
-    /* Return old/current value. No change if new value not given */
-    RETVAL = SvIV(dsv);
+    /* Return trace level in effect now. No change if new value not given */
+    RETVAL = (DBIS->debug > SvIV(dsv)) ? DBIS->debug : SvIV(dsv);
     set_trace_file(file);
     if (level != RETVAL) {	 /* set value */
 	if (level > 0) {
@@ -2488,9 +2523,9 @@ trace(sv, level=0, file=Nullsv)
 	    if (!dowarn && level>0)
 		fprintf(DBILOGFP,"    Note: perl is running without the recommended perl -w option\n");
 	    Fflush(DBILOGFP);
+	    ix = ix;		/* avoid 'unused variable' warning	*/
 	}
 	sv_setiv(dsv, level);
-	ix = ix;	/* avoid 'unused variable' warning	*/
     }
     }
     OUTPUT:
@@ -2505,6 +2540,8 @@ trace_msg(sv, msg, min_level=1)
     PREINIT:
     int debug = 0;
     CODE:
+    {
+    dPERINTERP;
     if (SvROK(sv)) {
 	D_imp_xxh(sv);
 	debug = DBIc_DEBUGIV(imp_xxh);
@@ -2515,6 +2552,7 @@ trace_msg(sv, msg, min_level=1)
     }
     else {
         ST(0) = &sv_no;
+    }
     }
 
 
@@ -2533,6 +2571,7 @@ void
 DESTROY(imp_xxh_rv)
     SV *	imp_xxh_rv
     CODE:
+    dPERINTERP;
     /* ignore 'cast increases required alignment' warning	*/
     imp_xxh_t *imp_xxh = (imp_xxh_t*)SvPVX(SvRV(imp_xxh_rv));
     DBIS->clearcom(imp_xxh);

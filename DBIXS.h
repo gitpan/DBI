@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.10 1999/06/01 10:53:41 timbo Exp $
+/* $Id: DBIXS.h,v 10.11 1999/07/12 02:02:33 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -388,22 +388,34 @@ typedef struct {
 #define set_attr(h, k, v)	set_attr_k(h, k, 0, v)
 #define get_attr(h, k)		get_attr_k(h, k, 0)
 
-#define DBISTATE_DECLARE  static dbistate_t *DBIS
 #define DBISTATE_PERLNAME "DBI::_dbistate"
 #define DBISTATE_ADDRSV   (perl_get_sv(DBISTATE_PERLNAME, 0x05))
+#define DBILOGFP	(DBIS->logfp)
 
-#define DBISTATE_INIT_DBIS (DBIS = (dbistate_t*)SvIV(DBISTATE_ADDRSV))
+/* --- perl object (ActiveState) / multiplicity hooks and hoops --- */
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT) || defined(PERL_CAPI)
 
-#define DBISTATE_INIT {		/* typically use in BOOT: of XS file	*/    \
+# define DBISTATE_DECLARE
+# define DBISTATE_INIT
+static dbistate_t * get_dbistate() {
+    return ((dbistate_t*)SvIVX(DBISTATE_ADDRSV));
+}
+# define DBIS (get_dbistate())
+
+#else	/* plain and simple non perl object / multiplicity case */
+
+# define DBISTATE_DECLARE	static dbistate_t *DBIS
+# define DBISTATE_INIT_DBIS	(DBIS = (dbistate_t*)SvIV(DBISTATE_ADDRSV))
+# define DBISTATE_INIT {	/* typically use in BOOT: of XS file	*/    \
     DBISTATE_INIT_DBIS;	\
     if (DBIS == NULL)	\
 	croak("Unable to get DBI state. DBI not loaded.");	\
     DBIS->check_version(__FILE__, DBISTATE_VERSION, sizeof(*DBIS), NEED_DBIXS_VERSION, \
 		sizeof(dbih_drc_t), sizeof(dbih_dbc_t), sizeof(dbih_stc_t), sizeof(dbih_fdc_t) \
-	); \
+    ); \
 }
+#endif
 
-#define DBILOGFP	(DBIS->logfp)
 
 /* --- Assorted Utility Macros	--- */
 

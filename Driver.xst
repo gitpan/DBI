@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 10.16 1999/06/13 23:27:53 timbo Exp $
+#  $Id: Driver.xst,v 10.17 1999/07/12 02:02:33 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -93,7 +93,7 @@ disconnect(dbh)
     }
     /* pre-disconnect checks and tidy-ups */
     if (DBIc_CACHED_KIDS(imp_dbh)) {
-	SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
+	SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));      /* cast them to the winds	*/
 	DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
@@ -145,16 +145,16 @@ DESTROY(dbh)
 	STRLEN lna;
 	if (DBIc_WARN(imp_dbh) && !dirty && DBIS->debug >= 2)
 	     fprintf(DBILOGFP,
-			"         DESTROY for %s ignored - handle not initialised\n",
-				SvPV(dbh,lna));
+		"         DESTROY for %s ignored - handle not initialised\n",
+			SvPV(dbh,lna));
     }
     else {
 	/* pre-disconnect checks and tidy-ups */
 	if (DBIc_CACHED_KIDS(imp_dbh)) {
-	    SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
+	    SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));  /* cast them to the winds	*/
 	    DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
 	}
-        if (DBIc_IADESTROY(imp_dbh)) { /* want's ineffective destroy    */
+        if (DBIc_IADESTROY(imp_dbh)) {		  /* want's ineffective destroy	*/
             DBIc_ACTIVE_off(imp_dbh);
         }
 	if (DBIc_ACTIVE(imp_dbh)) {

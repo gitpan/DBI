@@ -27,6 +27,7 @@ sub ok ($$;$) {
 my $trace_file = "dbitrace.log";
 unlink $trace_file;
 ok(0, !-e $trace_file);
+my $orig_trace_level = DBI->trace;
 DBI->trace(3,$trace_file);		# enable trace before first driver load
 
 my $r;
@@ -64,6 +65,9 @@ if ($^O =~ /cygwin/i) { # cygwin has buffer flushing bug
 }
 unlink $trace_file;
 ok(0, !-e $trace_file);
+
+# internal hack to assist debugging using DBI_TRACE env var. See DBI.pm.
+DBI->trace(@DBI::dbi_debug) if @DBI::dbi_debug;
 
 ok(0, $dbh->ping);
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
@@ -295,23 +299,20 @@ ok(0, keys %missing == 0)
     or print "Missing directories: ", join(",", keys %missing), "\n";
 
 
-# Test the fake directories.
-print "Testing the fake directories.\n";
-for (my $i = 0;  $i < 300;  $i += 10) {
-    ok(0, $csr_a = $dbh->prepare("SELECT * FROM long_list_$i"));
-    ok(0, $csr_a->execute());
-    my $ok = 1;
-    my $j = $i;
-    my $ref;
-    while (--$j >= 0) {
-	if (!($ref = $csr_a->fetchrow_hashref())
-	    ||  $ref->{'name'} ne "file$j") {
-	    $ok = 0;
-	    last;
-	}
+for (my $i = 0;  $i < 300;  $i += 100) {
+	print "Testing the fake directories ($i).\n";
+    ok(0, $csr_a = $dbh->prepare("SELECT name, mode FROM long_list_$i"));
+    ok(0, $csr_a->execute(), $DBI::errstr);
+    my $ary = $csr_a->fetchall_arrayref;
+    ok(0, @$ary == $i, @$ary." rows instead of $i");
+    if ($i) {
+	my @n1 = map { $_->[0] } @$ary;
+	my @n2 = reverse map { "file$_" } 1..$i;
+	ok(0, "@n1" eq "@n2", "'@n1' ne '@n2'");
     }
-    $ok = 0 if $csr_a->fetchrow_hashref();
-    ok(0, $ok);
+    else {
+	ok(0,1);
+    }
 }
 
 DBI->disconnect_all;	# doesn't do anything yet
@@ -326,4 +327,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 196; }
+BEGIN { $tests = 118; }

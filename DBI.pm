@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.24 1999/06/29 22:49:21 timbo Exp $
+# $Id: DBI.pm,v 10.25 1999/07/12 02:02:33 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = "1.12"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.13"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -67,8 +67,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.12
-($Date: 1999/06/29 22:49:21 $).
+This is the DBI specification that corresponds to the DBI version 1.13
+($Date: 1999/07/12 02:02:33 $).
 
 The DBI specification is evolving at a steady pace so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -118,7 +118,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.24 $, 10);
+my $Revision = substr(q$Revision: 10.25 $, 10);
 
 
 use Carp;
@@ -139,6 +139,8 @@ BEGIN {
 	SQL_DATE SQL_TIME SQL_TIMESTAMP
 	SQL_LONGVARCHAR SQL_BINARY SQL_VARBINARY SQL_LONGVARBINARY
 	SQL_BIGINT SQL_TINYINT
+	SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR
+	SQL_BIT
    ) ],
    utils     => [ qw(
 	neat neat_list dump_results looks_like_number
@@ -168,16 +170,16 @@ if ($INC{'Apache/DBI.pm'} && substr($ENV{GATEWAY_INTERFACE}||'',0,8) eq 'CGI-Per
 
 
 if ($DBI::dbi_debug) {
-    my @trace = ($DBI::dbi_debug);
+    @DBI::dbi_debug = ($DBI::dbi_debug);
 
     if ($DBI::dbi_debug !~ m/^\d$/) {
 	# dbi_debug is a file name to write trace log to.
 	# Default level is 2 but if file starts with "digits=" then the
 	# digits (and equals) are stripped off and used as the level
-	unshift @trace, 2;
-	@trace = ($1,$2) if $DBI::dbi_debug =~ m/^(\d+)=(.*)/;
+	unshift @DBI::dbi_debug, 2;
+	@DBI::dbi_debug = ($1,$2) if $DBI::dbi_debug =~ m/^(\d+)=(.*)/;
     }
-    DBI->trace(@trace) if @trace;
+    DBI->trace(@DBI::dbi_debug);
 }
 
 %DBI::installed_drh = ();  # maps driver names to installed driver handles
@@ -289,7 +291,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	rows       =>	$keeperr,
 
 	_get_fbav	=> undef,
-	_set_fbav	=> { T=>4 },
+	_set_fbav	=> { T=>6 },
     },
 );
 
@@ -318,10 +320,8 @@ END {
 # --- The DBI->connect Front Door methods
 
 sub connect_cached {
-    # If using Apache::DBI then keep using it
-    # XXX This logic may need reworking at some point
-    my $meth = ($connect_via eq "connect") ? "connect_cached" : $connect_via;
-    return shift->connect(@_[0..4], $meth);
+	# XXX we expect Apache::DBI users to still call connect()
+    return shift->connect(@_[0..4], 'connect_cached');
 }
 
 sub connect {
@@ -1137,15 +1137,15 @@ __END__
 
 =head1 DESCRIPTION
 
-The Perl DBI is a database access Application Programming Interface
-(API) for the Perl Language.  The DBI defines a set of functions,
-variables and conventions that provide a consistent database interface
-independant of the actual database being used.
+The DBI is a database access module for the Perl Language.  It defines
+a set of methods, variables and conventions that provide a consistent
+database interface independant of the actual database being used.
 
-It is important to remember that the DBI is just an interface. A thin
-layer of 'glue' between an application and one or more Database Drivers.
-It is the drivers which do the real work. The DBI provides a standard
-interface and framework for the drivers to operate within.
+It is important to remember that the DBI is just an interface. A layer
+of 'glue' between an application and one or more I<Database Driver>
+modules.  It is the driver modules which do the real work. The DBI
+provides a standard interface and framework for the drivers to operate
+within.
 
 
 =head2 Architecture of a DBI Application
@@ -1153,12 +1153,12 @@ interface and framework for the drivers to operate within.
              |<- Scope of DBI ->|
                   .-.   .--------------.   .-------------.
   .-------.       | |---| XYZ Driver   |---| XYZ Engine  |
-  | Perl  |       |S|   `--------------'   `-------------'
-  | script|  |A|  |w|   .--------------.   .-------------.
-  | using |--|P|--|i|---|Oracle Driver |---|Oracle Engine|
-  | DBI   |  |I|  |t|   `--------------'   `-------------'
-  | API   |       |c|...
-  |methods|       |h|... Other drivers
+  | Perl  |       | |   `--------------'   `-------------'
+  | script|  |A|  |D|   .--------------.   .-------------.
+  | using |--|P|--|B|---|Oracle Driver |---|Oracle Engine|
+  | DBI   |  |I|  |I|   `--------------'   `-------------'
+  | API   |       | |...
+  |methods|       | |... Other drivers
   `-------'       | |...
                   `-'
 
@@ -1166,10 +1166,9 @@ The API is the Application Perl-script (or Programming) Interface.  The
 call interface and variables provided by DBI to perl scripts. The API
 is implemented by the DBI Perl extension.
 
-The 'Switch' is the code that 'dispatches' the DBI method calls to the
-appropriate Driver for actual execution.  The Switch is also
-responsible for the dynamic loading of Drivers, error checking/handling
-and other duties. The DBI and Switch are generally synonymous.
+The DBI 'dispatches' the method calls to the appropriate Driver for
+actual execution.  The DBI is also responsible for the dynamic loading
+of Drivers, error checking/handling and other duties.
 
 The Drivers implement support for a given type of Engine (database).
 Drivers contain implementations of the DBI methods written using the
@@ -1465,8 +1464,10 @@ SQL history.
 
 =item B<connect>
 
-  $dbh = DBI->connect($data_source, $username, $password) || die $DBI::errstr;
-  $dbh = DBI->connect($data_source, $username, $password, \%attr) || die $DBI::errstr;
+  $dbh = DBI->connect($data_source, $username, $password)
+            || die $DBI::errstr;
+  $dbh = DBI->connect($data_source, $username, $password, \%attr)
+            || die $DBI::errstr;
 
 Establishes a database connection, or session, to the requested data_source.
 Returns a database handle object if the connect succeeds. Use
@@ -1580,6 +1581,32 @@ checked if DBI_DSN is not defined. I<This 'old-style' connect will be
 withdrawn in a future version>.
 
 
+=item B<connect_cached> *NEW*
+
+  $dbh = DBI->connect_cached($data_source, $username, $password)
+            || die $DBI::errstr;
+  $dbh = DBI->connect_cached($data_source, $username, $password, \%attr)
+            || die $DBI::errstr;
+
+Like L</connect> except that the database handle returned will be
+stored in a hash associated with the given parameters. If another call
+is made to connect_cached with the I<same parameter values> then the
+corresponding cached $dbh will be returned, without contacting the data
+source, so long as it is still I<ok>.
+If the cached database handle has been disconnected or the ping()
+method fails then it will be replaced with a new connection.
+
+Note that the behaviour of this method differs in several respects from the
+behaviour of the presistent connections implemented by Apache::DBI.
+
+This caching can be useful in some applications but it can also cause
+problems and should be used with care. The exact behaviour of this
+method I<is liable to change>. If you intend to use it in any production
+applications your should discuss your needs in the dbi-users mailing list.
+
+The cache can be accessed (and cleared) via the L</CachedKids> attribute.
+
+
 =item B<available_drivers>
 
   @ary = DBI->available_drivers;
@@ -1618,13 +1645,25 @@ DBI trace information can be enabled for all handles using this DBI
 class method. To enable trace information for a specific handle use
 the similar $h->trace method described elsewhere.
 
-Use $trace_level 2 to see detailed call trace information including
-parameters and return values.  The trace output is detailed and
-typically I<very> useful. Much of the trace output is formatted using
-the L</neat> function and thus strings in the trace output may be
-edited and truncated by it.
+B<Trace Levels:>
 
-Use $trace_level 0 to disable the trace.
+  0 - trace disabled.
+  1 - trace DBI method calls returning with results.
+  2 - trace method entry with parameters and exit with results.
+  3 - as above, adding some high-level information from the driver
+      also adds some internal information from the DBI.
+  4 - as above, adding more detailed information from the driver
+      also includes DBI mutex information when using threaded perl.
+  5 and above - as above but with more and more obscure information.
+
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.  Levels 3
+and above (up to 9) are best reserved for use when investigating a
+specific problem and you need to see 'inside' the driver and DBI.
+
+The trace output is detailed and typically I<very> useful. Much of the
+trace output is formatted using the L</neat> function and thus strings
+in the trace output may be edited and truncated by it.
 
 Initially trace output is written to STDERR.  If $trace_filename is
 specified then the file is opened in append mode and I<all> trace
@@ -1761,11 +1800,15 @@ DBI trace information can be enabled for a specific handle (and any
 future children of that handle) by setting the trace level using the
 trace method.
 
-Use $trace_level 2 to see detailed call trace information including
-parameters and return values.  The trace output is detailed and
-typically I<very> useful.
-
+Trace level 1 is best for a simple overview of what's happening.
+Trace level 2 is a good choice for general purpose tracing.  Levels 3
+and above (up to 9) are best reserved for use when investigating a
+specific problem and you need to see 'inside' the driver and DBI.
 Use $trace_level 0 to disable the trace.
+
+The trace output is detailed and typically I<very> useful. Much of the
+trace output is formatted using the L</neat> function and thus strings
+in the trace output may be edited and truncated by it.
 
 Initially trace output is written to STDERR.  If $trace_filename is
 specified then the file is opened in append mode and I<all> trace
@@ -1775,9 +1818,7 @@ the trace output is sent. If $trace_filename is undefined then
 trace output is sent to STDERR and the previous trace file closed.
 
 See also the DBI->trace() method and L</DEBUGGING> for information
-about the DBI_TRACE environment variable. The L</neat> function is
-often used to format trace information and thus strings in the trace
-output may be edited and truncated by it.
+about the DBI_TRACE environment variable.
 
 
 =item B<trace_msg>
@@ -1864,8 +1905,7 @@ Like Kids (above), but only counting those that are Active (as above).
 For a database handle, returns a reference to the cache (hash) of
 statement handles created by the L</prepare_cached> method.  For a
 driver handle, it would return a reference to the cache (hash) of
-statement handles created by the (not yet implemented) connect_cached
-method.
+statement handles created by the L</connect_cached> method.
 
 =item B<CompatMode> (boolean, inherited)
 
@@ -2133,12 +2173,12 @@ used with the DBI.
   $sth = $dbh->prepare_cached($statement, \%attr)
   $sth = $dbh->prepare_cached($statement, \%attr, $allow_active)
 
-Like L</prepare> except that the statement handled returned will be stored
+Like L</prepare> except that the statement handle returned will be stored
 in a hash associated with the $dbh. If another call is made to prepare_cached
 with the I<same parameter values> then the corresponding cached $sth
 will be returned without contacting the database server.
 
-This cacheing can be useful in some applications but it can also cause
+This caching can be useful in some applications but it can also cause
 problems and should be used with care. A warning will be generated if
 the cached $sth being returned is active (i.e., is a select that may
 still have data to be fetched) unless $allow_active is true.
@@ -2500,6 +2540,10 @@ For more detailed information about these fields and their meanings, you
 can refer to:
 
   http://msdn.microsoft.com/library/sdkdoc/dasdk/odbc/odbcsqlgettypeinfo.htm
+
+The individual data types are described here:
+
+  http://msdn.microsoft.com/library/sdkdoc/dasdk/odbc/odbcsql_data_types.htm
 
 =item B<quote>
 
@@ -3602,6 +3646,10 @@ CGI related questions to the dbi-users mailing list (or to me).
  http://www-genome.wi.mit.edu/WWW/faqs/www-security-faq.html
  http://www.boutell.com/faq/
  http://www.perl.com/perl/faq/
+
+Using Apache and mod_perl?
+
+ http://perl.apache.org/guide/
 
 General problems and good ideas:
 

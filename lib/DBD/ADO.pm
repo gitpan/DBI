@@ -6,9 +6,9 @@
     require Carp;
 
     @EXPORT = ();
-    $VERSION = substr(q$Revision: 1.13 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 1.14 $, 9,-1) -1;
 
-#   $Id: ADO.pm,v 1.13 1999/06/29 22:49:21 timbo Exp $
+#   $Id: ADO.pm,v 1.14 1999/07/12 02:02:33 timbo Exp $
 #
 #   Copyright (c) 1999, Phlip & Tim Bunce
 #
@@ -53,10 +53,14 @@
 # ADO.pm lexically scoped constants
 my $ado_consts;
 my $VT_I4_BYREF;
+my $ado_sptype;
+my %ado2sql_types;
+my %sql2ado_types;
 
 
 
 {   package DBD::ADO::dr; # ====== DRIVER ======
+	use Data::Dumper;
     $imp_data_size = 0;
 
     sub connect { my ($drh, $dsn, $user, $auth) = @_;
@@ -71,6 +75,41 @@ my $VT_I4_BYREF;
 	    require Win32::OLE::Variant;
 	    $VT_I4_BYREF = Win32::OLE::Variant::VT_I4()
 			 | Win32::OLE::Variant::VT_BYREF();
+
+	    # Required to translate between ADO and SQL type codes
+	    %ado2sql_types = (
+		$ado_consts->{adSmallInt}=>DBI::SQL_SMALLINT(),
+		$ado_consts->{adInteger}=> DBI::SQL_INTEGER(),
+		$ado_consts->{adSingle}	=> DBI::SQL_REAL(),
+		$ado_consts->{adDouble}	=> DBI::SQL_DOUBLE(),
+		$ado_consts->{adNumeric}=> DBI::SQL_DECIMAL(),
+		$ado_consts->{adUnsignedTinyInt} => DBI::SQL_TINYINT(),
+		$ado_consts->{adBoolean}=> DBI::SQL_BIT(),
+		$ado_consts->{adBinary}	=> DBI::SQL_BINARY(),
+		$ado_consts->{adVarChar}=> DBI::SQL_VARCHAR(),
+		$ado_consts->{adNumeric}=> DBI::SQL_NUMERIC(),
+		$ado_consts->{adDate}	=> DBI::SQL_DATE(),
+		$ado_consts->{adBinary}	=> DBI::SQL_TIMESTAMP(),
+	    );
+	    %sql2ado_types = (
+		DBI::SQL_SMALLINT() => $ado_consts->{adSmallInt},
+		DBI::SQL_INTEGER()  => $ado_consts->{adInteger},
+		DBI::SQL_FLOAT()    => $ado_consts->{adSingle},
+		DBI::SQL_REAL()     => $ado_consts->{adSingle},
+		DBI::SQL_DOUBLE()   => $ado_consts->{adDouble},
+		DBI::SQL_DECIMAL()  => $ado_consts->{adNumeric},
+		DBI::SQL_NUMERIC()  => $ado_consts->{adNumeric},
+		DBI::SQL_BIT()      => $ado_consts->{adBoolean},
+		DBI::SQL_TINYINT()  => $ado_consts->{adUnsignedTinyInt},
+		DBI::SQL_BINARY()   => $ado_consts->{adBinary},
+		DBI::SQL_VARBINARY() => $ado_consts->{adVarBinary},
+		DBI::SQL_LONGVARBINARY() => $ado_consts->{adLongVarBinary},
+		DBI::SQL_CHAR()     => $ado_consts->{adChar},
+		DBI::SQL_VARCHAR()  => $ado_consts->{adVarChar},
+		DBI::SQL_LONGVARCHAR() => $ado_consts->{adLongVarChar},
+		DBI::SQL_DATE()     => $ado_consts->{adDBTimeStamp},
+		DBI::SQL_TIMESTAMP() => $ado_consts->{adBinary},
+	    );
 	}
 
 	local $Win32::OLE::Warn = 0;
@@ -103,8 +142,20 @@ my $VT_I4_BYREF;
 }
 
 
+# names of adSchemaProviderTypes fields
+my $ado_info = [qw{
+	TYPE_NAME DATA_TYPE COLUMN_SIZE LITERAL_PREFIX
+	LITERAL_SUFFIX CREATE_PARAMS IS_NULLABLE CASE_SENSITIVE
+	SEARCHABLE UNSIGNED_ATTRIBUTE FIXED_PREC_SCALE AUTO_UNIQUE_VALUE
+	LOCAL_TYPE_NAME MINIMUM_SCALE MAXIMUM_SCALE GUID TYPELIB
+	VERSION IS_LONG BEST_MATCH IS_FIXEDLENGTH
+}];
+# XXX check IS_NULLABLE => NULLABLE (only difference with DBI/ISO field names)
+
+
 {   package DBD::ADO::db; # ====== DATABASE ======
     $imp_data_size = 0;
+
     use strict;
 
     sub prepare {
@@ -115,6 +166,66 @@ my $VT_I4_BYREF;
 	$sth->{ado_conn} = $dbh->{ado_conn};
 	$outer;
     }
+
+    # Get information from the current provider.
+    sub GetTypeInfo {
+	my($dbh, $attribs) = @_;
+	my @tp;
+	my $oRec = $dbh->{ado_conn}->OpenSchema($ado_consts->{adSchemaProviderTypes});
+
+	while(! $oRec->{EOF}) {
+	    #print "attrib $attribs ",
+	    #"LongVarChar ", DBI::SQL_LONGVARCHAR,
+	    #"adLongVarChar ", $ado_consts->{adLongVarChar},
+	    #"Data Type ", $oRec->{DATA_TYPE}->Value,
+	    #"\n";
+	    next unless ($attribs == DBI::SQL_ALL_TYPES() or
+		    $sql2ado_types{$attribs} == $oRec->{DATA_TYPE}->Value);
+	    my ($d, @out);
+	    foreach $d (@$ado_info) {
+		push(@out, $oRec->{$d}->Value || '' );
+	    }
+	    push( @tp, \@out );
+	}
+	continue {
+	    $oRec->MoveNext unless $oRec->{EOF};
+	}
+
+	my $sponge = DBI->connect("dbi:Sponge:","","",{ RaiseError => 1 });
+	my $sth = $sponge->prepare("adSchemaProviderTypes", {
+		rows=> [ @tp ], NAME=> $ado_info,
+	});
+	$sth;
+    }
+
+    sub type_info_all {
+	my ($dbh) = @_;
+	my $names = {
+          TYPE_NAME		=> 0,
+          DATA_TYPE		=> 1,
+          COLUMN_SIZE		=> 2,
+          LITERAL_PREFIX	=> 3,
+          LITERAL_SUFFIX	=> 4,
+          CREATE_PARAMS		=> 5,
+          NULLABLE		=> 6,
+          CASE_SENSITIVE	=> 7,
+          SEARCHABLE		=> 8,
+          UNSIGNED_ATTRIBUTE	=> 9,
+          FIXED_PREC_SCALE	=>10,
+          AUTO_UNIQUE_VALUE	=>11,
+          LOCAL_TYPE_NAME	=>12,
+          MINIMUM_SCALE		=>13,
+          MAXIMUM_SCALE		=>14,
+        };
+	# Based on the values from Oracle 8.0.4 ODBC driver
+	my $ti = [
+	  $names,
+          [ 'Not Done Yet', 12, 2000, '\'', '\'', 'max length', 1, 1, 3,
+            undef, '0', '0', undef, undef, undef
+          ]
+        ];
+	return $ti;
+	}
 
     sub FETCH {
         my ($dbh, $attrib) = @_;
@@ -161,20 +272,22 @@ my $VT_I4_BYREF;
 	    if $lastError;
 
 	$sth->{ado_rs} = $rs;
-	my $NUM_OF_FIELDS = $rs->Fields->Count;
+	$sth->{ado_fields} = my $ado_fields = [ Win32::OLE::in($rs->Fields) ];
+	my $NUM_OF_FIELDS = @$ado_fields;
 
 	$sth->trace_msg("$conn->Execute=$rs. NUM_OF_FIELDS=$NUM_OF_FIELDS, rows=$rows\n");
 
-	unless ($NUM_OF_FIELDS > 0) {	# assume non-select statement
+	if ($NUM_OF_FIELDS == 0) {	# assume non-select statement
 	    return $rows;
 	}
 
+        $sth->STORE(Active => 1);
 	$sth->STORE(NUM_OF_FIELDS => $NUM_OF_FIELDS);
-	$sth->{NAME} = [ map { $rs->Fields($_)->Name } 0..$NUM_OF_FIELDS-1 ];
+	$sth->{NAME} = [ map { $_->Name } @$ado_fields ];
 
-	# We need to return any true value for a successful select,
-	# but returning $rs might be useful for some (non-portable) ADO applications.
-	return $rs;
+	# We need to return a true value for a successful select
+	# -1 means total row count unavailable
+	return -1;
     }
 
 
@@ -188,9 +301,9 @@ my $VT_I4_BYREF;
 	    return undef;
 	}
 
-	my $NUM_OF_FIELDS = $sth->FETCH('NUM_OF_FIELDS');
+	my $ado_fields = $sth->{ado_fields};
 
-	my $row = [ map { $rs->Fields($_)->Value } 0..$NUM_OF_FIELDS-1 ];
+	my $row = [ map { $_->Value } @$ado_fields ];
 
 	$rs->MoveNext;	# XXX need to check for errors and record for next itteration
 
@@ -220,6 +333,16 @@ my $VT_I4_BYREF;
         # else pass up to DBI to handle
         return $sth->DBD::_::dr::STORE($attrib, $value);
     }
+
+
+    sub ColAttributes {         # maps to SQLColAttributes
+	my ($sth, $colno, $desctype) = @_;
+	print "before ColAttributes $colno $desctype\n";
+	# my $tmp = _ColAttributes($sth, $colno, $desctype);
+	print "After ColAttributes\n";
+	# $tmp;
+    }
+
 
     sub DESTROY { }
 }
@@ -253,11 +376,14 @@ It is strongly recommended that you use the latest version of ADO
 =head1 AUTHORS
 
 Phlip and Tim Bunce. With many thanks to Jan Dubois, Jochen Wiedmann
-and Thomas Lowery for debuggery and general help.
+and Thomas Lowery for additions, debuggery and general help.
 
-=cut
+=head1 SEE ALSO
 
 ADO Reference book:  ADO 2.0 Programmer's Reference, David Sussman and
 Alex Homer, Wrox, ISBN 1-861001-83-5. If there's anything better please
 let me know.
 
+http://www.able-consulting.com/tech.htm
+
+=cut

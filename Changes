@@ -1,3 +1,14 @@
+Changes in DBI 1.13,	11th July 1999
+
+  Fixed Win32 PerlEx IIS concurrency bugs thanks to ActiveState.
+  Fixed problems with DBD::ExampleP long_list test mode.
+  Added SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR and SQL_BIT
+    to list of known and exportable SQL types.
+  Improved data fetch performance of DBD::ADO.
+  Added GetTypeInfo to DBD::ADO thanks to Thomas Lowery.
+  Actually documented connect_cached thanks to Michael Schwern.
+  Fixed user/key/cipher bug in ProxyServer thanks to Joshua Pincus.
+
 Changes in DBI 1.12,	29th June 1999
 
   Fixed significant DBD::ADO bug (fetch skipped first row).

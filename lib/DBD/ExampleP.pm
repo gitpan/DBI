@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.9 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 10.10 $, 9,-1) -1;
 
-#   $Id: ExampleP.pm,v 10.9 1999/06/17 13:08:26 timbo Exp $
+#   $Id: ExampleP.pm,v 10.10 1999/07/12 02:02:33 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -79,10 +79,10 @@
     sub prepare {
 	my($dbh, $statement)= @_;
 
-	my($fields, $param)
+	my($fields, $dir)
 		= $statement =~ m/^select\s+(.*?)\s+from\s+(\S*)/i;
 	return $dbh->DBI::set_err(1, "Syntax error in select statement")
-		unless defined $fields and defined $param;
+		unless defined $fields and defined $dir;
 
 	my @fields = ($fields eq '*')
 			? keys %DBD::ExampleP::statnames
@@ -94,19 +94,20 @@
 	return $dbh->DBI::set_err(1, "Unknown field names: @bad")
 		if @bad;
 
-	my ($outer, $sth) = DBI::_new_sth($dbh, {
+	my ($outer, $inner) = DBI::_new_sth($dbh, {
 	    'Statement'     => $statement,
 	}, ['example implementors private data']);
 
-	$sth->{'dbd_param'}->[1] = $param if $param !~ /\?/;
+	$inner->{'dbd_param'}->[1] = $dir if $dir !~ /\?/;
 
 	$outer->STORE('NAME' => \@fields);
 	$outer->STORE('NULLABLE' => [ (0) x @fields ]);
 	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
-	$outer->STORE('NUM_OF_PARAMS' => ($param !~ /\?/) ? 0 : 1);
+	$outer->STORE('NUM_OF_PARAMS' => ($dir !~ /\?/) ? 0 : 1);
 
 	$outer;
     }
+
 
     sub table_info {
 	my $dbh = shift;
@@ -133,23 +134,23 @@
 	# this is wrong if we are in a subclass like DBI::ProxyServer.
 	$dbh->{'dbd_sponge_dbh'} ||= DBI->connect("DBI:Sponge:", '','')
 	    or return $dbh->DBI::set_err($DBI::err,
-				    "Failed to connect to DBI::Sponge: "
-				    . $DBI::errstr);
+			"Failed to connect to DBI::Sponge: $DBI::errstr");
 
-	my $attr =
-	    {'rows' => \@list,
-	     'NUM_OF_FIELDS' => 4,
-	     'NAME' => ['TABLE_QUALIFIER', 'TABLE_OWNER', 'TABLE_NAME',
-			'TABLE_TYPE'],
-	     'TYPE' => [DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR(),
-			DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR()],
-	     'NULLABLE' => [1, 1, 1, 1]
-	    };
+	my $attr = {
+	    'rows' => \@list,
+	    'NUM_OF_FIELDS' => 4,
+	    'NAME' => ['TABLE_QUALIFIER', 'TABLE_OWNER', 'TABLE_NAME',
+		    'TABLE_TYPE'],
+	    'TYPE' => [DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR(),
+		    DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR()],
+	    'NULLABLE' => [1, 1, 1, 1]
+	};
 	my $sdbh = $dbh->{'dbd_sponge_dbh'};
 	my $sth = $sdbh->prepare("SHOW TABLES FROM $dir", $attr)
 	    or return $dbh->DBI::set_err($sdbh->err(), $sdbh->errstr());
 	$sth;
     }
+
 
     sub type_info_all {
 	my ($dbh) = @_;
@@ -182,15 +183,17 @@
 	return 1;
     }
 
+
     sub FETCH {
 	my ($dbh, $attrib) = @_;
 	# In reality this would interrogate the database engine to
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
-	return 1                         if $attrib eq 'AutoCommit';
+	return 1 if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
 	return $dbh->SUPER::FETCH($attrib);
     }
+
 
     sub STORE {
 	my ($dbh, $attrib, $value) = @_;
@@ -202,17 +205,17 @@
 	}
 	return $dbh->SUPER::STORE($attrib, $value);
     }
+
     sub DESTROY {
 	my $dbh = shift;
 	$dbh->disconnect if $dbh->FETCH('Active');
 	undef
     }
 
+
     # This is an example to demonstrate the use of driver-specific
     # methods via $dbh->func().
-    #
     # Use it as follows:
-    #
     #   my @tables = $dbh->func($re, 'examplep_tables');
     #
     # Returns all the tables that match the regular expression $re.
@@ -227,102 +230,98 @@
     $imp_data_size = 0;
     use strict; no strict 'refs'; # cause problems with filehandles
 
+    my $haveFileSpec = eval { require File::Spec };
+
     sub bind_param {
 	my($sth, $param, $value, $attribs) = @_;
+	return $sth->DBI::set_err(2, "Can't bind_param $param, only one parameter")
+	    unless $param == 1;
 	$sth->{'dbd_param'}->[$param] = $value;
+	return 1;
     }
+
 
     sub execute {
 	my($sth, @dir) = @_;
 	my $dir;
+
 	if (@dir) {
 	    $dir = $dir[0];
-	} else {
-	    $dir = $sth->{'dbd_param'}->[1];
-	    unless (defined $dir) {
-		$sth->DBI::set_err(2, "No bind parameter supplied");
-		return undef;
-	    }
 	}
+	else {
+	    $dir = $sth->{'dbd_param'}->[1];
+	    return $sth->DBI::set_err(2, "No bind parameter supplied")
+		unless defined $dir;
+	}
+
 	$sth->finish;
-	$sth->{dbd_datahandle} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+
 	#
 	# If the users asks for directory "long_list_4532", then we fake a
 	# directory with files "file4351", "file4350", ..., "file0".
+	# This is a special case used for testing, especially DBD::Proxy.
 	#
-	if ($dir =~ /^long_list_\d+$/) {
-	    $sth->{dbd_datahandle} = $dir;
-	} else {
+	if ($dir =~ /^long_list_(\d+)$/) {
+	    $sth->{dbd_dir} = [ $1 ];	# array ref indicates special mode
+	    $sth->{dbd_datahandle} = undef;
+	}
+	else {
+	    $sth->{dbd_dir} = $dir;
+	    $sth->{dbd_datahandle} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	    opendir($sth->{dbd_datahandle}, $dir)
 		or return $sth->DBI::set_err(2, "opendir($dir): $!");
-	    $sth->{dbd_dir} = $dir;
 	}
 	$sth->STORE(Active => 1);
 	1;
     }
 
+
     sub fetch {
 	my $sth = shift;
-	my $dh = $sth->{dbd_datahandle};
+	my $dh  = $sth->{dbd_datahandle};
+	my $dir = $sth->{dbd_dir};
+	my %s;
 
-	my %s; # fancy a slice of a hash?
-	if ($dh =~ /^long_list_(\d+)$/) {
-	    my $num = $1;
-	    unless ($num) {
+	if (ref $dir) {		# special fake-data test mode
+	    my $num = $dir->[0]--;
+	    unless ($num > 0) {
 		$sth->finish();
 		return;
 	    }
-	    $sth->{dbd_datahandle} = "long_list_" . --$num;
 	    my $time = time;
 	    @s{@DBD::ExampleP::statnames} =
-		( 2051,      # dev
-		  1000+$num, # ino
-		  0644,      # mode
-		  2,         # nlink
-		  $>,        # uid
-		  $),        # gid
-		  0,         # rdev
-		  1024,      # size
-	          $time,     # atime
-	          $time,     # mtime
-	          $time,     # ctime
-		  512,       # blksize
-		  2,         # blocks
-		  "file$num" # name
-		)
-	} else {
+		( 2051, 1000+$num, 0644, 2, $>, $), 0, 1024,
+	          $time, $time, $time, 512, 2, "file$num")
+	}
+	else {			# normal mode
 	    my $f = readdir($dh);
-	    unless($f){
-		$sth->finish;     # no more data so finish
+	    unless ($f) {
+		$sth->finish;
 		return;
 	    }
-	    my $haveFileSpec = eval { require File::Spec };
 	    my $file = $haveFileSpec
-		? File::Spec->catfile($sth->{'dbd_dir'}, $f)
-		: "$sth->{'dbd_dir'}/$f";
-        # put in all the data fields
-	    @s{@DBD::ExampleP::statnames} =
-		(stat($file), $f);
+		? File::Spec->catfile($dir, $f) : "$dir/$f";
+	    # put in all the data fields
+	    @s{ @DBD::ExampleP::statnames } = (stat($file), $f);
 	}
 
 	# return just what fields the query asks for
 	my @new = @s{ @{$sth->{NAME}} };
 
-	#my $row = $sth->_get_fbav;
-	#@$row =  @new;
-	#$row->[0] = $new[0]; $row->[1] = $new[1]; $row->[2] = $new[2];
 	return $sth->_set_fbav(\@new);
     }
     *fetchrow_arrayref = \&fetch;
 
+
     sub finish {
 	my $sth = shift;
-	return undef unless $sth->{dbd_datahandle};
-	closedir($sth->{dbd_datahandle});
+	closedir($sth->{dbd_datahandle}) if $sth->{dbd_datahandle};
 	$sth->{dbd_datahandle} = undef;
+	$sth->{dbd_dir} = undef;
 	$sth->SUPER::finish();
 	return 1;
     }
+
 
     sub FETCH {
 	my ($sth, $attrib) = @_;
@@ -330,18 +329,19 @@
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
 	if ($attrib eq 'TYPE'){
-	    my @t = @DBD::ExampleP::stattypes{@{$sth->{NAME}}};
+	    my @t = @DBD::ExampleP::stattypes{ @{ $sth->{NAME} } };
 	    return \@t;
 	}
 	# else pass up to DBI to handle
 	return $sth->SUPER::FETCH($attrib);
     }
 
+
     sub STORE {
 	my ($sth, $attrib, $value) = @_;
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
-	return $sth->{$attrib}=$value
+	return $sth->{$attrib} = $value
 	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE';
 	return $sth->SUPER::STORE($attrib, $value);
     }

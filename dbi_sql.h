@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 10.1 1998/08/14 20:17:38 timbo Exp $
+/* $Id: dbi_sql.h,v 10.2 1999/07/12 02:02:33 timbo Exp $
  *
  * Copyright (c) 1997  Tim Bunce  England
  *
@@ -31,6 +31,12 @@
 #define SQL_LONGVARBINARY	(-4)
 #define SQL_BIGINT		(-5)	/* too big for IV	*/
 #define SQL_TINYINT		(-6)
+
+/* Support for Unicode and SQL92 */
+#define SQL_BIT                 (-7)
+#define SQL_WCHAR               (-8)
+#define SQL_WVARCHAR            (-9)
+#define SQL_WLONGVARCHAR        (-10)
 
 
 /* Main return codes						*/

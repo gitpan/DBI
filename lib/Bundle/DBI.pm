@@ -20,7 +20,7 @@ C<perl -MCPAN -e 'install Bundle::DBI'>
 
 Storable - for DBD::Proxy and DBI::ProxyServer
 
-Net::Daemon 0.15 - for DBD::Proxy and DBI::ProxyServer
+Net::Daemon 0.22 - for DBD::Proxy and DBI::ProxyServer
 
 RPC::PlServer 0.2001 - for DBD::Proxy and DBI::ProxyServer
 

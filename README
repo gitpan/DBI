@@ -6,8 +6,8 @@ See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 RECENT NEWS:
 
-    The DBI now comes bundled with DBI::Shell, DBD::Proxy and
-    DBD::ProxyServer modules. Those are still alpha releases.
+    The DBI comes bundled with DBI::Shell, DBD::ADO, DBD::Proxy and
+    DBI::ProxyServer modules. Those are still alpha releases.
 
     Note that recent additions to the DBI spec (marked *NEW*) may
     take a little while to be fully supported by individual drivers.
@@ -58,14 +58,6 @@ BUILDING
     make test TEST_VERBOSE=1   (if any of the t/* tests fail)
 
     make install (if the tests look okay)
-
-Do not hand edit the generated Makefile unless you are completely sure
-you understand the implications. Always try to make changes via the
-Makefile.PL command line and/or editing the Makefile.PL.
- 
-You should never need to make any changes. If you do *please* let me
-know so that I can try to make it automatic in a later release.
- 
 
 IF YOU HAVE PROBLEMS:
 

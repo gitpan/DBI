@@ -171,6 +171,7 @@ sub AcceptVersion {
 
 sub AcceptUser {
     my $self = shift; my $user = shift; my $password = shift;
+    return 0 if (!$self->SUPER::AcceptUser($user, $password));
     my $dsn = $self->{'application'};
     $self->Debug("Connecting to $dsn as $user");
     local $ENV{DBI_AUTOPROXY} = ''; # :-)
