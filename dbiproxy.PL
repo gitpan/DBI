@@ -8,6 +8,14 @@ my $script = <<'SCRIPT';
 use strict;
 
 require DBI::ProxyServer;
+
+
+if ($ARGV[0] eq '--test') {
+    require RPC::PlServer::Test;
+    shift @ARGV;
+    @DBI::ProxyServer::ISA = qw(RPC::PlServer::Test DBI);
+}
+
 DBI::ProxyServer::main(@ARGV);
 exit(0);
 
@@ -34,71 +42,117 @@ Available options include:
 
 =over 4
 
-=item C<--configfile filename>
+=item B<--chroot=dir>
 
-The DBI::ProxyServer can use a configuration file for authorizing
-clients. The file is almost identical to that of RPC::pServer,
-with the exception of some additional attributes. See
-L<DBI::ProxyServer(3)/CONFIGURATION FILE>.
+(UNIX only)  After doing a bind(), change root directory to the given
+directory by doing a chroot(). This is usefull for security, but it
+restricts the environment a lot. For example, you need to load DBI
+drivers in the config file or you have to create hard links to Unix
+sockets, if your drivers are using them. For example, with MySQL, a
+config file might contain the following lines:
 
-If you don't use a config file, then access control is completely
-disabled. Only use this for debugging purposes or something similar!
+    my $rootdir = '/var/dbiproxy';
+    my $unixsockdir = '/tmp';
+    my $unixsockfile = 'mysql.sock';
+    foreach $dir ($rootdir, "$rootdir$unixsockdir") {
+	mkdir 0755, $dir;
+    }
+    link("$unixsockdir/$unixsockfile",
+	 "$rootdir$unixsockdir/$unixsockfile");
+    require DBD::mysql;
 
-=item C<--debug>
+    {
+	'chroot' => $rootdir,
+	...
+    }
 
-Turns on debugging mode. Debugging messages will usually be logged
-to syslog with facility I<daemon> unless you use the options
-C<--facility> or C<--stderr>, see below.
+If you don't know chroot(), think of an FTP server where you can see a
+certain directory tree only after logging in. See also the --group and
+--user options.
 
-=item C<--facility>
+=item B<--configfile=file>
 
-Sets the syslog facility, by default I<daemon>.
+Config files are assumed to return a single hash ref that overrides the
+arguments of the new method. However, command line arguments in turn take
+precedence over the config file. See the L<"CONFIGURATION FILE"> section
+below for details on the config file.
 
-=item C<--help>
+=item B<--debug>
 
-Tells the proxy server to print a help message and exit immediately.
+Turn debugging mode on. Mainly this asserts that logging messages of
+level "debug" are created.
 
-=item C<--ip ip-number>
+=item B<--facility=mode>
 
-Tells the DBI::ProxyServer, on which ip number he should bind. The
-default is, to bind to C<INADDR_ANY> or any ip number of the local
-host. You might use this option, for example, on a firewall with
-two network interfaces. If your LAN has non public IP numbers and
-you bind the proxy server to the inner network interface, then you will
-easily disable the access from the outer network or the Internet.
+(UNIX only) Facility to use for L<Sys::Syslog (3)>. The default is
+B<daemon>.
 
-=item C<--port port>
+=item B<--group=gid>
 
-This option tells the DBI::ProxyServer, on which port number he should
-bind. Unlike other applications, DBI::ProxyServer has no builtin default,
-so using this option is required.
+After doing a bind(), change the real and effective GID to the given.
+This is usefull, if you want your server to bind to a privileged port
+(<1024), but don't want the server to execute as root. See also
+the --user option.
 
-=item C<--pidfile filename>
+GID's can be passed as group names or numeric values.
 
-Tells the daemon, where to store its PID file. The default is
-I</tmp/dbiproxy.pid>. The PID file looks like this:
+=item B<--localaddr=ip>
 
-    567
-    IP number 127.0.0.1, port 3334
-    dbiproxy -ip 127.0.0.1 -p 3334
+By default a daemon is listening to any IP number that a machine
+has. This attribute allows to restrict the server to the given
+IP number.
 
-The first line is the process number. The second line are IP number
-and port number, so that they can be used by local clients and the
-third line is the command line. These can be used in administrative
-scripts, for example to first kill the DBI::ProxyServer and then
-restart it with the same options you do a
+=item B<--localport=port>
 
-    kill `head -1 /tmp/dbiproxy.pid`
-    `tail -1 /tmp/dbiproxy.pid`
+This attribute sets the port on which the daemon is listening. It
+must be given somehow, as there's no default.
 
-=item C<--stderr>
+=item B<--logfile=file>
 
-Forces printing of messages to stderr. The default is using the syslog.
+Be default logging messages will be written to the syslog (Unix) or
+to the event log (Windows NT). On other operating systems you need to
+specify a log file. The special value "STDERR" forces logging to
+stderr. See L<Net::Daemon::Log(3)> for details.
 
-=item C<--version>
+=item B<--mode=modename>
 
-Forces the DBI::ProxyServer to print its version number and copyright message
-and exit immediately.
+The server can run in three different modes, depending on the environment.
+
+If you are running Perl 5.005 and did compile it for threads, then the
+server will create a new thread for each connection. The thread will
+execute the server's Run() method and then terminate. This mode is the
+default, you can force it with "--mode=threads".
+
+If threads are not available, but you have a working fork(), then the
+server will behave similar by creating a new process for each connection.
+This mode will be used automatically in the absence of threads or if
+you use the "--mode=fork" option.
+
+Finally there's a single-connection mode: If the server has accepted a
+connection, he will enter the Run() method. No other connections are
+accepted until the Run() method returns (if the client disconnects).
+This operation mode is usefull if you have neither threads nor fork(),
+for example on the Macintosh. For debugging purposes you can force this
+mode with "--mode=single".
+
+=item B<--pidfile=file>
+
+(UNIX only) If this option is present, a PID file will be created at the
+given location.
+
+=item B<--user=uid>
+
+After doing a bind(), change the real and effective UID to the given.
+This is usefull, if you want your server to bind to a privileged port
+(<1024), but don't want the server to execute as root. See also
+the --group and the --chroot options.
+
+UID's can be passed as group names or numeric values.
+
+=item B<--version>
+
+Supresses startup of the server; instead the version string will
+be printed and the program exits immediately.
 
 =back
 

@@ -1,3 +1,52 @@
+Changes in DBI 1.06,	6th January 1999
+
+  Fixed Win32 Makefile.PL problem in 1.04 and 1.05.
+  Significant DBD::Proxy enhancements and fixes
+  including support for bind_param_inout (Jochen and I)
+  Added experimental DBI->connect_cached method.
+
+Changes in DBI 1.05,	4th January 1999
+
+  Improved DBD::ADO connect (thanks to Phlip Plumlee).
+  Improved thread safety (thanks to Jochen Wiedmann).
+  [Quick release prompted by truncation of copies on CPAN]
+
+Changes in DBI 1.04,	3rd January 1999
+
+  Fixed error in Driver.xst. DBI build now tests Driver.xst.
+  Removed unused variable compiler warnings in Driver.xst.
+  DBI::DBD module now tested during DBI build.
+  Further clarification in the DBI::DBD driver writers manual.
+  Added optional name parameter to $sth->fetchrow_hashref.
+
+Changes in DBI 1.03,	1st January 1999
+
+  Now builds with Perl>=5.005_54 (PERL_POLLUTE in DBIXS.h)
+  DBI trace trims path from "at yourfile.pl line nnn".
+  Trace level 1 now shows statement passed to prepare.
+  Assorted improvements to the DBI manual.
+  Assorted improvements to the DBI::DBD driver writers manual.
+  Fixed $dbh->quote prototype to include optional $data_type.
+  Fixed $dbh->prepare_cached problems.
+  $dbh->selectrow_array behaves better in scalar context.
+  Added a (very) experimental DBD::ADO driver for Win32 ADO.
+  Added experimental thread support (perl Makefile.PL -thread).
+  Updated the DBI::FAQ - thanks to Alligator Descartes.
+  The following changes were implemented and/or packaged
+    by Jochen Wiedmann - thanks Jochen:
+  Added a Bundle for CPAN installation of DBI, the DBI proxy
+    server and prerequisites (lib/Bundle/DBI.pm).
+  DBI->available_drivers uses File::Spec, if available.
+    This makes it work on MacOS. (DBI.pm)
+  Modified type_info to work with read-only values returned
+    by type_info_all. (DBI.pm)
+  Added handling of magic values in $sth->execute,
+    $sth->bind_param and other methods (Driver.xst)
+  Added Perl's CORE directory to the linkers path on Win32,
+    required by recent versions of ActiveState Perl.
+  Fixed DBD::Sponge to work with empty result sets.
+  Complete rewrite of DBI::ProxyServer and DBD::Proxy.
+
 Changes in DBI 1.02,	2nd September 1998
 
   Fixed DBI::Shell including @ARGV and /current.

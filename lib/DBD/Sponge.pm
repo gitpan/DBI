@@ -6,7 +6,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: Sponge.pm,v 10.2 1998/09/02 13:43:45 timbo Exp $
+#   $Id: Sponge.pm,v 10.3 1999/01/01 20:56:53 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -22,7 +22,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 10.2 $',
+	    'Version' => '$Revision: 10.3 $',
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;
@@ -54,12 +54,24 @@
 	    'rows'        => $rows,
 	});
 	# we need to set NUM_OF_FIELDS
-	my $firstrow = $rows->[0];
-	$sth->STORE(NUM_OF_FIELDS => scalar @$firstrow);
+	my $numFields;
+	if ($attribs->{'NUM_OF_FIELDS'}) {
+	    $numFields = $attribs->{'NUM_OF_FIELDS'};
+	} elsif ($attribs->{'NAME'}) {
+	    $numFields = @{$attribs->{NAME}};
+	} elsif ($attribs->{'TYPE'}) {
+	    $numFields = @{$attribs->{TYPE}};
+	} elsif (my $firstrow = $rows->[0]) {
+	    $numFields = scalar @$firstrow;
+	} else {
+	    DBI::set_err($dbh, 1, 'Cannot determine NUM_OF_FIELDS');
+	    return undef;
+	}
+	$sth->STORE('NUM_OF_FIELDS' => $numFields);
 	$sth->{NAME} = $attribs->{NAME}
-		|| [ map { "col$_" } 1..@$firstrow ];
+		|| [ map { "col$_" } 1..$numFields ];
 	$sth->{TYPE} = $attribs->{TYPE}
-		|| [ (DBI::SQL_VARCHAR()) x @$firstrow ];
+		|| [ (DBI::SQL_VARCHAR()) x $numFields ];
 
 	$outer;
     }
@@ -95,7 +107,7 @@
         # or fetch and cache attribute values too expensive to prefetch.
         return 1 if $attrib eq 'AutoCommit';
         # else pass up to DBI to handle
-        return $dbh->DBD::_::db::FETCH($attrib);
+        return $dbh->SUPER::FETCH($attrib);
     }
 
     sub STORE {
@@ -106,7 +118,7 @@
             return 1 if $value; # is already set
             croak("Can't disable AutoCommit");
         }
-        return $dbh->DBD::_::db::STORE($attrib, $value);
+        return $dbh->SUPER::STORE($attrib, $value);
     }
 
     sub DESTROY { }
@@ -138,14 +150,14 @@
 	my ($sth, $attrib) = @_;
 	# would normally validate and only fetch known attributes
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::FETCH($attrib);
+	return $sth->SUPER::FETCH($attrib);
     }
 
     sub STORE {
 	my ($sth, $attrib, $value) = @_;
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::STORE($attrib, $value);
+	return $sth->SUPER::STORE($attrib, $value);
     }
 
     sub DESTROY { }

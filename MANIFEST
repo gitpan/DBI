@@ -3,16 +3,17 @@ DBI.pm	The Database Interface Module Perl code
 DBI.xs	The Database Interface Module XS code
 DBIXS.h	The DBI XS public interface for Drivers (DBD::...)
 Driver.xst	Template driver xs file
-DriverDB.xst	Template driver xs file for dbh methods
-DriverST.xst	Template driver xs file for sth methods
 MANIFEST
 Makefile.PL	The Makefile generator
 README
 ToDo	Occasional random notes about what's missing
+Perl.xs	Test harness (currently) for Driver.xst
 dbd_xsh.h	Prototypes for standard Driver.xst interface
 dbi_sql.h	Definitions based on SQL CLI / ODBC (#inc'd by DBIXS.h)
 dbiproxy.PL	Frontend for DBI::ProxyServer
 dbish.PL	Frontend for DBI::Shell
+lib/Bundle/DBI.pm	A bundle for automatic installation via CPAN.
+lib/DBD/ADO.pm		An experimental driver for Win32 ADO
 lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/Proxy.pm	Proxy driver

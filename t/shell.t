@@ -2,6 +2,16 @@
 
 $|=1;
 
+BEGIN {
+	require Getopt::Long;
+
+	if ($Getopt::Long::VERSION && $Getopt::Long::VERSION < 2.17) {
+		print "# DBI::Shell needs Getopt::Long version 2.17 or later\n";
+		print "1..0\n";
+		exit 0;
+	}
+}
+
 print "1..$tests\n";
 
 sub ok ($$) {

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 10.1 1998/08/14 20:17:38 timbo Exp $
+# $Id: test.pl,v 10.2 1999/01/01 20:56:53 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,9 +14,10 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 10.1 $}."\n";
+    print q{DBI test application $Revision: 10.2 $}."\n";
     $| = 1;
-    eval "require blib;"	# wasn't in 5.003, hence the eval
+    eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
+	warn $@ if $@;
 }
 
 use DBI;
@@ -28,15 +29,14 @@ use Getopt::Long;
 use strict;
 
 $::opt_d = 0;
+$::opt_l = '';
 $::opt_h = 0;
 $::opt_m = 0;		# basic memory leak test: "perl test.pl -m NullP"
+$::opt_t = 0;		# thread test
+$::opt_n = 0;		# counter for other options
 
-GetOptions('d=i', 'h=i', 'l=s', 'm')
-    or die "Usage: $0 [-d n] [-h n] [-m] [drivername]\n";
-
-print "opt_d=$::opt_d\n" if $::opt_d;
-print "opt_h=$::opt_h\n" if $::opt_h;
-print "opt_m=$::opt_m\n" if $::opt_m;
+GetOptions(qw(d=i h=i l=s m t=i n=i))
+    or die "Usage: $0 [-d n] [-h n] [-m] [-t n] [-n n] [drivername]\n";
 
 my $count = 0;
 my $ps = (-d '/proc') ? "ps -lp " : "ps -l";
@@ -46,10 +46,9 @@ my $driver = $ARGV[0] || ($::opt_m ? 'NullP' : 'ExampleP');
 my $switch = DBI->internal;
 $switch->debug($::opt_h); # 2=detailed handle trace
 
-print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
+DBI->trace($::opt_d, $::opt_l) if $::opt_d || $::opt_l;
 
-$switch->{DebugDispatch} = $::opt_d if $::opt_d;
-$switch->{DebugLog}      = $::opt_l if $::opt_l;
+print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
 
 print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 
@@ -69,10 +68,12 @@ if (0) {	# only works after 5.004_04
 }
 
 if ($::opt_m) {
-
     mem_test($dbh) while 1;
-
-} else {
+}
+elsif ($::opt_t) {
+	thread_test();
+}
+else {
 
     # new experimental connect_test_perf method
     DBI->connect_test_perf("dbi:$driver:", '', '', {
@@ -107,6 +108,34 @@ sub mem_test {	# harness to help find basic leaks
     $cursor_a->execute('/usr');
     my @row_a = $cursor_a->fetchrow;
     $cursor_a->finish;
+}
+
+
+sub thread_test {
+	require Thread;
+	my $dbh = DBI->connect("dbi:ExampleP:.", "", "") || die $DBI::err;
+	#$dbh->trace(4);
+	my @t;
+	print "Starting $::opt_t threads:\n";
+	foreach(1..$::opt_t) {
+		print "$_\n";
+		push @t, Thread->new(\&thread_test_loop, $dbh, $::opt_n||99);
+	}
+	print "Small sleep to allow threads to progress\n";
+	sleep 2;
+	print "Joining threads:\n";
+	foreach(@t) {
+		print "$_\n";
+		$_->join
+	}
+}
+
+sub thread_test_loop {
+	my $dbh = shift;
+	my $i = shift || 10;
+    while($i-- > 0) {
+		$dbh->selectall_arrayref("select * from ?", undef, ".");
+	}
 }
 
 # end.

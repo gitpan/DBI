@@ -1,5 +1,5 @@
 
-use DBI;
+use DBI qw(:sql_types);
 use Config;
 use Cwd;
 $|=1;
@@ -20,13 +20,24 @@ sub ok ($$) {
 my $r;
 my $dbh = DBI->connect('dbi:ExampleP:', '', '');
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
+
+my $dbh2 = DBI->connect('dbi:ExampleP:', '', '');
+ok(0, $dbh != $dbh2);
+my $dbh3 = DBI->connect_cached('dbi:ExampleP:', '', '');
+my $dbh4 = DBI->connect_cached('dbi:ExampleP:', '', '');
+ok(0, $dbh3 == $dbh4);
+my $dbh5 = DBI->connect_cached('dbi:ExampleP:', '', '', { foo=>1 });
+ok(0, $dbh5 != $dbh4);
+
 $dbh->{AutoCommit} = 1;
 $dbh->{PrintError} = 0;
 ok(0, $dbh);
 #$dbh->trace(2);
 
 ok(0, $dbh->ping);
-ok(3, $dbh->quote("quote's") eq "'quote''s'");
+ok(0, $dbh->quote("quote's") eq "'quote''s'");
+ok(0, $dbh->quote("42", SQL_VARCHAR) eq "'42'");
+ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
 ok(0, $dbh->quote(undef)     eq "NULL");
 
 eval { $dbh->commit('dummy') };
@@ -41,12 +52,12 @@ ok(0, $DBI::errstr eq $dbh->errstr);
 
 ok(0, $dbh->errstr eq $dbh->func('errstr'));
 
-foreach(12..19) { ok(0, 1) }	# soak up to next round number
+foreach(17..19) { ok(0, 1) }	# soak up to next round number
 
-my $csr_a = $dbh->prepare("select mode,size,name from ?");
+my $std_sql = "select mode,size,name from ?";
+my $csr_a = $dbh->prepare($std_sql);
 ok(20, ref $csr_a);
-
-my $csr_b = $dbh->prepare("select mode,size,name from ?");
+my $csr_b = $dbh->prepare($std_sql);
 ok(0, ref $csr_b);
 
 ok(0, $csr_a != $csr_b);
@@ -81,13 +92,13 @@ ok(0, $csr_a->finish);
 ok(0, $csr_b->finish);
 
 ok(0, $csr_b->execute());
-my $row_b = $csr_b->fetchrow_hashref;
+my $row_b = $csr_b->fetchrow_hashref('NAME_uc');
 ok(0, $row_b);
-ok(0, $row_b->{mode} == $row_a[0]);
-ok(0, $row_b->{size} == $row_a[1]);
-ok(0, $row_b->{name} eq $row_a[2]);
+ok(0, $row_b->{MODE} == $row_a[0]);
+ok(0, $row_b->{SIZE} == $row_a[1]);
+ok(0, $row_b->{NAME} eq $row_a[2]);
 
-$csr_a = undef;	# force destructin of this cursor now
+$csr_a = undef;	# force destruction of this cursor now
 ok(43, 1);
 
 ok(0, $csr_b->execute());
@@ -109,6 +120,22 @@ $r = $csr_b->fetchall_arrayref({ Size=>1, NAME=>1});
 ok(0, $r && @$r);
 ok(0, $r->[0]->{Size} == $row_a[1]);
 ok(0, $r->[0]->{NAME} eq $row_a[2]);
+
+@row_b = $dbh->selectrow_array($std_sql, undef, $dir);
+ok(0, @row_b == 3);
+ok(0, "@row_b" eq "@row_a");
+$r = $dbh->selectall_arrayref($std_sql, undef, $dir);
+ok(0, $r);
+ok(0, @{$r->[0]} == 3);
+ok(0, "@{$r->[0]}" eq "@row_a");
+
+# ---
+
+ok(0, "@{$csr_b->{NAME}}"    eq "mode size name");
+ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");
+ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
+
+# ---
 
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
@@ -134,7 +161,7 @@ ok(0, !$dbh->{RaiseError});
   ok(0, !$dbh->{PrintError});
 }
 
-ok(0, $csr_a = $dbh->prepare("select mode,size,name from ?"));
+ok(0, $csr_a = $dbh->prepare($std_sql));
 ok(0, $csr_a->execute('/'));
 my $dump_file = ($ENV{TMP} || $ENV{TEMP} || "/tmp")."/dumpcsr.tst";
 if (open(DUMP_RESULTS, ">$dump_file")) {
@@ -148,4 +175,7 @@ if (open(DUMP_RESULTS, ">$dump_file")) {
 }
 #unlink $dump_file;
 
-BEGIN { $tests = 71; }
+DBI->disconnect_all;	# doesn't do anything yet
+ok(0, 1);
+
+BEGIN { $tests = 80; }

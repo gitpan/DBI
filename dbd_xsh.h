@@ -31,7 +31,6 @@ SV      *dbd_st_FETCH_attrib _((SV *sth, imp_sth_t *imp_sth, SV *keysv));
 int      dbd_st_STORE_attrib_k _((SV *sth, imp_sth_t *imp_sth, SV *keysv, int dbikey, SV *valuesv));
 SV      *dbd_st_FETCH_attrib_k _((SV *sth, imp_sth_t *imp_sth, SV *keysv, int dbikey));
  
-int      dbd_describe _((SV *sth, imp_sth_t *imp_sth));
 int      dbd_bind_ph  _((SV *sth, imp_sth_t *imp_sth,
                 SV *param, SV *value, IV sql_type, SV *attribs,
 				int is_inout, IV maxlen));

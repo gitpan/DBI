@@ -10,7 +10,6 @@
 
 /* first pull in the standard Perl header files for extensions */
 #define PERL_POLLUTE
-#define XS_VERSION "1.06"
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>

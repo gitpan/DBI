@@ -1,24 +1,59 @@
-CleanNames
+test suite
+
+Add thread CV locks (not method locks)
+to &DBI::connect and &DBI::connect_cached
+in xs dbi_init code.
+
+Complete and test connect_cached
+
+fetch_scroll handling via get_fbav.
+Also add:
+	getrow_array       (or getdata_?)
+	getrow_arrayref
+	getrow_hashref
+
+test that $dbh->do will RaiseError
+RaiseError in %attr - doc it not working - hints.
+
+Consider RaiseError in re do() method and when to croak
+
+SQL_ACTIVE_STATEMENTS
+
+Consider making all SQL_ known to the DBI. Want to check for
+valid spelling. Also would like C<exists $h->{Attrib}> to
+work. Maybe auto load a module that defines a private hash
+that just serves to list known attributes.
+
+t/shell uninit var at 5.00502/Term/Cap.pm line 284.
+
+check out http://tegan.deltanet.com/~phlip/DBUIframe.html
+
+FAQ check 80 col max
+
+Shell!
+
+Document NAME_lc etc
+
+If trace log_where() says DBI.pm then use caller(1)?
+
+Auto proxying for individual drivers: DBI_PROXY_foo=...
+
+Check DBI works okay with tainting.
+
+Check DBD::Proxy connect&fetch latency (e.g. CGI use).
+
+Complete connect_cached().
 
 Add TYPE, SCALE, PRECISION to DBD::Sponge
 
-$dbh->get_info
+$dbh->get_info?
 
 Bundle DBD::Xbase?
+Bundle Tie::DBI?
+Bundle others
 
-Test with threaded perl (re dTHR etc).
-Make thread safe.
-
-Since I'm going to add a perl-level @flags = DBI::looks_like_a_number(@ary)
-a perl-level DBI::chop_blanks(@lvalue_ary) might be a good idea
-(you'd only pass fields you wanted chopped as args).
-Plus an XS macro DBI_CHOP_BLANKS(sv)
-                                                            
-Upload PPT presentation to CPAN.
-
-fetch_scroll handling via get_fbav.
-
-Add $sth->{RowCacheSize} and $dbh->prepare($stmt, { RowCacheSize => $n });
+Add $dbh->{BusyCallback} = sub { ... } hook so drivers which support
+polling can allow other processing without complicating the logic.
 
 Add per-handle debug file pointer (or at least a macro that _looks_ like that).
 Or, better yet, a function pointer so we can do more clever things.
@@ -27,7 +62,7 @@ Rework handle creation for
 $h->clone ?, and maybe
 $dbh->connect([$user, $passwd])	# to reconnect, possibly as a different user
 
-generic dbd_preparse
+generic dbd_preparse (for both C and perl)
 
 SQL Parser
   CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
@@ -44,6 +79,21 @@ Add 'break handling' when field values change? Use two fbav's so 'previous
 record' is available. Defind break fields and handlers. Call them via
 an alternate fetch_with_break method.
 
+
+---
+> > Is there any way to know whether a particular DBD needs a separate
+> > connection for nested operations or not?
+
+Umm, it looks like $dbh->{SQL_ACTIVE_STATEMENTS} would be the one.
+It defines the max number of statements that can be active on a
+the $dbh. 0 means unknown or no specific limit.
+I'll add that to the DBI and DBI spec.
+
+I think drivers that emulate multiple active statements using an
+implicit extra dbh but that can't tie the commit/rollback on the
+'parent' dbh to the child should probably still set
+SQL_ACTIVE_STATEMENTS to just 1. Or maybe 1.1, or 2. I'm open to
+suggestion on that one.
 
 -----------
 > > > I would prefer to set this attributes on statement level [as 

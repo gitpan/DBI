@@ -1,6 +1,18 @@
 # -*- perl -*-
 
+require 5.004;
+use strict;
+
+
+require DBI;
+require Config;
+require VMS::Filespec if $^O eq 'VMS';
+require Cwd;
+
+
 $| = 1;
+# $\ = "\n"; # XXX Triggers bug, check this later (JW, 1998-12-28)
+
 
 # Can we load the modules? If not, exit the test immediately:
 # Reason is most probable a missing prerequisite.
@@ -11,203 +23,195 @@ eval {
     local $SIG{__WARN__} = sub { $@ = shift };
     require DBD::Proxy;
     require DBI::ProxyServer;
-    require Sys::Syslog;
-    if (defined(&Sys::Syslog::setlogsock)  &&
-	defined(&Sys::Syslog::_PATH_LOG)) {
-        Sys::Syslog::setlogsock('unix');
-    }
-    Sys::Syslog::openlog('proxy.t', '', 'daemon');
-    Sys::Syslog::syslog('debug', "Trying syslog availability.");
+    require Net::Daemon::Test;
 };
 if ($@) { print "1..0\n"; print $@; exit 0; }
 
-# Is syslog available? (Required for the server)
-my $port = 12345; # XXX this should be a dynamically chosen free port
 
-my @args = ("--port=$port", '--debug', '--nofork', '--timeout=20');
-push @args, "--stderr" if -t STDOUT; # not running under Test::Harness
-
-if (@ARGV) {			# For debugging we need a possibility to
-    if ($ARGV[0] eq 'server') { # separate server and client
-	DBI::ProxyServer::main(@args);
-	exit(0);
+{
+    my $numTest;
+    sub Test($;$) {
+	my $result = shift; my $str = shift || '';
+	printf("%sok %d%s\n", ($result ? "" : "not "), ++$numTest, $str);
+	$result;
     }
 }
-else {
-    # Is fork() available? If not, skip this test.
-    my $pid;
-    eval {
-	$pid = fork();
-	if (defined($pid)) {
-	    if (!$pid) {
-		DBI::ProxyServer::main(@args);
-		exit(0);
-	    }
-	}
-    };
-
-    if (!$pid) {
-	print "1..0\n";
-	exit 0;
-    }
-    $SIG{'CHLD'} = sub { wait };
-    sleep 5;
-}
-
-END { if ($pid) { kill 1, $pid; } };
 
 
-use DBI;
-use Config;
-use Cwd;
-$|=1;
-
-print "1..$tests\n";
-
-require VMS::Filespec if $^O eq 'VMS';
-
-sub ok ($$) {
-    my($n, $ok) = @_;
-    ++$t;
-    die "sequence error, expected $n but actually $t"
-		if $n and $n != $t;
-    ($ok) ? print "ok $t\n" : print "not ok $t\n";
-    warn "# failed test $t at line ".(caller)[2]."\n" unless $ok;
-    $ok;
-}
-	
-my $dbh = DBI->connect(
-	"DBI:Proxy:hostname=127.0.0.1;port=$port;debug=1;dsn=DBI:ExampleP:",
-	'', '', { 'PrintError' => 0 }
-);
-ok(0, $dbh);
-if (!$dbh) {
-    print "Connect error: ", $DBI::errstr, "\n";
+my($handle, $port);
+my $numTests = 67;
+if (@ARGV) {
+    $port = $ARGV[0];
 } else {
-    print "dbh = $dbh\n";
+    ($handle, $port) = Net::Daemon::Test->Child($numTests,
+						$^X, '-Iblib/lib',
+						'-Iblib/arch', 
+						'dbiproxy', '--test',
+						'--mode=single',
+						'--debug', '--timeout=60');
 }
-$dbh->{AutoCommit} = 1;
+
+my @opts = ('peeraddr' => '127.0.0.1', 'peerport' => $port, 'debug' => 1);
+my $dsn = "DBI:Proxy:hostname=127.0.0.1;port=$port;debug=1;dsn=DBI:ExampleP:";
+
+print "Making a first connection and closing it immediately.\n";
+Test(eval { DBI->connect($dsn, '', '', { 'PrintError' => 0 }) })
+    or print "Connect error: " . $DBI::errstr . "\n";
+
+print "Making a second connection.\n";
+my $dbh;
+Test($dbh = eval { DBI->connect($dsn, '', '', { 'PrintError' => 0 }) })
+    or print "Connect error: " . $DBI::errstr . "\n";
+
+print "Setting AutoCommit\n";
+Test($dbh->{AutoCommit} = 1);
+Test($dbh->{AutoCommit});
 #$dbh->trace(2);
 
-ok(0, $dbh->ping);
-ok(3, $dbh->quote("quote's") eq "'quote''s'");
-ok(0, $dbh->quote(undef)     eq "NULL");
+print "Doing a ping.\n";
+Test($dbh->ping);
 
+print "Trying local quote.\n";
+$dbh->{'proxy_quote'} = 'local';
+Test($dbh->quote("quote's") eq "'quote''s'");
+Test($dbh->quote(undef)     eq "NULL");
+
+print "Trying remote quote.\n";
+$dbh->{'proxy_quote'} = 'remote';
+Test($dbh->quote("quote's") eq "'quote''s'");
+Test($dbh->quote(undef)     eq "NULL");
+
+
+print "Trying commit with invalid number of parameters.\n";
 eval { $dbh->commit('dummy') };
-ok(0, $@ =~ m/^DBI commit: invalid number of parameters: handle \+ 1/);
+Test($@ =~ m/^DBI commit: invalid number of parameters: handle \+ 1/);
 
+print "Trying select with unknown field name.\n";
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
-ok(0, defined $cursor_e);
-ok(0, !$cursor_e->execute('a'));
-ok(0, $DBI::err);
-ok(0, $DBI::errstr =~ m/unknown_field_name/);
-ok(0, $DBI::err    == $dbh->err);
-ok(0, $DBI::errstr eq $dbh->errstr);
+Test(defined $cursor_e);
+Test(!$cursor_e->execute('a'));
+Test($DBI::err);
+Test($DBI::errstr =~ m/unknown_field_name/);
+Test($DBI::err    == $dbh->err);
+Test($DBI::errstr eq $dbh->errstr);
+Test($dbh->errstr eq $dbh->func('errstr'));
 
-ok(0, $dbh->errstr eq $dbh->func('errstr'));
-
-foreach(13..19) { ok(0, 1) }	# soak up to next round number
-
-my $dir = cwd();	# a dir always readable on all platforms
+my $dir = Cwd::cwd();	# a dir always readable on all platforms
 $dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
 
+print "Trying a real select.\n";
 my $csr_a = $dbh->prepare("select mode,size,name from ?");
-ok(20, ref $csr_a);
-ok(0, $csr_a->execute($dir));
+Test(ref $csr_a);
+Test($csr_a->execute($dir))
+    or print "Execute failes: ", $csr_a->errstr(), "\n";
 
+print "Repeating the select with second handle.\n";
 my $csr_b = $dbh->prepare("select mode,size,name from ?");
-ok(0, ref $csr_b);
-ok(0, $csr_b->execute($dir));
-
-ok(0, $csr_a != $csr_b);
-ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
-ok(0, $csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'Proxy');
+Test(ref $csr_b);
+Test($csr_b->execute($dir));
+Test($csr_a != $csr_b);
+Test($csr_a->{NUM_OF_FIELDS} == 3);
+Test($csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'Proxy');
 
 my($col0, $col1, $col2);
 my(@row_a, @row_b);
 
 #$csr_a->trace(2);
-ok(27, $csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
-ok(0, $csr_a->execute($dir));
+print "Trying bind_columns.\n";
+Test($csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
+Test($csr_a->execute($dir));
 @row_a = $csr_a->fetchrow_array;
-ok(0, @row_a);
-# check bind_columns
-ok(0, $row_a[0] eq $col0);
-ok(0, $row_a[1] eq $col1);
-ok(0, $row_a[2] eq $col2);
+Test(@row_a);
+Test($row_a[0] eq $col0);
+Test($row_a[1] eq $col1);
+Test($row_a[2] eq $col2);
 
-ok(0, $csr_b->bind_param(1, $dir));
-ok(0, $csr_b->execute());
+print "Trying bind_param.\n";
+Test($csr_b->bind_param(1, $dir));
+Test($csr_b->execute());
 @row_b = @{ $csr_b->fetchrow_arrayref };
-ok(0, @row_b);
+Test(@row_b);
 
-ok(36, "@row_a" eq "@row_b");
+Test("@row_a" eq "@row_b");
 @row_b = $csr_b->fetchrow_array;
-ok(37, "@row_a" ne "@row_b")
+Test("@row_a" ne "@row_b")
     or printf("Expected something different from '%s', got '%s'\n", "@row_a",
               "@row_b");
 
-ok(0, $csr_a->finish);
-ok(0, $csr_b->finish);
-
-ok(0, $csr_b->execute());
+print "Trying fetchrow_hashref.\n";
+Test($csr_b->execute());
 my $row_b = $csr_b->fetchrow_hashref;
-ok(0, $row_b);
-ok(0, $row_b->{mode} == $row_a[0]);
-ok(0, $row_b->{size} == $row_a[1]);
-ok(0, $row_b->{name} eq $row_a[2]);
+Test($row_b);
+Test($row_b->{mode} == $row_a[0]);
+Test($row_b->{size} == $row_a[1]);
+Test($row_b->{name} eq $row_a[2]);
 
+print "Trying finish.\n";
+Test($csr_a->finish);
+#Test($csr_b->finish);
+Test(1);
+
+print "Forcing destructor.\n";
 $csr_a = undef;	# force destructin of this cursor now
-ok(45, 1);
+Test(1);
 
-ok(0, $csr_b->execute());
+print "Trying fetchall_arrayref.\n";
+Test($csr_b->execute());
 my $r = $csr_b->fetchall_arrayref;
-ok(0, $r);
-ok(0, @$r);
-ok(0, $r->[0]->[0] == $row_a[0]);
-ok(0, $r->[0]->[1] == $row_a[1]);
-ok(0, $r->[0]->[2] eq $row_a[2]);
+Test($r);
+Test(@$r);
+Test($r->[0]->[0] == $row_a[0]);
+Test($r->[0]->[1] == $row_a[1]);
+Test($r->[0]->[2] eq $row_a[2]);
 
+Test($csr_b->finish);
+
+
+print "Retrying unknown field name.\n";
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
-ok(0, $csr_c);
-ok(53, !$csr_c->execute($dir));
-ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/)
+Test($csr_c);
+Test(!$csr_c->execute($dir));
+Test($DBI::errstr =~ m/Unknown field names: unknown_field_name1/)
     or printf("Wrong error string: %s", $DBI::errstr);
 
+print "Trying RaiseError.\n";
 $dbh->{RaiseError} = 1;
-ok(0, $dbh->{RaiseError});
-ok(0, $csr_c = $dbh->prepare("select unknown_field_name2 from ?"));
-ok(0, !eval { $csr_c->execute(); 1 });
+Test($dbh->{RaiseError});
+Test($csr_c = $dbh->prepare("select unknown_field_name2 from ?"));
+Test(!eval { $csr_c->execute(); 1 });
 #print "$@\n";
-ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
+Test($@ =~ m/Unknown field names: unknown_field_name2/);
 $dbh->{RaiseError} = 0;
-ok(59, !$dbh->{RaiseError});
+Test(!$dbh->{RaiseError});
 
+print "Trying warnings.\n";
 {
   my @warn;
   local($SIG{__WARN__}) = sub { push @warn, @_ };
   $dbh->{PrintError} = 1;
-  ok(0, $dbh->{PrintError});
-  ok(0, ($csr_c = $dbh->prepare("select unknown_field_name3 from ?")));
-  ok(0, !$csr_c->execute());
-  ok(0, "@warn" =~ m/Unknown field names: unknown_field_name3/);
+  Test($dbh->{PrintError});
+  Test(($csr_c = $dbh->prepare("select unknown_field_name3 from ?")));
+  Test(!$csr_c->execute());
+  Test("@warn" =~ m/Unknown field names: unknown_field_name3/);
   $dbh->{PrintError} = 0;
-  ok(0, !$dbh->{PrintError});
+  Test(!$dbh->{PrintError});
 }
+$csr_c->finish();
 
-ok(0, $csr_a = $dbh->prepare("select mode,size,name from ?"));
-ok(0, $csr_a->execute('/'));
+print "Trying dump.\n";
+Test($csr_a = $dbh->prepare("select mode,size,name from ?"));
+Test($csr_a->execute('/'));
 my $dump_file = ($ENV{TMP} || $ENV{TEMP} || "/tmp")."/dumpcsr.tst";
+unlink $dump_file;
 if (open(DUMP_RESULTS, ">$dump_file")) {
-	ok(0, $csr_a->dump_results("4", "\n", ",\t", \*DUMP_RESULTS));
+	Test($csr_a->dump_results("4", "\n", ",\t", \*DUMP_RESULTS));
 	close(DUMP_RESULTS);
-	ok(0, -s $dump_file > 0);
+	Test(-s $dump_file > 0);
 } else {
-	warn "# dump_results test skipped: unable to open $dump_file: $!\n";
-	ok(0, 1);
-	ok(0, 1);
+        Test(1, " # Skip");
+        Test(1, " # Skip");
 }
-#unlink $dump_file;
+unlink $dump_file;
 
-BEGIN { $tests = 68; }
+END { $handle->Terminate() if $handle; undef $handle };

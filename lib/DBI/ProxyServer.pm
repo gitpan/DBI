@@ -21,12 +21,10 @@
 
 require 5.004;
 use strict;
-require IO::File;
-require IO::Socket;
-require RPC::pServer;
+
+use RPC::PlServer 0.2001;
 require DBI;
-require DBD::Proxy;
-require Getopt::Long;
+require Config;
 
 
 package DBI::ProxyServer;
@@ -38,589 +36,264 @@ package DBI::ProxyServer;
 #
 ############################################################################
 
-use vars qw($VERSION);
+use vars qw($VERSION @ISA);
 
-$VERSION = "0.1004";
-my $DEFAULT_PID_FILE = '/tmp/dbiproxy.pid';
+$VERSION = "0.2001";
+@ISA = qw(RPC::PlServer DBI);
+
 
 $ENV{'PATH'} = '/bin:/usr/bin:/sbin:/usr/sbin';   # See 'perldoc perlsec'
 delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 
 
-############################################################################
-#
-#   Global variables
-#
-############################################################################
-
-my $debugging = 0;       # Debugging mode on or off (default off)
-my $stderr = 0;          # Log to syslog or stderr (default syslog)
-
-
-############################################################################
-#
-#   Name:    Msg, Debug, Error, Fatal
-#
-#   Purpose: Error handling functions
-#
-#   Inputs:  $msg - message being print, will be formatted with
-#                sprintf using the following arguments
-#
-#   Result:  Fatal() dies, Error() returns without result
-#
-############################################################################
-
-sub Msg ($$@) {
-    my $level = shift;
-    my $msg = shift;
-    if ($stderr) {
-	printf STDERR ($msg, @_);
-    } else {
-        Sys::Syslog::syslog($level, $msg, @_);
-    }
-}
-
-sub Debug ($@) {
-    if ($debugging) {
-	my $msg = shift;
-	Msg('debug', $msg, @_);
-    }
-}
-
-sub Error ($@) {
-    my $msg = shift;
-    Msg('err', $msg, @_);
-}
-
-sub Fatal ($@) {
-    my $msg = shift;
-    Msg('crit', $msg, @_);
-    exit 10;
-}
-
-
-############################################################################
-#
-#   Name:    ClientConnect
-#
-#   Purpose: Create a dbh for a client
-#
-#   Inputs:  $con - server object
-#            $ref - reference to the entry in the function table
-#                being currently executed
-#            $dsn - data source name
-#            $uid - user
-#            $pwd - password
-#
-#   Result:  database handle or undef
-#
-############################################################################
-
-sub ClientConnect ($$$$$) {
-    my ($con, $ref, $dsn, $uid, $pwd) = @_;
-    my ($dbh);
-
-    $con->Log('debug', "Connecting as '$uid' to '$dsn'");
-
-    if ($uid ne $con->{'user'}) {
-	$con->{'error'} = "Nice try, to connect as " . $con->{'user'}
-	   . " and login as $uid. ;-)";
-	$con->Log('notice', $con->error);
-	return (0, $con->{'error'});
-    }
-
-    local $ENV{DBI_AUTOPROXY} = ''; # :-)
-    if (!defined($dbh = DBI->connect($dsn, $uid, $pwd,
-				     { 'PrintError' => 0 }))) {
-	my $errMsg = $DBI::errstr;
-	$con->{'error'} = "Cannot connect to database: $DBI::errstr";
-	return (0, $con->{'error'});
-    }
-
-    my ($handle) = RPC::pServer::StoreHandle($con, $ref, $dbh);
-    if (!defined($handle)) {
-	return (0, $con->error); # StoreHandle did set error message
-    }
-
-    Debug("Created dbh as $handle.\n");
-    return (1, $handle);
-}
-
-
-############################################################################
-#
-#   Name:    ClientMethod
-#
-#   Purpose: Coerce a method for a client
-#
-#   Inputs:  $con - server object
-#            $ref - reference to the entry in the function table
-#                being currently executed
-#            $handle - object handle
-#            $method - method name
-#
-#   Result:  database handle or undef
-#
-############################################################################
-
-# Handle binding parameters
-sub _BindParams ($$) {
-    my($sth, $params) = @_;
-
-    if ($params) {
-	my $i = 0;
-	while (@$params) {
-	    my $value = shift @$params;
-	    if (ref($value)) {
-		my $type = $value->[1];
-		$value = $value->[0];
-		Debug("Binding parameter: Type $type, Value $value");
-		if (!($sth->bind_param(++$i, $value, $type))) {
-		    return "Cannot bind param: " . $sth->errstr;
-		}
-	    } else {
-		Debug("Binding parameter: Value $value");
-		if (!($sth->bind_param(++$i, $value))) {
-		    return "Cannot bind param: " . $sth->errstr;
-		}
+# Most of the options below are set to default values, we note them here
+# just for the sake of documentation.
+my %DEFAULT_SERVER_OPTIONS;
+{
+    my $o = \%DEFAULT_SERVER_OPTIONS;
+    $o->{'chroot'}     = undef,		# To be used in the initfile,
+    					# after loading the required
+    					# DBI drivers.
+    $o->{'clients'} =
+	[ { 'mask' => '.*',
+	    'accept' => 1,
+	    'cipher' => undef
 	    }
-	}
-    }
-}
-
-
-sub ClientMethod ($$$$) {
-    my ($con, $ref, $handle, $method, @margs) = @_;
-    my ($obj) = RPC::pServer::UseHandle($con, $ref, $handle);
-
-    if (!defined($obj)) {
-	return (0, $con->error); # UseHandle () stored an error message
-    }
-
-    # We could immediately map this to RPC::pServer::CallMethod(),
-    # but certain methods need special treatment.
-    if ($method eq 'STORE') {
-	my ($key, $val) = @margs;
-	$obj->{$key} = $val;
-	Debug("Client stores value %s as attribute %s for %s",
-	      defined($val) ? $val : "undef",
-	      defined($key) ? $key : "undef", $handle);
-	return (1);
-    }
-    if ($method eq 'FETCH') {
-	my ($key) = @margs;
-	my ($val) = $obj->{$key};
-	Debug("Client fetches value %s as attribute %s from %s",
-	      defined($val) ? $val : "undef",
-	      defined($key) ? $key : "undef", $handle);
-	return (1, $obj->{$key});
-    }
-    if ($method eq 'DESTROY') {
-	RPC::pServer::DestroyHandle($con, $ref, $handle);
-	Debug("Client destroys %s", $handle);
-	return (1);
-    }
-
-    if (!$obj->can($method)) {
-	$con->{'error'} = "Object $handle cannot execute method $method";
-	Debug("Client attempt to execute unknown method $method");
-	return (0, $con->error);
-    }
-
-    if ($method eq 'prepare') {
-	my $statement = shift @margs;
-	my $params = shift @margs;
-
-	# Check for restricted access
-	if ($con->{client}->{sqlRestricted}) {
-	    if ($statement =~ /^\s*(\S+)/) {
-		my $st = $1;
-		if (!($statement = $con->{client}->{$st})) {
-		    $con->{'error'} = "Unknown SQL query: $st";
-		    return (0, $con->error);
-		}
-	    } else {
-		$con->{'error'} = "Cannot parse restricted SQL statement";
-		return (0, $con->error);
+	  ];
+    $o->{'configfile'} = '/etc/dbiproxy.conf' if -f '/etc/dbiproxy.conf';
+    $o->{'debug'}      = 1;
+    $o->{'facility'}   = 'daemon';
+    $o->{'group'}      = undef;
+    $o->{'localaddr'}  = undef;		# Bind to any local IP number
+    $o->{'localport'}  = undef;         # Must set port number on the
+					# command line.
+    $o->{'logfile'}    = undef;         # Use syslog or EventLog.
+    $o->{'methods'}    = {
+	'DBI::ProxyServer' => {
+	    'NewHandle' => 1,
+	    'CallMethod' => 1,
+	    'DestroyHandle' => 1
+	    },
+	'DBI::ProxyServer::db' => {
+	    'prepare' => 1,
+	    'STORE' => 1,
+	    'FETCH' => 1,
+	    'quote' => 1,
+	    'func' => 1
+	    },
+	'DBI::ProxyServer::st' => {
+	    'execute' => 1,
+	    'STORE' => 1,
+	    'FETCH' => 1,
+	    'func' => 1,
+	    'fetch' => 1,
+	    'finish' => 1
 	    }
-	}
-
-	# We need to execute 'prepare' and 'execute' at once
-	my $sth;
-	if (!defined($sth = $obj->prepare($statement))) {
-	    $con->{'error'} = "Cannot prepare: " . $obj->errstr;
-	    return (0, $con->error);
-	}
-
-	my $err = _BindParams($sth, $params);
-	if ($err) {
-	    $con->{'error'} = $err;
-	    return (0, $con->error);
-	}
-
-	my $rows = $sth->execute();
-	if (!$rows) {
-	    $con->{'error'} = "Cannot execute: " . $sth->errstr;
-	    return (0, $con->error);
-	}
-
-	my ($handle) = RPC::pServer::StoreHandle($con, $ref, $sth);
-	if (!defined($handle)) {
-	    return (0, $con->error); # StoreHandle did set error message
-	}
-
-	Debug("Prepare: handle $handle, fields %d, rows %d\n",
-	      $sth->{'NUM_OF_FIELDS'}, $sth->rows);
-	return (1, $handle, $rows, $sth->{'NUM_OF_FIELDS'},
-		$sth->{'NUM_OF_PARAMS'});
-    }
-    if ($method eq 'execute') {
-	my $params = shift @margs;
-
-	my $err = _BindParams($obj, $params);
-	if ($err) {
-	    $con->{'error'} = $err;
-	    return (0, $con->error);
-	}
-
-	if (!$obj->execute) {
-	    $con->{'error'} = "Cannot execute: " . $obj->errstr;
-	    return (0, $con->error);
-	}
-	Debug("Execute: handle $handle, rows %d\n", $obj->rows);
-	return (1, $handle, $obj->rows);
-    }
-    if ($method eq 'fetch') {
-	my $numRows = (shift @margs) || 1;
-	my($ref, @rows);
-	while ($numRows--  &&  ($ref = $obj->fetchrow_arrayref)) {
-	    push(@rows, [@$ref]);
-	}
-	return (1, @rows);
-    }
-
-    #   Default method
-    Debug("Client executes method '$method'");
-    my ($result) = eval { $obj->$method(@margs) };
-    if ($@) {
-	$con->{'error'} = "Error while executing $method: $@";
-	return (0, $con->error);
-    }
-    if (!$result  &&  $obj->errstr()) {
-	$con->{'error'} = "Error while executing $method: " . $obj->errstr();
-    }
-    (1);
-}
-
-
-############################################################################
-#
-#   Name:    Server
-#
-#   Purpose: Server child's main loop
-#
-#   Inputs:  $server - server object
-#
-#   Result:  Nothing, never returns
-#
-############################################################################
-
-sub Server ($) {
-    my ($server) = shift;
-    my (%handles);
-
-    # Initialize the function table
-    my ($funcTable) = {
-	'connect' => { 'code' => \&ClientConnect, 'handles' => \%handles },
-	'method'  => { 'code' => \&ClientMethod, 'handles' => \%handles }
     };
-    $server->{'funcTable'} = $funcTable;
-
-    while (!$server->{'sock'}->eof()) {
-	if ($server->{'sock'}->error()) {
-	    exit(1);
-	}
-	if (!$server->Loop()) {
-	    Error("Error while communicating with child: " . $server->error);
-	}
-    }
-    exit(0);
-}
-
-
-############################################################################
-#
-#   Name:    Usage
-#
-#   Purpose: Print usage message
-#
-#   Inputs:  None
-#
-#   Returns: Nothing, aborts with error status
-#
-############################################################################
-
-sub Usage () {
-    print STDERR <<"USAGE";
-Usage: $0 [options]
-
-Possible options are:
-
-  --port <port>		Set port number where the agent should bind to. This
-			option is required, no defaults set.
-  --ip <ip-number>      Set ip number where the agent should bind to.
-                        Defaults to INADDR_ANY, any local ip number.
-  --configfile <file>   Set the name of the configuration file that the agent
-                        should read upon startup. This file contains host,
-                        user and query based authorization and encryption
-                        rules and the like.
-  --nofork              Supress forking, useful for debugging only.
-  --timeout <seconds>   Timeout if idle for this number of seconds.
-  --pidfile <file>      Set the name of the file, where the proxy server will
-                        store its PID number, ip, port number and other
-                        information. This is required mainly for
-                        administrative purposes. Default is
-                        $DEFAULT_PID_FILE.
-  --help		Print this help message.
-  --debug		Turn on debugging messages.
-  --stderr		Print messages on stderr; defaults to using syslog.
-  --version		Print version number and exit.
-
-
-DBI::ProxyServer $VERSION - the DBI Proxy server
-Copyright (C) 1997, 1998 Jochen Wiedmann
-see 'perldoc DBI::ProxyServer' for additional information.
-USAGE
-    exit 0;
-}
-
-
-############################################################################
-#
-#   Name:    CreatePidFile
-#
-#   Purpose: Creates PID file
-#
-#   Inputs:  $sock - socket object being currently used by the server
-#            $pidfile - PID file name
-#            $commandLine - Program's command line
-#
-#   Returns: Nothing
-#
-############################################################################
-
-sub CreatePidFile ($$$) {
-    my($sock, $pidFile, $commandLine) = @_;
-
-    my $fh = IO::File->new($pidFile, "w");
-    if (!defined($fh)) {
-	Error("Cannot create PID file $pidFile: $!");
+    if ($Config::Config{'usethreads'} eq 'define') {
+	$o->{'mode'} = 'threads';
+    } elsif ($Config::Config{'d_fork'} eq 'define') {
+	$o->{'mode'} = 'fork';
     } else {
-	$fh->printf("$$\nIP number: %s, Port number %s\n$commandLine\n",
-		    $sock->sockhost, $sock->sockport);
-	$fh->close();
+	$o->{'mode'} = 'single';
     }
+    $o->{'pidfile'}    = '/tmp/dbiproxy.pid';
+    $o->{'user'}       = undef;
+};
+
+
+############################################################################
+#
+#   Name:    Version
+#
+#   Purpose: Return version string
+#
+#   Inputs:  $class - This class
+#
+#   Result:  Version string; suitable for printing by "--version"
+#
+############################################################################
+
+sub Version {
+    my $version = $DBI::ProxyServer::VERSION;
+    "DBI::ProxyServer $version, Copyright (C) 1998, Jochen Wiedmann";
 }
 
 
 ############################################################################
 #
-#   Name:    catchChilds
+#   Name:    AcceptApplication
 #
-#   Purpose: Signal handler for SIGCHLD.
+#   Purpose: Verify DBI DSN
 #
-#   Inputs:  None
+#   Inputs:  $self - This instance
+#            $dsn - DBI dsn
 #
-#   Returns: Nothing
+#   Returns: TRUE for a valid DSN, FALSE otherwise
 #
 ############################################################################
 
-sub catchChilds () {
-    my $pid = wait;
-    $SIG{'CHLD'} = \&catchChilds;  # Rumours say, we need to reinitialize
-                                   # the handler on System V
+sub AcceptApplication {
+    my $self = shift; my $dsn = shift;
+    $dsn =~ /^dbi:\w+:/i;
 }
 
 
 ############################################################################
 #
-#   This is the proxy server's main part.
+#   Name:    AcceptVersion
+#
+#   Purpose: Verify requested DBI version
+#
+#   Inputs:  $self - Instance
+#            $version - DBI version being requested
+#
+#   Returns: TRUE for ok, FALSE otherwise
 #
 ############################################################################
+
+sub AcceptVersion {
+    my $self = shift; my $version = shift;
+    $DBI::VERSION >= $version;
+}
+
+
+############################################################################
+#
+#   Name:    AcceptUser
+#
+#   Purpose: Verify user and password by connecting to the client and
+#            creating a database connection
+#
+#   Inputs:  $self - Instance
+#            $user - User name
+#            $password - Password
+#
+############################################################################
+
+sub AcceptUser {
+    my $self = shift; my $user = shift; my $password = shift;
+    my $dsn = $self->{'application'};
+    $self->Debug("Connecting to $dsn as $user");
+    local $ENV{DBI_AUTOPROXY} = ''; # :-)
+    $self->{'dbh'} = eval {
+	DBI::ProxyServer->connect($dsn, $user, $password,
+				  { 'PrintError' => 0, 'Warn' => 0,
+				    RaiseError => 1 })
+    };
+    if ($@) {
+	$self->Error("Error while connecting to $dsn as $user: $@");
+	return 0;
+    }
+    [1, $self->StoreHandle($self->{'dbh'}) ];
+}
+
+
+sub CallMethod {
+    my $server = shift;
+    my $dbh = $server->{'dbh'};
+    # We could store the private_server attribute permanently in
+    # $dbh. However, we'd have a reference loop in that case and
+    # I would be concerned about garbage collection. :-(
+    $dbh->{'private_server'} = $server;
+    my @result = eval { $server->SUPER::CallMethod(@_) };
+    undef $dbh->{'private_server'};
+    die $@ if $@;
+    @result;
+}
+
 
 sub main {
-    my @args = @_;
-    if (!@args) { @args = @ARGV }
-    local (@ARGV) = @args;
-
-    my $commandLine = "$0 " . join(" ", @args);
-
-    my $o = {
-	'fork' => 1
-    };
-    Getopt::Long::GetOptions(
-	$o, "--port=s", "--configfile=s", "--fork!",
-	"--pidfile=s", "--ip=s", "--debug", "--stderr",
-	"--version", "--help", "--facility=s",
-	"--timeout=i"
-    );
-
-    if ($o->{'version'}) {
-	print(<<"MSG");
-DBI::ProxyServer $VERSION - the DBI Proxy server,
-Copyright (C) 1997, 1998 Jochen Wiedmann
-
-See 'perldoc DBI::ProxyServer' or 'dbiproxy --help' for additional
-information.
-MSG
-        exit 0;
-    }
-    if ($o->{'help'}  ||  !$o->{'port'}) {
-	Usage();
-    }
-    $debugging = $o->{'debug'};
-
-    #   Initialize debugging and logging
-    unless ($o->{stderr}) {
-	require Sys::Syslog;
-	if (defined(&Sys::Syslog::setlogsock)  &&
-	    defined(&Sys::Syslog::_PATH_LOG)) {
-	    Sys::Syslog::setlogsock('unix');
-	}
-	Sys::Syslog::openlog('DBI::ProxyServer', 'pid',
-			     ($o->{'facility'} || 'daemon'));
-	eval { Sys::Syslog::setlogsock('unix') };
-	Sys::Syslog::syslog('info', 'DBI::ProxyServer starting at %s, port %s',
-			    ($o->{'ip'} || 'any ip number'), $o->{'port'});
-    }
-
-    #   Create an IO::Socket object
-    my $sock = IO::Socket::INET->new(
-	'Proto' => 'tcp',
-	'LocalPort' => $o->{'port'},
-	'LocalAddr' => ($o->{'ip'} || undef),
-	'Reuse' => 1,
-	'Listen' => 5
-    );
-    if (!defined($sock)) {
-	Fatal("Cannot create socket: $!");
-    }
-
-    #   Create the PID file
-    CreatePidFile($sock, ($o->{'pidfile'} || $DEFAULT_PID_FILE), $commandLine);
-
-    $SIG{'CHLD'} = \&catchChilds;
+    my $server = DBI::ProxyServer->new(\%DEFAULT_SERVER_OPTIONS, \@_);
+    $server->Bind();
+}
 
 
-    #   In a loop, wait for connections.
-    while (1) {
-	#   Create a RPC::pServer object
-	my $server;
-	eval {
-	    local $SIG{ALRM} = sub { die "Timeout" } if $o->{timeout};
-	    alarm $o->{timeout} if $o->{timeout};
-	    $server = RPC::pServer->new(
-		'sock' => $sock,
-		'debug' => $o->{'debug'},
-		'stderr' => $o->{'stderr'},
-		'configFile' => $o->{'configfile'}
-	    );
-	    alarm 0 if $o->{timeout};
-	};
-	Debug("server: $server ($@)");
+############################################################################
+#
+#   The DBI part of the proxyserver is implemented as a DBI subclass.
+#   Thus we can reuse some of the DBI methods and overwrite only
+#   those that need additional handling.
+#
+############################################################################
 
-	eval {
-	    if (!ref($server)) {
-		Error("Cannot create server object: $server");
-		next;
-	    }
-	    Debug("Client logged in: application = %s, version = %s,"
-		  . " user = %s",
-		  $server->{'application'}, $server->{'version'},
-		  $server->{'user'});
+DBI::ProxyServer->init_rootclass();
 
-	    my ($client) = $server->{'client'};
-	    if (ref($client) ne 'HASH'  &&  $o->{'configfile'}) {
-		Error("Server is missing a 'client' object.");
-		$server->Deny("Not authorized.");
-		next;
-	    }
+package DBI::ProxyServer::dr;
 
-	    my $users = '';
-	    if ($client->{'users'}) {
-		# Ensure, that first and last user can match \s$user\s
-		$users = " " . $client->{'users'} . " ";
-	    }
-	    if (!defined($server->{'user'})) { $server->{'user'} = ''; }
-	    my $user = $server->{'user'};
+@DBI::ProxyServer::dr::ISA = qw(DBI::dr);
 
-	    if ($server->{'application'} !~ /^dbi\:[^\:]+\:/i) {
-		#   Whatever this client is looking for, it cannot be us :-)
-		Debug("Wrong application: " . $server->{'application'});
-		$server->Deny("This is a DBI::ProxyServer. Go away!");
-	    }
-	    elsif ($server->{'version'} > $VERSION) {
-		Debug("Wrong version: " . $server->{'version'});
-		$server->Deny("Sorry, but I am running version"
-			      . " $VERSION");
-	    }
-	    elsif ($o->{'configfile'}  &&  $users !~ /\s\Q$user\E\s/) {
-		Debug("User not permitted: $user");
-		$server->Deny("You are not permitted to connect.");
-	    }
-	    else {
-		#   Fork, and enter the main loop.
-		my $pid;
 
-		Debug("ok, fork = " . $o->{'fork'});
+package DBI::ProxyServer::db;
 
-		if ($o->{'fork'}) {
-		    if (!defined($pid = fork())) {
-			Error("Cannot fork: $!.");
-			$server->Deny("Cannot fork: $!");
-		    }
+@DBI::ProxyServer::db::ISA = qw(DBI::db);
+
+sub prepare {
+    my($dbh, $statement, $attr, $params) = @_;
+    my $server = $dbh->{'private_server'};
+    if (my $client = $server->{'client'}) {
+	if ($client->{'sql'}) {
+	    if ($statement =~ /^\s*\S+/) {
+		my $st = $1;
+		if (!($statement = $client->{'sql'}->{$st})) {
+		    die "Unknown SQL query: $st";
 		}
-		if (!$o->{'fork'} ||  $pid == 0) {
-		    #   I am the child.
-		    Debug("Accepting client.");
-		    $server->Accept("Welcome, this is the DBI::ProxyServer"
-				    . " $VERSION.");
-
-		    #
-		    #   Switch to user specific encryption
-		    #
-		    my $uval;
-		    if ($uval = $server->{'client'}->{$user}) {
-			if ($uval =~ /encrypt=\"(.*),(.*),(.*)\"/) {
-			    my $module = $1;
-			    my $class = $2;
-			    my $key = $3;
-			    my $cipher;
-			    eval "use $module;"
-				. " \$cipher = $class->new(pack('H*', \$key))";
-			    if ($cipher) {
-				$server->Encrypt($cipher);
-				$server->Log('debug',
-					     "Changed encryption to %s",
-					     $server->Encrypt());
 			    } else {
-				$server->Log('err', "Cannot not switch to user"
-					     . " specific encryption: $@");
-				exit(1);
+		die "Cannot parse restricted SQL statement: $statement";
 			    }
 			}
 		    }
 
-		    Debug("Entering serving loop");
+    # The difference between the usual prepare and ours is that we implement
+    # a combined prepare/execute. The DBD::Proxy driver doesn't call us for
+    # prepare. Only if an execute happens, then we are called with method
+    # "prepare". Further execute's are called as "execute".
+    my $sth = $dbh->SUPER::prepare($statement, $attr);
+    my @result = $sth->execute($params);
+    my $handle = $server->StoreHandle($sth);
+    ($handle, $sth->{'NUM_OF_FIELDS'}, $sth->{'NUM_OF_PARAMS'},
+     @result);
+}
 
-		    Server($server);
+
+package DBI::ProxyServer::st;
+
+@DBI::ProxyServer::st::ISA = qw(DBI::st);
+
+sub execute {
+    my $sth = shift; my $params = shift;
+    my @outParams;
+
+    if ($params) {
+	for (my $i = 0;  $i < @$params;) {
+	    my $param = $params->[$i++];
+	    if (!ref($param)) {
+		$sth->bind_param($i, $param);
+	    } else {
+		# value, type => bind_param,
+		# value, type, maxlen => bind_param_inout
+		if (@$param <= 2) {
+		    $sth->bind_param($i, @$param);
+		} else {
+		    $sth->bind_param_inout($i, @$param);
+		    my $ref = shift @$param;
+		    push(@outParams, $ref);
 		}
 	    }
-	};
-	if ($@) {
-	    Error("Eval error: $@");
 	}
     }
+
+    my $rows = $sth->SUPER::execute();
+    ($rows, @outParams);
+}
+
+sub fetch {
+    my $sth = shift; my $numRows = shift || 1;
+    my($ref, @rows);
+    while ($numRows--  &&  ($ref = $sth->fetchrow_arrayref())) {
+	push(@rows, [@$ref]);
+    }
+    @rows;
 }
 
 
@@ -642,24 +315,23 @@ DBI::ProxyServer - a server for the DBD::Proxy driver
 
 =head1 DESCRIPTION
 
-DBI::Proxy Server is a module for implementing a proxy for the DBI
-proxy driver, DBD::Proxy. It allows access to databases over the
-network if the DBMS does not offer networked operations. But the
-proxy server might be useful for you, even if you have a DBMS with
-integrated network functionality: It can be used as a DBI proxy in
-a firewalled environment.
+DBI::Proxy Server is a module for implementing a proxy for the DBI proxy
+driver, DBD::Proxy. It allows access to databases over the network if the
+DBMS does not offer networked operations. But the proxy server might be
+usefull for you, even if you have a DBMS with integrated network
+functionality: It can be used as a DBI proxy in a firewalled environment.
 
 DBI::ProxyServer runs as a daemon on the machine with the DBMS or on the
-firewall. The client connects to the agent using the DBI driver
-DBD::Proxy, thus in the exactly same way than using DBD::mysql, DBD::mSQL
-or any other DBI driver.
+firewall. The client connects to the agent using the DBI driver DBD::Proxy,
+thus in the exactly same way than using DBD::mysql, DBD::mSQL or any other
+DBI driver.
 
-The agent is implemented as a RPC::pServer application. Thus you
-have access to all the possibilities of this module, in particular
-encryption and a similar configuration file. DBI::ProxyServer adds the
-possibility of query restrictions: You can define a set of queries that
-a client may execute and restrict access to those. (Requires a DBI
-driver that supports parameter binding.) See L</CONFIGURATION FILE>.
+The agent is implemented as a RPC::PlServer application. Thus you have
+access to all the possibilities of this module, in particular encryption
+and a similar configuration file. DBI::ProxyServer adds the possibility of
+query restrictions: You can define a set of queries that a client may
+execute and restrict access to those. (Requires a DBI driver that supports
+parameter binding.) See L</CONFIGURATION FILE>.
 
 
 =head1 OPTIONS
@@ -667,216 +339,192 @@ driver that supports parameter binding.) See L</CONFIGURATION FILE>.
 When calling the DBI::ProxyServer::main() function, you supply an
 array of options. (@ARGV, the array of command line options is used,
 if you don't.) These options are parsed by the Getopt::Long module.
-Available options include:
+The ProxyServer inherits all of RPC::PlServer's and hence Net::Daemon's
+options and option handling, in particular the ability to read
+options from either the command line or a config file. See
+L<RPC::PlServer(3)>. See L<Net::Daemon(3)>. Available options include
 
 =over 4
 
-=item C<--configfile filename>
+=item I<chroot> (B<--chroot=dir>)
 
-The DBI::ProxyServer can use a configuration file for authorizing
-clients. The file is almost identical to that of RPC::pServer,
-with the exception of some additional attributes. See
-L</CONFIGURATION FILE>.
+(UNIX only)  After doing a bind(), change root directory to the given
+directory by doing a chroot(). This is usefull for security, but it
+restricts the environment a lot. For example, you need to load DBI
+drivers in the config file or you have to create hard links to Unix
+sockets, if your drivers are using them. For example, with MySQL, a
+config file might contain the following lines:
 
-If you don't use a config file, then access control is completely
-disabled. Only use this for debugging purposes or something similar!
+    my $rootdir = '/var/dbiproxy';
+    my $unixsockdir = '/tmp';
+    my $unixsockfile = 'mysql.sock';
+    foreach $dir ($rootdir, "$rootdir$unixsockdir") {
+	mkdir 0755, $dir;
+    }
+    link("$unixsockdir/$unixsockfile",
+	 "$rootdir$unixsockdir/$unixsockfile");
+    require DBD::mysql;
 
-=item C<--debug>
+    {
+	'chroot' => $rootdir,
+	...
+    }
 
-Turns on debugging mode. Debugging messages will usually be logged
-to syslog with facility I<daemon> unless you use the options
-C<--facility> or C<--stderr>, see below.
+If you don't know chroot(), think of an FTP server where you can see a
+certain directory tree only after logging in. See also the --group and
+--user options.
 
-=item C<--facility>
+=item I<clients>
 
-Sets the syslog facility, by default I<daemon>.
+An array ref with a list of clients. Clients are hash refs, the attributes
+I<accept> (0 for denying access and 1 for permitting) and I<mask>, a Perl
+regular expression for the clients IP number or its host name. See
+L<"Access control"> below.
 
-=item C<--help>
+=item I<configfile> (B<--configfile=file>)
 
-Tells the proxy server to print a help message and exit immediately.
+Config files are assumed to return a single hash ref that overrides the
+arguments of the new method. However, command line arguments in turn take
+precedence over the config file. See the L<"CONFIGURATION FILE"> section
+below for details on the config file.
 
-=item C<--ip ip-number>
+=item I<debug> (B<--debug>)
 
-Tells the DBI::ProxyServer, on which ip number he should bind. The
-default is, to bind to C<INADDR_ANY> or any ip number of the local
-host. You might use this option, for example, on a firewall with
-two network interfaces. If your LAN has non public IP numbers and
-you bind the proxy server to the inner network interface, then you will
-easily disable the access from the outer network or the Internet.
+Turn debugging mode on. Mainly this asserts that logging messages of
+level "debug" are created.
 
-=item C<--port port>
+=item I<facility> (B<--facility=mode>)
 
-This option tells the DBI::ProxyServer, on which port number he should
-bind. Unlike other applications, DBI::ProxyServer has no builtin default,
-so using this option is required.
+(UNIX only) Facility to use for L<Sys::Syslog (3)>. The default is
+B<daemon>.
 
-=item C<--pidfile filename>
+=item I<group> (B<--group=gid>)
 
-Tells the daemon, where to store its PID file. The default is
-I</tmp/dbiproxy.pid>. The PID file looks like this:
+After doing a bind(), change the real and effective GID to the given.
+This is usefull, if you want your server to bind to a privileged port
+(<1024), but don't want the server to execute as root. See also
+the --user option.
 
-    567
-    IP number 127.0.0.1, port 3334
-    dbiproxy -ip 127.0.0.1 -p 3334
+GID's can be passed as group names or numeric values.
 
-The first line is the process number. The second line are IP number
-and port number, so that they can be used by local clients and the
-third line is the command line. These can be used in administrative
-scripts, for example to first kill the DBI::ProxyServer and then
-restart it with the same options you do a
+=item I<localaddr> (B<--localaddr=ip>)
 
-    kill `head -1 /tmp/dbiproxy.pid`
-    `tail -1 /tmp/dbiproxy.pid`
+By default a daemon is listening to any IP number that a machine
+has. This attribute allows to restrict the server to the given
+IP number.
 
-=item C<--stderr>
+=item I<localport> (B<--localport=port>)
 
-Forces printing of messages to stderr. The default is using the syslog.
+This attribute sets the port on which the daemon is listening. It
+must be given somehow, as there's no default.
 
-=item C<--version>
+=item I<logfile> (B<--logfile=file>)
 
-Forces the DBI::ProxyServer to print its version number and copyright message
-and exit immediately.
+Be default logging messages will be written to the syslog (Unix) or
+to the event log (Windows NT). On other operating systems you need to
+specify a log file. The special value "STDERR" forces logging to
+stderr. See L<Net::Daemon::Log(3)> for details.
+
+=item I<mode> (B<--mode=modename>)
+
+The server can run in three different modes, depending on the environment.
+
+If you are running Perl 5.005 and did compile it for threads, then the
+server will create a new thread for each connection. The thread will
+execute the server's Run() method and then terminate. This mode is the
+default, you can force it with "--mode=threads".
+
+If threads are not available, but you have a working fork(), then the
+server will behave similar by creating a new process for each connection.
+This mode will be used automatically in the absence of threads or if
+you use the "--mode=fork" option.
+
+Finally there's a single-connection mode: If the server has accepted a
+connection, he will enter the Run() method. No other connections are
+accepted until the Run() method returns (if the client disconnects).
+This operation mode is usefull if you have neither threads nor fork(),
+for example on the Macintosh. For debugging purposes you can force this
+mode with "--mode=single".
+
+=item I<pidfile> (B<--pidfile=file>)
+
+(UNIX only) If this option is present, a PID file will be created at the
+given location.
+
+=item I<user> (B<--user=uid>)
+
+After doing a bind(), change the real and effective UID to the given.
+This is usefull, if you want your server to bind to a privileged port
+(<1024), but don't want the server to execute as root. See also
+the --group and the --chroot options.
+
+UID's can be passed as group names or numeric values.
+
+=item I<version> (B<--version>)
+
+Supresses startup of the server; instead the version string will
+be printed and the program exits immediately.
 
 =back
 
+
 =head1 CONFIGURATION FILE
 
-The configuration file is just that of I<RPC::pServer> with some
-additional attributes. Currently its own use is authorization and
-encryption.
+The configuration file is just that of I<RPC::PlServer> or I<Net::Daemon>
+with some additional attributes in the client list.
 
-=head2 Syntax
+The config file is a Perl script. At the top of the file you may include
+arbitraty Perl source, for example load drivers at the start (usefull
+to enhance performance), prepare a chroot environment and so on.
 
-Empty lines and comment lines (starting with hashes, C<#> charactes)
-are ignored. All other lines have the syntax
+The important thing is that you finally return a hash ref of option
+name/value pairs. The possible options are listed above.
 
-    var value
+All possibilities of Net::Daemon and RPC::PlServer apply, in particular
 
-White space at the beginning and the end of the line will be removed,
-so will white space between C<var> and C<val>. On the other hand
-C<value> may contain white space, for example
+=over 4
 
-    description Free form text
+=item Host and/or User dependent access control
 
-would be valid with C<value> = C<Free form text>.
+=item Host and/or User dependent encryption
 
-=head2 Accepting and refusing hosts
+=item Changing UID and/or GID after binding to the port
 
-Semantically the configuration file is a collection of host definitions,
-each of them starting with
+=item Running in a chroot() environment
 
-    accept|deny mask
+=back
 
-where C<mask> is a Perl regular expression matching host names or IP
-numbers (in particular this means that you have to escape dots),
-C<accept> tells the server to accept connections from C<mask> and
-C<deny> forces to refuse connections from C<mask>. The first match
-is used, thus the following will accept connections from 192.168.1.*
-only
+Additionally the server offers you query restrictions. Suggest the
+following client list:
 
-    accept 192\.168\.1\.
-    deny .*
+    'clients' => [
+	{ 'mask' => '^admin\.company\.com$',
+          'accept' => 1,
+          'users' => [ 'root', 'wwwrun' ],
+        },
+        {
+	  'mask' => '^admin\.company\.com$',
+          'accept' => 1,
+          'users' => [ 'root', 'wwwrun' ],
+          'sql' => {
+               'select' => 'SELECT * FROM foo',
+               'insert' => 'INSERT INTO foo VALUES (?, ?, ?)'
+               }
+        }
 
-and the following will accept all connections except those from
-evil.guys.com:
+then only the users root and wwwrun may connect from admin.company.com,
+executing arbitrary queries, but only wwwrun may connect from other
+hosts and is restricted to
 
-    deny evil\.guys\.com
-    accept .*
+    $sth->prepare("select");
 
-Default is to refuse connections, thus the C<deny .*> in the first
-example is redundant, but of course good style.
+or
 
-=head2 Host based encryption
+    $sth->prepare("insert");
 
-You can force a client to use encryption. The following example will
-accept connections from 192.168.1.* only, if they are encrypted with
-the DES algorithm and the key C<0123456789abcdef>:
+which in fact are "SELECT * FROM foo" or "INSERT INTO foo VALUES (?, ?, ?)".
 
-    accept 192\.168\.1\.
-        encryption DES
-        key 0123456789abcdef
-        encryptModule Crypt::DES
 
-    deny .*
-
-You are by no means bound to use DES. DBI::ProxyServer just expects a
-certain API, namely the methods I<new>, I<keysize>, I<blocksize>,
-I<encrypt> and I<decrypt>. For example IDEA is another choice. The
-above example will be mapped to this Perl source:
-
-    $encryptModule = "Crypt::DES";
-    $encryption = "DES";
-    $key = "0123456789abcdef";
-
-    eval "use $encryptModule;"
-       . "$crypt = \$encryption->new(pack('H*', \$key));";
-
-I<encryptModule> defaults to I<encryption>, this is only needed because
-of the brain damaged design of I<Crypt::IDEA> and I<Crypt::DES>, where
-module name and class name differ.
-
-=head2 User based authorization
-
-The I<users> attribute allows to restrict access to certain users.
-For example the following allows only the users C<joe> and C<jack>
-from host C<alpha> and C<joe> and C<mike> from C<beta>:
-
-    accept alpha
-        users joe jack
-
-    accept beta
-        users joe mike
-
-=head2 User based encryption
-
-Although host based encryption is fine, you might still wish to force
-different users to use different encryption secrets. Here's how it
-goes:
-
-    accept alpha
-        users joe jack
-        jack encrypt="Crypt::DES,DES,fedcba9876543210"
-        joe encrypt="Crypt::IDEA,IDEA,0123456789abcdef0123456789abcdef"
-
-This would force jack to encrypt with I<DES> and key C<fedcba9876543210>
-and joe with I<IDEA> and C<0123456789abcdef0123456789abcdef>. The three
-fields of the I<encrypt> entries correspond to the I<encryptionModule>,
-I<encryption> and I<key> attributes of the host based encryption.
-
-You note the problem: Of course user based encryption can only be
-used when the user has already logged in. Thus we recommend to use
-both host based and user based encryption: The former will be used
-in the authorization phase and the latter once the client has logged
-in. Without user based secrets the host based secret (if any) will
-be used for the complete session.
-
-=head2 Query restrictions
-
-You have the possibility to restrict the queries a client may execute
-to a predefined set.
-
-Suggest the following lines in the configuration file:
-
-    accept alpha
-        sqlRestrict 1
-        insert1 INSERT INTO foo VALUES (?, ?)
-        insert2 INSERT INTO bla VALUES (?, ?, ?)
-
-    accept beta
-        sqlRestrict 0
-
-This allows users connecting from C<beta> to execute any SQL query, but
-users from C<alpha> can only insert values into the tables I<foo> and
-I<bar>. Clients select the query by just passing the query name
-(I<insert1> and I<insert2> in the example above) as an SQL statement
-and binding parameters to the statement. Of course the client side must
-know how much parameters should be passed. Thus you should use the
-following for inserting values into foo from the client:
-
-    my $dbh;
-    my $sth = $dbh->prepare("insert1 (?, ?)");
-    $sth->execute(1, "foo");
-    $sth->execute(2, "bar");
 
 
 =head1 AUTHOR
@@ -897,6 +545,6 @@ the DBI.
 
 =head1 SEE ALSO
 
-L<dbiproxy(1)>, L<DBD::Proxy(3)>, L<DBI(3)>, L<RPC::pServer(3)>,
-L<RPC::pClient(3)>, L<Sys::Syslog(3)>, L<syslog(2)>
-
+L<dbiproxy(1)>, L<DBD::Proxy(3)>, L<DBI(3)>, L<RPC::PlServer(3)>,
+L<RPC::PlClient(3)>, L<Net::Daemon(3)>, L<Net::Daemon::Log(3)>,
+L<Sys::Syslog(3)>, L<Win32::EventLog(3)>, L<syslog(2)>

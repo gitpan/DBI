@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.3 $, 10)+0;
+$VERSION = substr(q$Revision: 10.4 $, 10)+0;
 
 my $warning = <<'EOM';
 
@@ -69,7 +69,7 @@ package DBI::Shell::Base;
 use Carp;
 use Text::Abbrev ();
 use Term::ReadLine;
-use Getopt::Long;
+use Getopt::Long 2.17;	# upgrade from CPAN if needed: http://www.perl.com/CPAN
 
 use DBI 1.00 qw(:sql_types :utils);
 use DBI::Format;
@@ -78,7 +78,7 @@ my $haveTermReadKey;
 
 
 sub usage {
-    print <<USAGE;
+    warn <<USAGE;
 Usage: perl -MDBI::Shell -e shell [<DBI data source> [<user> [<password>]]]
 USAGE
 }

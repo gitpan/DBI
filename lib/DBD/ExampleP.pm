@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+#   $Id: ExampleP.pm,v 10.3 1999/01/06 13:07:22 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -34,7 +34,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 10.1 $',
+	    'Version' => '$Revision: 10.3 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -63,6 +63,7 @@
 	    'User' => $user,
 	    'Handlers' => [ \&my_handler ],	# deprecated, don't do this
 	    });
+		$this->STORE(Active => 1);
         $this;
     }
 
@@ -109,10 +110,10 @@
 
 	$sth->{'dbd_param'}->[1] = $param if $param !~ /\?/;
 
-	$outer->{NAME} = \@fields;
-	$outer->{NULLABLE} = [ (0) x @fields ];
-	$outer->{NUM_OF_FIELDS} = @fields;
-	$outer->{NUM_OF_PARAMS} = ($param !~ /\?/) ? 0 : 1;
+	$outer->STORE('NAME' => \@fields);
+	$outer->STORE('NULLABLE' => [ (0) x @fields ]);
+	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
+	$outer->STORE('NUM_OF_PARAMS' => ($param !~ /\?/) ? 0 : 1);
 
 	$outer;
     }
@@ -145,6 +146,7 @@
 
 
     sub disconnect {
+	shift->STORE(Active => 0);
 	return 1;
     }
 
@@ -155,7 +157,7 @@
 	# or fetch and cache attribute values too expensive to prefetch.
 	return 1 if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
-	return $dbh->DBD::_::db::FETCH($attrib);
+	return $dbh->SUPER::FETCH($attrib);
     }
 
     sub STORE {
@@ -166,9 +168,13 @@
 	    return 1 if $value;	# is already set
 	    croak("Can't disable AutoCommit");
 	}
-	return $dbh->DBD::_::db::STORE($attrib, $value);
+	return $dbh->SUPER::STORE($attrib, $value);
     }
-    sub DESTROY { undef }
+    sub DESTROY {
+	my $dbh = shift;
+	$dbh->disconnect if $dbh->FETCH('Active');
+	undef
+    }
 }
 
 
@@ -239,7 +245,7 @@
 	    return \@t;
 	}
 	# else pass up to DBI to handle
-	return $sth->DBD::_::st::FETCH($attrib);
+	return $sth->SUPER::FETCH($attrib);
     }
 
     sub STORE {
@@ -248,7 +254,7 @@
 	# else pass up to DBI to handle
 	return $sth->{$attrib}=$value
 	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE';
-	return $sth->DBD::_::st::STORE($attrib, $value);
+	return $sth->SUPER::STORE($attrib, $value);
     }
 
     sub DESTROY { undef }

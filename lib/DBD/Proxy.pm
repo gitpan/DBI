@@ -23,10 +23,9 @@
 use strict;
 
 require DBI;
-DBI->require_version(0.9301);
+DBI->require_version(1.0201);
 
-require IO::Socket;
-require RPC::pClient;
+use RPC::PlClient 0.2000;
 
 
 
@@ -35,7 +34,7 @@ package DBD::Proxy;
 use vars qw($VERSION $err $errstr $drh);
 
 
-$VERSION = "0.1004";
+$VERSION = "0.2001";
 
 $err = 0;		# holds error code   for DBI::err
 $errstr = "";		# holds error string for DBI::errstr
@@ -108,56 +107,42 @@ sub connect ($$;$$) {
 	if ($@) { $err .= " Cannot create usercipher object: $@."; }
     }
 
-    if ($err) { DBI::set_err($drh, 1, $err); return undef; }
+    return DBI::set_err($drh, 1, $err) if $err; # Returns undef
 
-    # Create an IO::Socket object
-    my $sock;
-    eval {
-        # promote warn to die to catch "Connection refused" since $! is often useless
-	local $SIG{__WARN__} = sub { die @_ };
-	$sock = IO::Socket::INET->new('Proto' => 'tcp',
-				  'PeerAddr' => $attr{'hostname'},
-				  'PeerPort' => $attr{'port'});
-    };
-    if (!$sock) {
-	$@ ||= "$!";
-	DBI::set_err($drh, 1, "Cannot connect to '$attr{'hostname'}:$attr{'port'}' : $@");
-	return undef;
-    }
+    # Create an RPC::PlClient object.
+    my($client, $msg) = eval { RPC::PlClient->new(
+	'peeraddr'	=> $attr{'hostname'},
+	'peerport'	=> $attr{'port'},
+	'socket_proto'	=> 'tcp',
+	'application'	=> $attr{dsn},
+	'user'		=> $user || '',
+	'password'	=> $auth || '',
+	'version'	=> $DBD::Proxy::VERSION,
+	'cipher'	=> $cipherRef,
+	'debug'		=> $attr{debug}   || 0,
+	'timeout'	=> $attr{timeout} || undef,
+	'logfile'	=> $attr{logfile} || undef
+    ) };
 
-    # Need to avoid "Can't store LVALUE items" bug in Storable
-    # when refering to non-existant hash entries.
-    my $client = RPC::pClient->new(
-	'sock' => $sock,
-	'application' => $attr{dsn},
-	'user' => $user || '',
-	'password' => $auth || '',
-	'version' => $DBD::Proxy::VERSION,
-	'cipher' => $cipherRef,
-	'debug' => $attr{debug}||0
-    );
+    return DBI::set_err($drh, 1, "Cannot log in to DBI::ProxyServer: $@")
+	if $@; # Returns undef
+    return DBI::set_err($drh, 1, "Constructor didn't return a handle: $msg")
+	unless ($msg =~ /^((?:\w+|\:\:)+)=(\w+)/); # Returns undef
 
-    if (!ref($client)) {
-        DBI::set_err($drh, 1, "Cannot log in to DBI::ProxyServer: $client");
-	return undef;
-    }
+    $msg = RPC::PlClient::Object->new($1, $client, $msg);
 
     # Switch to user specific encryption mode, if desired
     if ($userCipherRef) {
-	$client->Encrypt($userCipherRef);
-    }
-
-    my($status, $dbh) = $client->CallInt('connect', $attr{'dsn'},
-					 $user, $auth);
-    if (!$status) {
-        DBI::set_err($drh, 1, "Error while connecting to remote DSN: $dbh");
-	return undef;
+	$client->{'cipher'} = $userCipherRef;
     }
 
     # create a 'blank' dbh
-    my $this = DBI::_new_dbh($drh, { 'Name' => $dsnOrig,
-				     'proxy_dbh' => $dbh,
-				     'proxy_client' => $client});
+    my $this = DBI::_new_dbh($drh, {
+	    'Name' => $dsnOrig,
+	    'proxy_dbh' => $msg,
+	    'proxy_client' => $client,
+	    'RowCacheSize' => $attr{'RowCacheSize'} || 20
+   });
 
     foreach $var (keys %attr) {
 	if ($var =~ /proxy_/) {
@@ -178,7 +163,7 @@ package DBD::Proxy::db; # ====== DATABASE ======
 
 $DBD::Proxy::db::imp_data_size = 0;
 
-use vars qw(%ATTR);
+use vars qw(%ATTR $AUTOLOAD);
 
 %ATTR = (
     'Warn' => 'local',
@@ -187,36 +172,42 @@ use vars qw(%ATTR);
     'CachedKids' => 'local',
     'PrintError' => 'local',
     'RaiseError' => 'local',
+    'RowCacheSize' => 'inherited'
 );
 
-sub commit ($) {
-    my($dbh) = @_;
-    my($status, $result) =
-	$dbh->{'proxy_client'}->CallInt('method', $dbh->{'proxy_dbh'},
-					'commit');
-    if (!$status) {
-        DBI::set_err($dbh, 1, $result);
-	$result = 0;
-    }
-    $result;
+sub AUTOLOAD {
+    my $method = $AUTOLOAD;
+    print "Autoloading method: $method\n";
+    $method =~ s/(.*):://;
+    my $class = $1;
+    my $method_code = q{
+        package ~class~;
+        sub ~method~ {
+            my $dbh = shift;
+	    my @result = eval { $dbh->{'proxy_dbh'}->$method(@_) };
+            return DBI::set_err($dbh, 1, $@) if $@;
+            wantarray ? @result : $result[0];
+        }
+};
+    no strict 'refs';
+    $method_code =~ s/\~(\w+)\~/${$1}/eg;
+    eval $method_code;
+    goto &$AUTOLOAD;
 }
 
-sub rollback ($) {
-    my($dbh) = @_;
-    my($status, $result) =
-	$dbh->{'proxy_client'}->CallInt('method', $dbh->{'proxy_dbh'},
-					'rollback');
-    if (!$status) {
-        DBI::set_err($dbh, 1, $result);
-	$result = 0;
-    }
-    $result;
+sub DESTROY {
+    # Just to avoid that DESTROY is autoloaded ...
 }
 
 sub disconnect ($) {
     my($dbh) = @_;
-    delete $dbh->{'proxy_dbh'};
-    delete $dbh->{'proxy_client'};
+    # XXX this should call $rdbh->disconnect to get the right
+    # disconnect behaviour. It should not undef these values.
+    # A proxy_no_disconnect option could be added (like for finish)
+    # to let people trade safety for speed if they need to.
+    undef $dbh->{'proxy_dbh'};    # Bug in Perl 5.004; would prefer delete
+    undef $dbh->{'proxy_client'};
+    1;
 }
 
 
@@ -224,54 +215,72 @@ sub STORE ($$$) {
     my($dbh, $attr, $val) = @_;
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr =~ /^proxy_/) {
+    if ($attr =~ /^proxy_/  ||  $type eq 'inherited') {
 	$dbh->{$attr} = $val;
 	return 1;
     }
 
     if ($type eq 'remote') {
-	my($status, $result) =
-	    $dbh->{'proxy_client'}->CallInt('method', $dbh->{'proxy_dbh'},
-					    'STORE', $attr, $val);
-	if (!$status) {
-	    DBI::set_err($dbh, 1, $result);
-	    return 0;
-	}
+	my $result = eval { $dbh->{'proxy_dbh'}->STORE($attr => $val) };
+	return DBI::set_err($dbh, 1, $@) if $@; # returns undef
 	return $result;
     }
-    return $dbh->DBD::_::db::STORE($attr, $val);
+    return $dbh->SUPER::STORE($attr => $val);
 }
 
 sub FETCH ($$) {
     my($dbh, $attr) = @_;
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr =~ /^proxy_/) {
+    if ($attr =~ /^proxy_/  ||  $type eq 'inherited') {
 	return $dbh->{$attr};
     }
 
-    if ($type eq 'remote') {
-	my($status, $result) =
-	    $dbh->{'proxy_client'}->CallInt('method', $dbh->{'proxy_dbh'},
-					    'FETCH', $attr);
-	if (!$status) {
-	    DBI::set_err($dbh, 1, $result);
-	    return undef;
-	}
-	$result;
-    } else {
-	$dbh->DBD::_::db::FETCH($attr);
-    }
+    return $dbh->SUPER::FETCH($attr) unless $type eq 'remote';
+
+    my $result = eval { $dbh->{'proxy_dbh'}->FETCH($attr) };
+    return DBI::set_err($dbh, 1, $@) if $@;
+    return $result;
 }
 
 sub prepare ($$;$) {
     my($dbh, $stmt, $attr) = @_;
 
     # We *could* send the statement over the net immediately, but the
-    # DBI specs allows us to defer until the first 'execute'.
-    my($sth) = DBI::_new_sth($dbh, { 'Statement' => $stmt,
-				     'proxy_params' => [] });
+    # DBI specs allows us to defer that until the first 'execute'.
+    # XXX should make this configurable
+    my $sth = DBI::_new_sth($dbh, {
+	    'Statement' => $stmt,
+	    'proxy_attr' => $attr,
+	    'proxy_params' => []
+    });
     $sth;
+}
+
+sub quote {
+    my $dbh = shift;
+    my $proxy_quote = $dbh->{proxy_quote} || 'remote';
+
+    return $dbh->SUPER::quote(@_)
+	if $proxy_quote eq 'local' && @_ == 1;
+
+    # For the common case of only a single argument
+    # (no $data_type) we could learn and cache the behaviour.
+    # Or we could probe the driver with a few test cases.
+    # Or we could add a way to ask the DBI::ProxyServer
+    # if $dbh->can('quote') == &DBI::_::db::quote.
+    # Tim
+    #
+    # Sounds all *very* smart to me. I'd rather suggest to
+    # implement some of the typical quote possibilities
+    # and let the user set
+    #    $dbh->{'proxy_quote'} = 'backslash_escaped';
+    # for example.
+    # Jochen
+
+    my $result = eval { $dbh->{'proxy_dbh'}->quote(@_) };
+    return DBI::set_err($dbh, 1, $@) if $@;
+    return $result;
 }
 
 
@@ -288,51 +297,69 @@ use vars qw(%ATTR);
     'CachedKids' => 'local',
     'PrintError' => 'local',
     'RaiseError' => 'local',
-    'NULLABLE' => 'cached',
-    'NAME' => 'cached',
-    'TYPE' => 'cached',
-    'PRECISION' => 'cached',
-    'SCALE' => 'cached',
-    'NUM_OF_FIELDS' => 'cached',
-    'NUM_OF_PARAM' => 'cached'
+    'RowsInCache' => 'local',
+    'RowCacheSize' => 'inherited',
+    'NULLABLE' => 'cache_only',
+    'NAME' => 'cache_only',
+    'TYPE' => 'cache_only',
+    'PRECISION' => 'cache_only',
+    'SCALE' => 'cache_only',
+    'NUM_OF_FIELDS' => 'cache_only',
+    'NUM_OF_PARAMS' => 'cache_only'
 );
 
+*AUTOLOAD = \&DBD::Proxy::db::AUTOLOAD;
+
 sub execute ($@) {
-    my($sth, @params) = @_;
+    my $sth = shift;
+    my $params = @_ ? \@_ : $sth->{'proxy_params'};
+
+    undef $sth->{'proxy_data'};
 
     my $dbh = $sth->{'Database'};
     my $client = $dbh->{'proxy_client'};
+    my $rsth = $sth->{proxy_sth};
 
-    $sth->{'proxy_attr_cache'} = {};
-    undef $sth->{'proxy_data'};
+    my ($numFields, $numParams, $numRows, @outParams);
 
-    if (!$sth->{proxy_sth}) {
-	my($status, $rsth, $numRows, $numFields, $numParam) =
-	    $client->CallInt('method', $dbh->{'proxy_dbh'}, 'prepare',
-			     $sth->{'Statement'},
-			     @params ? [@params] : $sth->{'proxy_params'});
-	if (!$status) {
-	    DBI::set_err($sth, 1, $rsth);
-	    return undef;
-	}
+    if (!$rsth) {
+	my $rdbh = $dbh->{'proxy_dbh'};
+
+	($rsth, $numFields, $numParams, $numRows, @outParams) =
+	    eval { $rdbh->prepare($sth->{'Statement'},
+				  $sth->{'proxy_attr'}, $params) };
+	return DBI::set_err($sth, 1, $@) if $@;
+	return DBI::set_err($sth, 1,
+			    "Constructor didn't return a handle: $rsth")
+	    unless ($rsth =~ /^((?:\w+|\:\:)+)=(\w+)/);
+
+	$rsth = RPC::PlClient::Object->new($1, $client, $rsth);
+
 	$sth->{'proxy_sth'} = $rsth;
- 	$sth->{'proxy_attr_cache'}->{'NUM_OF_FIELDS'} = $numFields;
- 	$sth->DBD::_::st::STORE('NUM_OF_FIELDS', $numFields);
- 	$sth->{'proxy_attr_cache'}->{'NUM_OF_PARAMS'} = $numParam;
- 	$sth->DBD::_::st::STORE('NUM_OF_PARAMS', $numParam);
-	$sth->{'proxy_rows'} = $numRows;
+ 	$sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
+ 	$sth->SUPER::STORE('NUM_OF_PARAMS' => $numParams);
     } else {
-	my($status, $numRows) =
-	    $client->CallInt('method', $sth->{'proxy_sth'}, 'execute',
-			    @params ? [@params] : $sth->{'proxy_params'});
-	if (!$status) {
-	    DBI::set_err($sth, 1, $numRows);
-	    return undef;
-	}
-	$sth->{'proxy_rows'} = $numRows;
+	my $attrCache = $sth->{'proxy_attr_cache'};
+	$numFields = $attrCache->{'NUM_OF_FIELDS'};
+	$numParams = $attrCache->{'NUM_OF_PARAMS'};
+	($numRows, @outParams) = eval { $rsth->execute($params) };
+	return DBI::set_err($sth, 1, $@) if $@;
     }
+    $sth->{'proxy_rows'} = $numRows;
+    $sth->{'proxy_attr_cache'} = {
+	    'NUM_OF_FIELDS' => $numFields,
+	    'NUM_OF_PARAMS' => $numParams
+    };
+    $sth->SUPER::STORE('Active' => 1) if $numFields; # is SELECT
 
-    undef $sth->{'proxy_finished'}; # Not a delete because of a bug in DBI
+    if (@outParams) {
+	foreach my $p (@$params) {
+	    if (ref($p)  &&  @$p > 2) {
+		my $ref = shift @outParams;
+		${$p->[0]} = $$ref;
+	    }
+	}
+    }
 
     $sth->{'proxy_rows'} || '0E0';
 }
@@ -343,37 +370,26 @@ sub fetch ($) {
     my($data) = $sth->{'proxy_data'};
 
     if(!$data) {
-	if ($sth->{'proxy_finished'}) { return undef }
+	return undef unless $sth->SUPER::FETCH('Active');
 
 	my $rsth = $sth->{'proxy_sth'};
 	if (!$rsth) {
 	    die "Attempt to fetch row without execute";
 	}
-	my $dbh = $sth->{Database};
-	my $num_rows = $sth->{'proxy_cache_rows'} ||
-	    $dbh->{'proxy_cache_rows'} || 20;
-	my($status, @rows) = $dbh->{'proxy_client'}->CallInt('method', $rsth,
-							     'fetch',
-							     $num_rows);
-	if (!$status) {
-	    DBI::set_err($sth, 1, $rows[0]);
-	    return undef;
-	}
+	my $num_rows = $sth->SUPER::FETCH('RowCacheSize') || 20;
+	my @rows = eval { $rsth->fetch($num_rows) };
+	return DBI::set_err($sth, 1, $@) if $@;
 
-	if (@rows < $num_rows) {
-	    $sth->{'proxy_finished'} = 1;
-	    if (!@rows) {
-		$sth->finish();
-		return undef;
-	    }
-	}
 	$sth->{'proxy_data'} = $data = [@rows];
     }
     my $row = shift @$data;
-    if (!@$data) {
+    unless ($row) {
 	undef $sth->{'proxy_data'};
+	# server side has already called finish
+	$sth->SUPER::STORE(Active => 0);
+	return undef;
     }
-    $sth->_set_fbav($row);
+    return $sth->_set_fbav($row);
 }
 *fetchrow_arrayref = \&fetch;
 
@@ -384,35 +400,17 @@ sub rows ($) {
 
 sub finish ($) {
     my($sth) = @_;
-
+    return 1 unless $sth->SUPER::FETCH('Active');
     my $rsth = $sth->{'proxy_sth'};
-    if ($rsth) {
-	my $dbh = $sth->{Database};
-	my $no_finish = exists($sth->{'proxy_no_finish'}) ?
-	    $sth->{'proxy_no_finish'} : $dbh->{'proxy_no_finish'};
-	if (!$no_finish) {
-	    my($status, $result) = $dbh->{'proxy_client'}->CallInt('method',
-								   $rsth,
-								   'finish');
-	    if (!$status) {
-		DBI::set_err($sth, 1, $result);
-		return undef;
-	    }
-	}
-    }
-    1;
-}
-
-sub DESTROY ($) {
-    my($sth) = @_;
-    my $rsth = $sth->{'proxy_sth'};
-    if ($rsth) {
-	my $dbh = $sth->{Database};
-	my $no_finish = exists($sth->{'proxy_no_finish'}) ?
-	    $sth->{'proxy_no_finish'} : $dbh->{'proxy_no_finish'};
-	if (!$no_finish) {
-	    $dbh->{'proxy_client'}->CallInt('method', $rsth, 'DESTROY');
-	}
+    $sth->SUPER::STORE('Active' => 0);
+    return 0 unless $rsth; # Something's out of sync
+    my $no_finish = exists($sth->{'proxy_no_finish'})
+ 	? $sth->{'proxy_no_finish'}
+	: $sth->{Database}->{'proxy_no_finish'};
+    unless ($no_finish) {
+	my $result = eval { $rsth->finish() };
+	return DBI::set_err($sth, 1, $@) if $@;
+	return $result;
     }
     1;
 }
@@ -421,27 +419,22 @@ sub STORE ($$$) {
     my($sth, $attr, $val) = @_;
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr =~ /^proxy_/) {
+    if ($attr =~ /^proxy_/  ||  $type eq 'inherited') {
 	$sth->{$attr} = $val;
 	return 1;
     }
 
-    if ($type eq 'cached') {
+    if ($type eq 'cache_only') {
 	return 0;
     }
 
     if ($type eq 'remote') {
-	my $dbh = $sth->{'Database'};
-	my($status, $result) =
-	    $dbh->{'proxy_client'}->CallInt('method', $dbh->{'proxy_dbh'},
-					   'STORE', $attr, $val);
-	if (!$status) {
-	    DBI::set_err($sth, 1, $result);
-	    return 0;
-	}
+	my $rsth = $sth->{'proxy_sth'}  or  return undef;
+	my $result = eval { $rsth->STORE($attr => $val) };
+	return DBI::set_err($sth, 1, $@) if ($@);
 	return $result;
     }
-    return $sth->DBD::_::st::STORE($attr, $val);
+    return $sth->SUPER::STORE($attr => $val);
 }
 
 sub FETCH ($$) {
@@ -452,34 +445,42 @@ sub FETCH ($$) {
     }
 
     my $type = $ATTR{$attr} || 'remote';
-    if ($type eq 'cached'  &&  exists($sth->{'proxy_attr_cache'}->{$attr})) {
+    if ($type eq 'inherited') {
+	if (exists($sth->{$attr})) {
+	    return $sth->{$attr};
+	}
+	return $sth->{'Database'}->{$attr};
+    }
+
+    if ($type eq 'cache_only'  &&  exists($sth->{'proxy_attr_cache'}->{$attr})) {
 	return $sth->{'proxy_attr_cache'}->{$attr};
     }
 
     if ($type ne 'local') {
-	my $dbh = $sth->{'Database'};
-	my($status, $result) =
-	    $dbh->{'proxy_client'}->CallInt('method', $sth->{'proxy_sth'},
-					   'FETCH', $attr);
-	if (!$status) {
-	    DBI::set_err($sth, 1, $result);
-	    return undef;
-	}
-	if ($type eq 'cached') {
-	    $sth->{'proxy_attr_cache'}->{$attr} = $result;
-	}
+	my $rsth = $sth->{'proxy_sth'}  or  return undef;
+	my $result = eval { $rsth->FETCH($attr) };
+	return DBI::set_err($sth, 1, $@) if $@;
 	return $result;
+    } elsif ($attr eq 'RowsInCache') {
+	my $data = $sth->{'proxy_data'};
+	$data ? @$data : 0;
+    } else {
+	$sth->SUPER::FETCH($attr);
     }
-    return $sth->DBD::_::st::FETCH($attr);
 }
 
-sub bind_param ($) {
-    my($sth, $param, $val, $type) = @_;
-    $sth->{'proxy_param'}->[$param-1] = (@_ > 3) ? $val : [$val, $type];
+sub bind_param ($$$@) {
+    my $sth = shift; my $param = shift;
+    $sth->{'proxy_params'}->[$param-1] = [@_];
 }
+*bind_param_inout = \&bind_param;
 
+sub DESTROY {
+    # Just to avoid autoloading DESTROY ...
+}
 
 1;
+
 
 __END__
 
@@ -499,12 +500,24 @@ DBD::Proxy - A proxy driver for the DBI
 =head1 DESCRIPTION
 
 DBD::Proxy is a Perl module for connecting to a database via a remote
-DBI driver. This is of course not needed for DBI drivers which already
+DBI driver.
+
+This is of course not needed for DBI drivers which already
 support connecting to a remote database, but there are engines which
-don't offer network connectivity. Another application is offering
-database access through a firewall, as the driver offers query based
-restrictions. For example you can restrict queries to exactly those
-that are used in a given CGI application.
+don't offer network connectivity.
+
+Another application is offering database access through a firewall, as
+the driver offers query based restrictions. For example you can
+restrict queries to exactly those that are used in a given CGI
+application.
+
+Speaking of CGI, another application is (or rather, will be) to reduce
+the database connect/disconnect overhead from CGI scripts by using
+proxying the connect_cached method. The proxy server will hold the
+database connections open in a cache. The CGI script then trades the
+database connect/disconnect overhead for the DBD::Proxy
+connect/disconnect overhead which is typically much less.
+I<Note that the connect_cached method is new and still experimental.>
 
 
 =head1 CONNECTING TO THE DATABASE
@@ -528,6 +541,9 @@ With DBD::Proxy this becomes
 You see, this is mainly the same. The DBD::Proxy module will create a
 connection to the Proxy server on "alpha" which in turn will connect
 to the ODBC database.
+
+Refer to the L<DBI(3)> documentation on the C<connect> method for a way
+to automatically use DBD::Proxy without having to change your code.
 
 DBD::Proxy's DSN string has the format
 
@@ -574,8 +590,8 @@ then DBD::Proxy will create a new cipher object by executing
 
     $cipherRef = $class->new(pack("H*", $key));
 
-and pass this object to the RPC::pClient module when creating a
-client. See L<RPC::pClient(3)>. Example:
+and pass this object to the RPC::PlClient module when creating a
+client. See L<RPC::PlClient(3)>. Example:
 
     cipher=IDEA:key=97cd2375efa329aceef2098babdc9721
 
@@ -593,34 +609,52 @@ Of course encryption requires an appropriately configured server. See
 
 Turn on debugging mode
 
-=item proxy_cache_rows
+=item stderr
 
-The DBI supports only fetching one or all rows at a time. This is not
-appropriate for an application using DBD::Proxy, as one network packet
-per result column may slow down things drastically.
+This attribute will set the corresponding attribute of the RPC::PlClient
+object, thus logging will not use syslog(), but redirected to stderr.
+This is the default under Windows.
 
-Thus the driver is usually fetching a certain number of rows via the
-network and caches it for you. By default the value 20 is used, but
-you can override it with the I<proxy_cache_rows> attribute. This is
-a database handle attribute, but it is inherited and overridable for
-the statement handles: Say, you have a table with large blobs, then
-you might prefer something like this:
+    stderr=1
 
-    $sth->prepare("SELECT * FROM images");
-    $sth->{'proxy_cache_rows'} = 1;            # Disable caching
+=item logfile
+
+Similar to the stderr attribute, but output will be redirected to the
+given file.
+
+    logfile=/dev/null
+
+=item RowCacheSize
+
+The DBD::Proxy driver supports this attribute (which is DBI standard,
+as of DBI 1.02). It's used to reduce network round-trips by fetching
+multiple rows in one go. The current default value is 20, but this may
+change.
+
 
 =item proxy_no_finish
 
-This attribute is another attempt to reduce network traffic: If the
-application is calling $sth->finish() or destroys the statement handle,
-then the proxy tells the server to finish or destroy the remote
-statement handle. Of course this slows down things quite a lot, but
-is prefectly well for avoiding memory leaks with persistent connections.
+This attribute can be used to reduce network traffic: If the
+application is calling $sth->finish() then the proxy tells the server
+to finish the remote statement handle. Of course this slows down things
+quite a lot, but is prefectly good for reducing memory usage with
+persistent connections.
 
 However, if you set the I<proxy_no_finish> attribute to a TRUE value,
-either in the database handle or in the statement handle, then the
-finish() or DESTROY() calls will be supressed. This is what you want,
-for example, in small and fast CGI applications.
+either in the database handle or in the statement handle, then finish()
+calls will be supressed. This is what you want, for example, in small
+and fast CGI applications.
+
+=item proxy_quote
+
+This attribute can be used to reduce network traffic: By default calls
+to $dbh->quote() are passed to the remote driver.  Of course this slows
+down things quite a lot, but is the safest default behaviour.
+  
+However, if you set the I<proxy_quote> attribute to the value 'C<local>'
+either in the database handle or in the statement handle, and the call
+to quote has only one parameter, then the local default DBI quote
+method will be used (which will be faster but may be wrong).
 
 =back
 
@@ -644,6 +678,6 @@ is granted to Tim Bunce for distributing this as a part of the DBI.
 
 =head1 SEE ALSO
 
-L<DBI(3)>, L<RPC::pClient(3)>, L<Storable(3)>
+L<DBI(3)>, L<RPC::PlClient(3)>, L<Storable(3)>
 
 =cut
