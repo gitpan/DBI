@@ -34,10 +34,19 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
 
 {
     my $numTest = 0;
-    sub Test($;$) {
+    sub _old_Test($;$) {
 	my $result = shift; my $str = shift || '';
 	printf("%sok %d%s\n", ($result ? "" : "not "), ++$numTest, $str);
 	$result;
+    }
+    sub Test ($;$) {
+	my($ok, $msg) = @_;
+	    $msg = ($msg) ? " ($msg)" : "";
+	my $line = (caller)[2];
+	++$numTest;
+	($ok) ? print "ok $numTest at line $line\n" : print "not ok $numTest\n";
+	warn "# failed test $numTest at line ".(caller)[2]."$msg\n" unless $ok;
+	return $ok;
     }
 }
 
@@ -55,7 +64,7 @@ my $config_file = "dbiproxy$i.conf";
     or die "Failed to create config file $config_file: $!";
 
 my($handle, $port);
-my $numTests = 111;
+my $numTests = 117;
 if (@ARGV) {
     $port = $ARGV[0];
 } else {
@@ -80,6 +89,9 @@ my $dbh;
 Test($dbh = eval { DBI->connect($dsn, '', '', { 'PrintError' => 0 }) })
     or print "Connect error: " . $DBI::errstr . "\n";
 
+print "example_driver_path=$dbh->{example_driver_path}\n";
+Test($dbh->{example_driver_path});
+
 print "Setting AutoCommit\n";
 Test($dbh->{AutoCommit} = 1);
 Test($dbh->{AutoCommit});
@@ -98,6 +110,12 @@ $dbh->{'proxy_quote'} = 'remote';
 Test($dbh->quote("quote's") eq "'quote''s'");
 Test($dbh->quote(undef)     eq "NULL");
 
+# XXX the $optional param is undocumented and may be removed soon
+Test($dbh->quote_identifier('foo')    eq '"foo"',  $dbh->quote_identifier('foo'));
+Test($dbh->quote_identifier('f"o')    eq '"f""o"', $dbh->quote_identifier('f"o'));
+Test($dbh->quote_identifier('foo','bar') eq '"foo"."bar"');
+Test($dbh->quote_identifier('foo',undef,'bar') eq '"foo"."bar"');
+Test($dbh->quote_identifier(undef,undef,'bar') eq '"bar"');
 
 print "Trying commit with invalid number of parameters.\n";
 eval { $dbh->commit('dummy') };

@@ -6,9 +6,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.3 2002/01/10 15:14:06 timbo Exp $
+#   $Id: ExampleP.pm,v 11.4 2002/02/07 03:00:53 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -58,6 +58,7 @@
         my($this) = DBI::_new_dbh($drh, {
 	    'Name' => $dbname,
 	    'User' => $user,
+	    examplep_get_info => {},
 	    });
 		$this->STORE(Active => 1);
         $this;
@@ -116,13 +117,24 @@
 
     sub table_info {
 	my $dbh = shift;
+	my ($catalog, $schema, $table, $type) = @_;
+
+	my @types = split(/["']*,["']/, $type || 'TABLE');
+	my %types = map { $_=>$_ } @types;
 
 	# Return a list of all subdirectories
 	my $dh = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	my $haveFileSpec = eval { require File::Spec };
 	my $dir = $haveFileSpec ? File::Spec->curdir() : ".";
 	my @list;
-	{
+	if ($types{VIEW}) {	# for use by test harness
+	    push @list, [ undef, "schema",  "table",  'VIEW', undef ];
+	    push @list, [ undef, "sch-ema", "table",  'VIEW', undef ];
+	    push @list, [ undef, "schema",  "ta-ble", 'VIEW', undef ];
+	    push @list, [ undef, "sch ema", "table",  'VIEW', undef ];
+	    push @list, [ undef, "schema",  "ta ble", 'VIEW', undef ];
+	}
+	if ($types{TABLE}) {
 	    no strict 'refs';
 	    opendir($dh, $dir)
 		or return $dbh->DBI::set_err(int($!),
@@ -131,7 +143,7 @@
 		next unless -d $file;
 		my($dev, $ino, $mode, $nlink, $uid) = lstat($file);
 		my $pwnam = undef; # eval { scalar(getpwnam($uid)) } || $uid;
-		push(@list, [ $dir, $pwnam, $file, 'TABLE']);
+		push @list, [ $dir, $pwnam, $file, 'TABLE', undef ];
 	    }
 	    close($dh);
 	}
@@ -143,12 +155,12 @@
 
 	my $attr = {
 	    'rows' => \@list,
-	    'NUM_OF_FIELDS' => 4,
-	    'NAME' => ['TABLE_QUALIFIER', 'TABLE_OWNER', 'TABLE_NAME',
-		    'TABLE_TYPE'],
+	    'NUM_OF_FIELDS' => 5,
+	    'NAME' => ['TABLE_CAT', 'TABLE_SCHEM', 'TABLE_NAME',
+		    'TABLE_TYPE', 'REMARKS'],
 	    'TYPE' => [DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR(),
-		    DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR()],
-	    'NULLABLE' => [1, 1, 1, 1]
+		    DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR() ],
+	    'NULLABLE' => [1, 1, 1, 1, 1]
 	};
 	my $sdbh = $dbh->{'dbd_sponge_dbh'};
 	my $sth = $sdbh->prepare("SHOW TABLES FROM $dir", $attr)
@@ -189,12 +201,19 @@
     }
 
 
+    sub get_info {
+	my ($dbh, $info_type) = @_;
+	return $dbh->{examplep_get_info}->{$info_type};
+    }
+
+
     sub FETCH {
 	my ($dbh, $attrib) = @_;
 	# In reality this would interrogate the database engine to
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
 	# else pass up to DBI to handle
+	return $INC{"DBD/ExampleP.pm"} if $attrib eq 'example_driver_path';
 	return $dbh->SUPER::FETCH($attrib);
     }
 

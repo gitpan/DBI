@@ -1,13 +1,13 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.3 2002/01/10 15:14:06 timbo Exp $
+# $Id: Makefile.PL,v 11.5 2002/02/07 03:00:53 timbo Exp $
 #
-#  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
+#  Copyright (c) 1994-2002  Tim Bunce  England
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 BEGIN {
-    require 5.004;
+    require 5.005_03;
     unshift @INC, "lib";
 }
 
@@ -102,9 +102,9 @@ if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
     $opts{CAPI} = 'TRUE' if $Config{archname} =~ /-object\b/i;
 }
 
-if ($Config{cc} eq 'gcc') {	# ask gcc to be mildly pedantic
+if ($Config{gccversion}) {	# ask gcc to be mildly pedantic
     $opts{DEFINE} .= ' -Wall -Wno-comment';
-    $opts{DEFINE} .= ' -Wpointer-arith -Wconversion' if $::opt_g;
+    $opts{DEFINE} .= ' -Wpointer-arith' if $::opt_g;
 }
 
 $opts{DEFINE} .= ' -DDBI_NO_THREADS' unless $::opt_thread;
@@ -226,8 +226,15 @@ sub post_constants {
     }
     my $xst = dbd_postamble();
     $xst =~ s/\$\(BASEEXT\)/Perl/g;
+    my $dir_sep = ($os eq 'MSWin32') ? '\\' : '/';
     $xst .= '
 DBI.c: Perl$(OBJ_EXT)
+
+# make Changes file available as installed pod docs "perldoc DBI::Changes"
+config :: $(INST_LIBDIR)' . $dir_sep . '.exists
+	@$(MKPATH) $(INST_LIBDIR)/DBI
+	@$(RM_F) $(INST_LIBDIR)/DBI/Changes.pm
+	$(CP) Changes $(INST_LIBDIR)/DBI/Changes.pm
 ';
 
     return $xst;

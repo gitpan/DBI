@@ -5,19 +5,32 @@ $|=1;
 
 print "1..$tests\n";
 
-sub ok ($$) {
-    my($n, $ok) = @_;
+sub ok ($$;$) {
+    my($n, $ok, $msg) = @_;
+        $msg = ($msg) ? " ($msg)" : "";
     ++$t;
-    die "sequence error, expected $n but actually $t"
-		if $n and $n != $t;
-	#warn "test $t done.\n";
-    ($ok) ? print "ok $t\n" : print "not ok $t\n";
+    die "sequence error, expected $n but actually $t at line ".(caller)[2]."\n"
+                if $n and $n != $t;
+    my $line = (caller)[2];
+    ($ok) ? print "ok $t at line $line\n" : print "not ok $t\n";
+    warn "# failed test $t at line ".(caller)[2]."$msg\n" unless $ok;
+    return $ok;
 }
 
 
 use DBI qw(:sql_types :utils);
-ok(0, 1);
-ok(0, 1);
+
+if (-f "/dev/null") {
+    DBI->trace(42,"/dev/null");
+    ok(0, $DBI::dbi_debug == 42, "DBI::dbi_debug=$DBI::dbi_debug");
+    DBI->trace(0, undef);
+    ok(0, $DBI::dbi_debug ==  0, "DBI::dbi_debug=$DBI::dbi_debug");
+}
+else {
+    ok(0, 1);
+    ok(0, 1);
+}
+
 
 $switch = DBI->internal;
 ok(0, ref $switch eq 'DBI::dr');
@@ -70,5 +83,11 @@ ok(0,         !$is_num[2]);	# "foo" -> defined false
 ok(0,          $is_num[3]); # 1 -> true
 ok(0,         !$is_num[4]); # "." -> false
 
-BEGIN { $tests = 31 }
+ok(0, DBI::hash("foo1"  ) == -1077531989,  DBI::hash("foo1"));
+ok(0, DBI::hash("foo1",0) == -1077531989,  DBI::hash("foo1",0));
+ok(0, DBI::hash("foo2",0) == -1077531990,  DBI::hash("foo2",0));
+ok(0, DBI::hash("foo1",1) == -1263462440,  DBI::hash("foo1",1));
+ok(0, DBI::hash("foo2",1) == -1263462437,  DBI::hash("foo2",1));
+
+BEGIN { $tests = 36 }
 exit 0;

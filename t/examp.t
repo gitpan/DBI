@@ -20,7 +20,8 @@ sub ok ($$;$) {
     ++$t;
     die "sequence error, expected $n but actually $t at line ".(caller)[2]."\n"
 		if $n and $n != $t;
-    ($ok) ? print "ok $t\n" : print "not ok $t\n";
+    my $line = (caller)[2];
+    ($ok) ? print "ok $t at line $line\n" : print "not ok $t\n";
     warn "# failed test $t at line ".(caller)[2]."$msg\n" unless $ok;
     return $ok;
 }
@@ -35,6 +36,8 @@ DBI->trace(3,$trace_file);		# enable trace before first driver load
 my $r;
 my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', undef, undef);
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
+ok(0, $dbh);
+ok(0, ref $dbh);
 
 if (0) {
 DBI->trace(9,undef);
@@ -44,7 +47,15 @@ warn $foo=$dbh->{Driver};
 die DBI::dump_handle($dbh,"dump_handle",1);
 }
 
-my $dbh2 = DBI->connect('dbi:ExampleP:', '', '');
+my $dbh2;
+
+eval {
+    $dbh2 = DBI->connect("dbi:NoneSuch:foobar", 1, 1, { RaiseError=>1, AutoCommit=>0 });
+};
+ok(0, $@, $@);
+ok(0, !$dbh2);
+
+$dbh2 = DBI->connect('dbi:ExampleP:', '', '');
 ok(0, $dbh ne $dbh2);
 my $dbh3 = DBI->connect_cached('dbi:ExampleP:', '', '');
 my $dbh4 = DBI->connect_cached('dbi:ExampleP:', '', '');
@@ -58,23 +69,28 @@ ok(0, $dbh->{Taint}      == 1);
 ok(0, $dbh->{AutoCommit} == 1);
 ok(0, $dbh->{PrintError} == 0);
 ok(0, $dbh->{FetchHashKeyName} eq 'NAME');
+ok(0, $dbh->{example_driver_path} =~ m:DBD/ExampleP.pm$:, $dbh->{example_driver_path});
 #$dbh->trace(2);
 
+print "quote\n";
 ok(0, $dbh->quote("quote's") eq "'quote''s'");
 ok(0, $dbh->quote("42", SQL_VARCHAR) eq "'42'");
 ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
 ok(0, $dbh->quote(undef)     eq "NULL");
 
+print "quote_identifier\n";
+$dbh->{examplep_get_info}->{29} = '"'; # SQL_IDENTIFIER_QUOTE_CHAR
 ok(0, $dbh->quote_identifier('foo')    eq '"foo"',  $dbh->quote_identifier('foo'));
-ok(0, $dbh->quote_identifier('foo', 1) eq 'foo',    $dbh->quote_identifier('foo',1));
 ok(0, $dbh->quote_identifier('f"o')    eq '"f""o"', $dbh->quote_identifier('f"o'));
-ok(0, $dbh->quote_identifier('f"o', 1) eq '"f""o"', $dbh->quote_identifier('f"o',1));
-ok(0, $dbh->quote_identifier(['foo','bar']) eq '"foo"."bar"');
-ok(0, $dbh->quote_identifier(['foo',undef,'bar']) eq '"foo"."bar"');
-ok(0, $dbh->quote_identifier([undef,undef,'bar']) eq '"bar"');
-ok(0, $dbh->quote_identifier(['foo',undef,'bar'], 1) eq 'foo.bar');
-ok(0, $dbh->quote_identifier(['foo',undef,'b"r'], 1) eq 'foo."b""r"');
+ok(0, $dbh->quote_identifier('foo','bar') eq '"foo"."bar"');
+ok(0, $dbh->quote_identifier(undef,undef,'bar') eq '"bar"');
+ok(0, $dbh->quote_identifier('foo',undef,'bar') eq '"foo"."bar"');
+$dbh->{dbi_quote_identifier_cache} = undef; # force cache refresh
+$dbh->{examplep_get_info}->{41} = '@'; # SQL_CATALOG_NAME_SEPARATOR
+$dbh->{examplep_get_info}->{114} = 2;  # SQL_CATALOG_LOCATION
+ok(0, $dbh->quote_identifier('foo',undef,'bar') eq '"bar"@"foo"', $dbh->quote_identifier('foo',undef,'bar'));
 
+print "others\n";
 eval { $dbh->commit('dummy') };
 ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/);
 
@@ -345,19 +361,18 @@ $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
 ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/);
 
-print "RaiseError & PrintError & ShowErrorStatement & HandleError\n";
+print "RaiseError & PrintError & ShowErrorStatement\n";
 $dbh->{RaiseError} = 1;
 ok(0, $dbh->{RaiseError});
 $dbh->{ShowErrorStatement} = 1;
 ok(0, $dbh->{ShowErrorStatement});
-$dbh->{HandleError} = sub { die sprintf "HandleError: %s [h=%s, #=%d]",$_[0],$_[1],scalar(@_) };
-ok(0, $dbh->{HandleError});
 
 my $error_sql = "select unknown_field_name2 from ?";
+
 ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
 #print "$@\n";
-ok(0, $@ =~ m/HandleError.*Unknown field names: unknown_field_name2/, $@);
 ok(0, $@ =~ m/\Q$error_sql/, $@); # ShowErrorStatement
+ok(0, $@ =~ m/.*Unknown field names: unknown_field_name2/, $@);
 
 # check that $dbh->{Statement} tracks last _executed_ sth
 my $se_sth1 = $dbh->prepare("select mode from ?");
@@ -375,8 +390,6 @@ $dbh->{RaiseError} = 0;
 ok(0, !$dbh->{RaiseError});
 $dbh->{ShowErrorStatement} = 0;
 ok(0, !$dbh->{ShowErrorStatement});
-$dbh->{HandleError} = undef;
-ok(0, !$dbh->{HandleError});
 
 {
   my @warn;
@@ -388,6 +401,53 @@ ok(0, !$dbh->{HandleError});
   $dbh->{PrintError} = 0;
   ok(0, !$dbh->{PrintError});
 }
+
+
+print "HandleError\n";
+my $HandleErrorReturn;
+my $HandleError = sub {
+    my $msg = sprintf "HandleError: %s [h=%s, rv=%s, #=%d]",
+		$_[0],$_[1],(defined($_[2])?$_[2]:'undef'),scalar(@_);
+    die $msg   if $HandleErrorReturn < 0;
+    $_[2] = 42 if $HandleErrorReturn == 2;
+    return $HandleErrorReturn;
+};
+$dbh->{HandleError} = $HandleError;
+ok(0, $dbh->{HandleError});
+ok(0, $dbh->{HandleError} == $HandleError);
+
+$dbh->{RaiseError} = 1;
+$dbh->{PrintError} = 0;
+$error_sql = "select unknown_field_name2 from ?";
+
+print "HandleError -> die\n";
+$HandleErrorReturn = -1;
+ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
+ok(0, $@ =~ m/^HandleError:/, $@);
+
+print "HandleError -> 0 -> RaiseError\n";
+$HandleErrorReturn = 0;
+ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
+ok(0, $@ =~ m/^DBD::ExampleP::db prepare failed:/, $@);
+
+print "HandleError -> 1 -> return (original)undef\n";
+$HandleErrorReturn = 1;
+$r = eval { $csr_c = $dbh->prepare($error_sql); };
+ok(0, !$@, $@);
+ok(0, !defined($r), $r);
+
+#$dbh->trace(4);
+
+print "HandleError -> 2 -> return (modified)42\n";
+$HandleErrorReturn = 2;
+$r = eval { $csr_c = $dbh->prepare($error_sql); };
+ok(0, !$@, $@);
+ok(0, $r==42, $r);
+
+$dbh->{HandleError} = undef;
+ok(0, !$dbh->{HandleError});
+
+#$dbh->trace(0); die;
 
 print "dump_results\n";
 ok(0, $csr_a = $dbh->prepare($std_sql));
@@ -424,7 +484,7 @@ while (defined(my $file = readdir(DIR))) {
     $dirs{$file} = 1 if -d $file;
 }
 closedir(DIR);
-my $sth = $dbh->table_info();
+my $sth = $dbh->table_info(undef, undef, "%", "TABLE");
 ok(0, $sth);
 %unexpected = %dirs;
 %missing = ();
@@ -440,20 +500,19 @@ ok(0, keys %unexpected == 0)
 ok(0, keys %missing == 0)
     or print "Missing directories: ", join(",", keys %missing), "\n";
 
-# Test the tables method
-%unexpected = %dirs;
-%missing = ();
-foreach my $table ($dbh->tables()) {
-    if (exists($unexpected{$table})) {
-	delete $unexpected{$table};
-    } else {
-	$missing{$table} = 1;
-    }
-}
-ok(0, keys %unexpected == 0)
-    or print "Unexpected directories: ", join(",", keys %unexpected), "\n";
-ok(0, keys %missing == 0)
-    or print "Missing directories: ", join(",", keys %missing), "\n";
+
+print "tables\n";
+my @tables_expected = (
+    q{"schema"."table"},
+    q{"sch-ema"."table"},
+    q{"schema"."ta-ble"},
+    q{"sch ema"."table"},
+    q{"schema"."ta ble"},
+);
+my @tables = $dbh->tables(undef, undef, "%", "VIEW");
+ok(0, @tables == @tables_expected, "Table count mismatch".@tables_expected." vs ".@tables);
+ok(0, $tables[$_] eq $tables_expected[$_], "$tables[$_] ne $tables_expected[$_]")
+	foreach (0..$#tables_expected);
 
 
 for (my $i = 0;  $i < 300;  $i += 100) {
@@ -484,4 +543,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 186; }
+BEGIN { $tests = 201; }

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.3 2002/01/10 15:14:06 timbo Exp $
+/* $Id: DBI.xs,v 11.6 2002/02/07 03:00:53 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -67,8 +67,11 @@ static SV	 *dbih_event	   _((SV *h, char *name, SV*, SV*));
 static int        dbih_set_attr_k  _((SV *h, SV *keysv, int dbikey, SV *valuesv));
 static SV        *dbih_get_attr_k  _((SV *h, SV *keysv, int dbikey));
 
+static int	set_err _((SV *h, imp_xxh_t *imp_xxh, int errval, char *errstr, char *state));
 static int	quote_type _((int sql_type, int p, int s, int *base_type, void *v));
 static int	dbi_hash _((char *string, long i));
+static void	dbih_dumphandle _((SV *h, char *msg, int level));
+static void	dbih_dumpcom _((imp_xxh_t *imp_xxh, char *msg, int level));
 char *neatsvpv _((SV *sv, STRLEN maxlen));
 
 DBISTATE_DECLARE;
@@ -93,7 +96,7 @@ typedef struct dbi_ima_st {
 #define IMA_HAS_USAGE		0x0001	/* check parameter usage	*/
 #define IMA_FUNC_REDIRECT	0x0002	/* is $h->func(..., "method")	*/
 #define IMA_KEEP_ERR		0x0004	/* don't reset err & errstr	*/
-#define IMA_spare	 	0x0008	/* */
+#define IMA_spare		0x0008	/* */
 #define IMA_NO_TAINT_IN   	0x0010	/* don't check for tainted args	*/
 #define IMA_NO_TAINT_OUT   	0x0020	/* don't taint results		*/
 #define IMA_COPY_STMT   	0x0040	/* copy sth Statement to dbh	*/
@@ -127,6 +130,8 @@ static char *dbi_build_opt = "-thread";
 static char *dbi_build_opt = "-nothread";
 #endif
 
+/* 32 bit magic FNV-0 and FNV-1 prime */
+#define FNV_32_PRIME ((UV)0x01000193)
 
 /* --- make DBI safe for multiple perl interpreters --- */
 /*     Contributed by Murray Nesbitt of ActiveState     */
@@ -373,6 +378,26 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 }
 
 
+static int
+set_err(SV *h, imp_xxh_t *imp_xxh, int errval, char *errstr, char *state)
+{
+    STRLEN lna;
+    sv_setiv(DBIc_ERR(imp_xxh),    errval);
+    if (!errstr || !*errstr)
+	errstr = SvPV(DBIc_ERR(imp_xxh), lna);
+    sv_setpv(DBIc_ERRSTR(imp_xxh), errstr);
+    if (state && *state) {
+	if (strlen(state) != 5)
+	    croak("set_err: state must be 5 character string");
+	sv_setpv(DBIc_STATE(imp_xxh), state);
+    }
+    else {
+	(void)SvOK_off(DBIc_STATE(imp_xxh));
+    }
+    return 0;
+}
+
+
 static char *
 mkvname(stash, item, uplevel)	/* construct a variable name	*/
     HV *stash;
@@ -395,17 +420,31 @@ mkvname(stash, item, uplevel)	/* construct a variable name	*/
 
 
 static int
-dbi_hash(key, i)
-    char *key;
-    long i; /* spare */
+dbi_hash(char *key, long type)
 {
-    STRLEN klen = strlen(key);
-    U32 hash = 0;
-    while (klen--)
-        hash = hash * 33 + *key++;
-    hash &= 0x7FFFFFFF;	/* limit to 31 bits		*/
-    hash |= 0x40000000;	/* set bit 31			*/
-    return -(int)hash;	/* return negative int	*/
+    if (type == 0) {
+	STRLEN klen = strlen(key);
+	U32 hash = 0;
+	while (klen--)
+	    hash = hash * 33 + *key++;
+	hash &= 0x7FFFFFFF;	/* limit to 31 bits		*/
+	hash |= 0x40000000;	/* set bit 31			*/
+	return -(int)hash;	/* return negative int	*/
+    }
+    else if (type == 1) {	/* Fowler/Noll/Vo hash	*/
+	/* see http://www.isthe.com/chongo/tech/comp/fnv/ */
+	U32 hash = 0x811c9dc5;
+	unsigned char *s = (unsigned char *)key;    /* unsigned string */
+	while (*s) {
+	    /* multiply by the 32 bit FNV magic prime mod 2^64 */
+	    hash *= FNV_32_PRIME;
+	    /* xor the bottom with the current octet */
+	    hash ^= (U32)*s++;
+	}
+	return hash;
+    }
+    else
+	croak("bad hash type %d", type);
 }
 
 
@@ -602,39 +641,51 @@ dbih_getcom(hrv)	/* Get com struct for handle. Must be fast.	*/
 
 
 static SV *
-dbih_setup_attrib(h, attrib, parent, read_only)
+dbih_setup_attrib(h, attrib, parent, read_only, optional)
     SV *h;
     char *attrib;
     SV *parent;
     int read_only;
+    int optional;
 {
     dPERINTERP;
     STRLEN len = strlen(attrib);
+    SV **asvp;
 
-    SV *asv = *hv_fetch((HV*)SvRV(h), attrib, len, 1);
+    asvp = hv_fetch((HV*)SvRV(h), attrib, len, !optional);
     /* we assume that we won't have any existing 'undef' attributes here */
     /* (or, alternately, we take undef to mean 'copy from parent')	 */
-    if (!SvOK(asv)) {	/* attribute doesn't already exists (the common case) */
-	SV **psv;
-	if (!parent || !SvROK(parent))
+    if (!(asvp && SvOK(*asvp))) { /* attribute doesn't already exists (the common case) */
+	SV **psvp;
+	if ((!parent || !SvROK(parent)) && !optional) {
 	    croak("dbih_setup_attrib(%s): %s not set and no parent supplied",
 		    neatsvpv(h,0), attrib);
-	psv = hv_fetch((HV*)SvRV(parent), attrib, len, 0);
-	if (!psv)
-	    croak("dbih_setup_attrib(%s): %s not set and not in parent",
+	}
+	psvp = hv_fetch((HV*)SvRV(parent), attrib, len, 0);
+	if (psvp) {
+	    if (!asvp)
+		asvp = hv_fetch((HV*)SvRV(h), attrib, len, 1);
+	    sv_setsv(*asvp, *psvp); /* copy attribute from parent to handle */
+	}
+	else {
+	    if (!optional)
+		croak("dbih_setup_attrib(%s): %s not set and not in parent",
 		    neatsvpv(h,0), attrib);
-	sv_setsv(asv, *psv); /* copy attribute from parent to handle */
+	}
     }
     if (DBIS->debug >= 5) {
 	PerlIO_printf(DBILOGFP,"    dbih_setup_attrib(%s, %s, %s)",
 	    neatsvpv(h,0), attrib, neatsvpv(parent,0));
-	if (SvOK(asv))
-	     PerlIO_printf(DBILOGFP," %s (already defined)\n", neatsvpv(asv,0));
-	else PerlIO_printf(DBILOGFP," %s (copied from parent)\n", neatsvpv(asv,0));
+	if (!asvp)
+	     PerlIO_printf(DBILOGFP," undef (not defined)\n");
+	else
+	if (SvOK(*asvp))
+	     PerlIO_printf(DBILOGFP," %s (already defined)\n", neatsvpv(*asvp,0));
+	else PerlIO_printf(DBILOGFP," %s (copied from parent)\n", neatsvpv(*asvp,0));
     }
-    if (read_only)
-	SvREADONLY_on(asv);
-    return asv;
+    if (read_only && asvp)
+	SvREADONLY_on(*asvp);
+    return asvp ? *asvp : &sv_undef;
 }
 
 
@@ -794,15 +845,18 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	/* Copy some attributes from parent if not defined locally and	*/
 	/* also take address of attributes for speed of direct access.	*/
 	/* parent is null for drh, in which case h must hold the values	*/
-#define COPY_PARENT(name,ro) SvREFCNT_inc(dbih_setup_attrib(h, (name), parent, ro))
+#define COPY_PARENT(name,ro,opt) SvREFCNT_inc(dbih_setup_attrib(h,(name),parent,ro,opt))
 #define DBIc_ATTR(imp, f) _imp2com(imp, attr.f)
 	/* XXX we should validate that these are the right type (refs etc)	*/
-	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err",1);	/* scalar ref	*/
-	DBIc_ATTR(imp, State)    = COPY_PARENT("State",1);	/* scalar ref	*/
-	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1);	/* scalar ref	*/
-	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1);	/* array ref	*/
-	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0);	/* scalar (int)	*/
-	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0);	/* scalar ref */
+	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err",1,0);	/* scalar ref	*/
+	DBIc_ATTR(imp, State)    = COPY_PARENT("State",1,0);	/* scalar ref	*/
+	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1,0);	/* scalar ref	*/
+	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1,0);	/* array ref	*/
+	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0,0);	/* scalar (int)	*/
+	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0,0);	/* scalar ref */
+	if (parent) {
+	    dbih_setup_attrib(h,"HandleError",parent,0,1);
+	}
 	if (parent)
 	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp);
 	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
@@ -833,6 +887,13 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     DBI_UNLOCK;
 }
 
+
+static void
+dbih_dumphandle(SV *h, char *msg, int level)
+{
+    D_imp_xxh(h);
+    dbih_dumpcom(imp_xxh, msg, level);
+}
 
 static void
 dbih_dumpcom(imp_xxh, msg, level)
@@ -1200,9 +1261,12 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "PrintError")) {
 	DBIc_set(imp_xxh,DBIcf_PrintError, on);
     }
-    else if (strEQ(key, "HandleError") && (!SvOK(valuesv) || SvROK(valuesv)) ) {
+    else if (strEQ(key, "HandleError")) {
+	if ( on && (!SvROK(valuesv) || (SvTYPE(SvRV(valuesv)) != SVt_PVCV)) ) {
+	    croak("Can't set HandleError to '%s'",neatsvpv(valuesv,0));
+	}
 	DBIc_set(imp_xxh,DBIcf_HandleError, on);
-	cacheit = 1;
+	cacheit = 1; /* child copy setup by dbih_setup_handle() */
     }
     else if (strEQ(key, "ShowErrorStatement")) {
 	DBIc_set(imp_xxh,DBIcf_ShowErrorStatement, on);
@@ -1263,7 +1327,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	/* Allow private_* attributes to be stored in the cache.	*/
 	/* This is designed to make life easier for people subclassing	*/
 	/* the DBI classes and may be of use to simple perl DBD's.	*/
-	if (strnNE(key,"private_",8) && strnNE(key,"dbd_",4))
+	if (strnNE(key,"private_",8) && strnNE(key,"dbd_",4) && strnNE(key,"dbi_",4))
 	    return FALSE;
 	cacheit = 1;
     }
@@ -1451,10 +1515,12 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
 	if (svp)
 	    valuesv = *svp;
-	else if (isUPPER(*key))
-	    croak("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
-	else
+	else if (!isUPPER(*key))
 	    valuesv = &sv_undef;	/* dbd_*, private_* etc	*/
+	else if (strEQ(key, "HandleError"))
+	    valuesv = &sv_undef;
+	else
+	    croak("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
     }
     if (cacheit) {
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, TRUE);
@@ -1897,10 +1963,12 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	SAVEINT(DBIc_CALL_DEPTH(imp_xxh));
 	call_depth = ++DBIc_CALL_DEPTH(imp_xxh);
 
-	if (ima && ima->flags & IMA_COPY_STMT) { /* execute() */
-	    SV *parent = DBIc_PARENT_H(imp_xxh);
-	    SV **tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
-	    hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*tmp_svp), 0);
+	if (ima) {
+	    if (ima->flags & IMA_COPY_STMT) { /* execute() */
+		SV *parent = DBIc_PARENT_H(imp_xxh);
+		SV **tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
+		hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*tmp_svp), 0);
+	    }
 	}
     }
 
@@ -2025,7 +2093,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 	}
 	else {
-	    outitems = perl_call_sv(isGV(imp_msv) ? (SV*)GvCV(imp_msv) : imp_msv, gimme);
+	    outitems = perl_call_sv(isGV(imp_msv) ? (SV*)GvCV(imp_msv) : imp_msv,
+		(is_DESTROY ? gimme | G_EVAL | G_KEEPERR : gimme) );
 	}
 	SPAGAIN;
 
@@ -2033,7 +2102,6 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    sp -= outitems; ax = (sp - stack_base) + 1; 
 	}
 
-	/* We might perform some fancy error handling here one day	*/
     }
 
     if (debug >= 1) {
@@ -2044,9 +2112,11 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    /* skip the 'middle' rows to reduce output */
 	    goto skip_meth_return_trace;
 	}
-	if (!keep_error && SvTRUE(DBIc_ERR(imp_xxh)))
-	    PerlIO_printf(logfp,"    !! ERROR: %s %s\n",
-		neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_ERRSTR(imp_xxh),0));
+	if (!keep_error) {
+	    if (SvTRUE(DBIc_ERR(imp_xxh)))
+		PerlIO_printf(logfp,"    !! ERROR: %s %s\n",
+		    neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_ERRSTR(imp_xxh),0));
+	}
 	PerlIO_printf(logfp,"%c%c  <- %s",
 		    (call_depth > 1)                ? '0'+call_depth : ' ',
 		    (DBIc_is(imp_xxh, DBIcf_Taint)) ? 'T'            : ' ',
@@ -2108,6 +2178,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		/* for begin_work, or has but hasn't correctly turned AutoCommit	*/
 		/* back on in their commit or rollback code. So we have to do it.	*/
 		/* This is bad because it'll probably trigger a spurious commit()	*/
+		/* and may mess up the error handling below for the commit/rollback	*/
 		PUSHMARK(SP);
 		XPUSHs(h);
 		XPUSHs(sv_2mortal(newSVpv("AutoCommit",0)));
@@ -2130,6 +2201,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	SV **hook_svp = 0;
 	SV **statement;
 	char intro[200];
+
+	if (*meth_name=='s' && strEQ(meth_name,"set_err")) {
+	    SV **sem_svp = hv_fetch((HV*)SvRV(h), "dbi_set_err_method", 18, GV_ADDWARN);
+	    if (SvOK(*sem_svp))
+		meth_name = SvPV(*sem_svp,lna);
+	}
+
 	sprintf(intro,"%s %s failed: ", HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name);
 	msg = sv_2mortal(newSVpv(intro,0));
 	sv_catsv(msg, DBIc_ERRSTR(imp_xxh));
@@ -2140,29 +2218,47 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		|| strEQ(meth_name,"do")
 		)
 	    && (statement = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
-	    &&  SvOK(*statement)
+	    &&  statement && SvOK(*statement)
 	) {
 	    sv_catpv(msg, " [for statement ``");
 	    sv_catsv(msg, *statement);
 	    sv_catpv(msg, "''])");
 	}
-
 	if (DBIc_has(imp_xxh, DBIcf_HandleError)
 		&& (hook_svp=hv_fetch((HV*)SvRV(h),"HandleError",11,0))
-		&& SvOK(*hook_svp)
+		&&  hook_svp && SvOK(*hook_svp)
 	) {
-		IV items;
-		SV *result0 = ST(0);
-		PUSHMARK(SP);
-		XPUSHs(msg);
-		XPUSHs(sv_2mortal(newRV((SV*)DBIc_MY_H(imp_xxh))));
-		XPUSHs(result0); /* XXX :-) */
-		PUTBACK;
-		items = perl_call_sv(*hook_svp, G_SCALAR);
-		SPAGAIN;
-		if (!SvTRUE(POPs)) /* handler says it didn't handle it, so... */
-		    hook_svp = 0;  /* pretend we didn't have a handler...     */
-		PUTBACK;
+	    dSP;
+	    SV *result = *(sp-outitems+1);
+	    PerlIO *logfp = DBILOGFP;
+	    IV items;
+	    SV *status;
+	    int debug = (DBIS->debug >= 1);
+	    if (debug)
+		PerlIO_printf(logfp,"    -> HandleError on %s via %s%s%s%s\n",
+		    neatsvpv(h,0), neatsvpv(*hook_svp,0),
+		    (result ? " (" : ""),
+		    (result ? neatsvpv(result,0) : ""),
+		    (result ? ")" : "")
+		);
+	    PUSHMARK(SP);
+	    XPUSHs(msg);
+	    XPUSHs(sv_2mortal(newRV((SV*)DBIc_MY_H(imp_xxh))));
+	    XPUSHs( result ? result : sv_newmortal() );
+	    PUTBACK;
+	    items = perl_call_sv(*hook_svp, G_SCALAR);
+	    SPAGAIN;
+	    status = POPs;
+	    PUTBACK;
+	    if (!SvTRUE(status)) /* handler says it didn't handle it, so... */
+		hook_svp = 0;  /* pretend we didn't have a handler...     */
+	    if (debug)
+		PerlIO_printf(logfp,"    <- HandleError= %s%s%s%s\n",
+		    neatsvpv(status,0),
+		    (result ? " (" : ""),
+		    (result ? neatsvpv(result,0) : ""),
+		    (result ? ")" : "")
+		);
 	}
 	if (!hook_svp) {
 	    if (DBIc_has(imp_xxh, DBIcf_PrintError))
@@ -2215,18 +2311,27 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 }
 
 
+
 /* --------------------------------------------------------------------	*/
 
 /* comment and placeholder styles to accept and return */
-#define DBIpp_cm_cs 0x0001   /* C style	*/
-#define DBIpp_cm_hs 0x0002   /* #	*/
-#define DBIpp_cm_dd 0x0004   /* --	*/
-#define DBIpp_cm_br 0x0008   /* {}	*/
 
-#define DBIpp_ph_qm 0x0100   /* ?	*/
-#define DBIpp_ph_cn 0x0200   /* :1	*/
-#define DBIpp_ph_cs 0x0400   /* :name	*/
-#define DBIpp_ph_sp 0x0800   /* %s	*/
+#define DBIpp_cm_cs 0x000001   /* C style */
+#define DBIpp_cm_hs 0x000002   /* #       */
+#define DBIpp_cm_dd 0x000004   /* --      */
+#define DBIpp_cm_br 0x000008   /* {}      */
+#define DBIpp_cm_dw 0x000010   /* '-- ' dash dash whitespace */
+#define DBIpp_cm_XX 0x00001F   /* any of the above */
+     
+#define DBIpp_ph_qm 0x000100   /* ?       */
+#define DBIpp_ph_cn 0x000200   /* :1      */
+#define DBIpp_ph_cs 0x000400   /* :name   */
+#define DBIpp_ph_sp 0x000800   /* %s (as return only, not accept)    */
+#define DBIpp_ph_XX 0x000F00   /* any of the above */
+
+#define DBIpp_st_qq 0x010000   /* '' char escape */
+#define DBIpp_st_bs 0x020000   /* \  char escape */
+#define DBIpp_st_XX 0x030000   /* any of the above */
 
 #define DBIpp_L_BRACE '{'
 #define DBIpp_R_BRACE '}'
@@ -2234,8 +2339,9 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 #define PS_return(flag)  DBIbf_has(ps_return,(flag))
 
 SV *
-preparse(SV *h, char *statement, IV ps_return, IV ps_accept, void *foo)
+preparse(SV *dbh, char *statement, IV ps_return, IV ps_accept, void *foo)
 {
+	D_imp_xxh(dbh);
 /*
 	The idea here is that ps_accept defines which constructs to
 	recognize (accept) as valid in the source string (other
@@ -2265,195 +2371,266 @@ preparse(SV *h, char *statement, IV ps_return, IV ps_accept, void *foo)
 	Also, we'll only support DBIpp_cm_br as an input style. And
 	even then, only with reluctance. We may (need to) drop it when
 	we add support for odbc escape sequences.
-
 */
-    int ph_type = 0;
+
     int idx = 1;
 
     char in_quote = '\0';
     char in_comment = '\0';
-    char *src, *start, *dst;
+    char rt_comment = '\0';
+    char *src, *start, *dest;
     char *style = "", *laststyle = '\0';
+    SV *new_stmt_sv;
 
-    SV *new_stmt_sv = newSV(strlen(statement) * 3);
+    if (!(ps_return | DBIpp_ph_XX)) { /* no return ph type specified */
+	ps_return |= ps_accept | DBIpp_ph_XX;	/* so copy from ps_accept */
+    }
+
+    /* XXX this allocation strategy won't work when we get to more advanced stuff */
+    new_stmt_sv = newSV(strlen(statement) * 3);
     sv_setpv(new_stmt_sv,"");
-
     src  = statement;
-    dst = SvPVX(new_stmt_sv);
+    dest = SvPVX(new_stmt_sv);
 
-/* XXX select cm_fallback and ph_fallback from ps_return
-	for use in the rewrite code to be added below
-*/
+    while( *src ) 
+    {
+	if (*src == '%' && PS_return(DBIpp_ph_sp))
+	    *dest++ = '%';
 
-    while ( *src ) {
-	if (in_comment) {
-	    /* are we at the end of the comment we're in? */
-	    if (	(in_comment == '-' && *src == '\n') 
-		||	(in_comment == '#' && *src == '\n')
-		||	(in_comment == DBIpp_L_BRACE && *src == DBIpp_R_BRACE)
+	if (in_comment)
+	{
+	     if (	(in_comment == '-' && (*src == '\n' || *(src+1) == '\0')) 
+		||	(in_comment == '#' && (*src == '\n' || *(src+1) == '\0'))
+		||	(in_comment == DBIpp_L_BRACE && *src == DBIpp_R_BRACE) /* XXX nesting? */
 		||	(in_comment == '/' && *src == '*' && *(src+1) == '/')
-	    ) {
+	     ) {
+		switch (rt_comment) {
+		case '/':	*dest++ = '*'; *dest++ = '/';	break;
+		case '-':	*dest++ = '\n';			break;
+		case '#':	*dest++ = '\n';			break;
+		case DBIpp_L_BRACE: *dest++ = DBIpp_R_BRACE;	break;
+		case '\0':	/* ensure deleting a comment doesn't join two tokens */
+			if (in_comment=='/' || in_comment==DBIpp_L_BRACE)
+			    *dest++ = ' '; /* ('-' and '#' styles use the newline) */
+			break;
+		}
 		if (in_comment == '/')
-		    *dst++ = *src++; /* avoids asterisk-slash-asterisk issues */
+		    src++;
+		src += (*src != '\n' || *(dest-1)=='\n') ? 1 : 0;
 		in_comment = '\0';
-	    }
-	    *dst++ = *src++;
-	    continue;
+		rt_comment = '\0';
+	     }
+             else 
+	     if (rt_comment)
+                *dest++ = *src++;
+	     else
+		src++;	/* delete (don't copy) the comment */
+	     continue;
 	}
 
-	if (in_quote) {
-	    if (*src == '%' && ph_type == 4)
-		*dst++ = '%';
+	if (in_quote)
+	{
 	    if (*src == in_quote) {
 		in_quote = 0;
 	    }
-	    *dst++ = *src++;
+	    *dest++ = *src++;
 	    continue;
 	}
 
-	/* Look for start of comments */
-	if (   (*src == '-' && *(src+1) == '-' && PS_accept(DBIpp_cm_dd))
-	    || (*src == '/' && *(src+1) == '*' && PS_accept(DBIpp_cm_cs))
-	    || (*src == '#'                    && PS_accept(DBIpp_cm_hs))
-	    || (*src == DBIpp_L_BRACE          && PS_accept(DBIpp_cm_br))
-	) {
+	/* Look for comments */
+        if (*src == '-' && *(src+1) == '-' &&
+		(PS_accept(DBIpp_cm_dd) || (*(src+2) == ' ' && PS_accept(DBIpp_cm_dw)))
+	)
+        {
 	    in_comment = *src;
-	    /* We know *src & the next char are to be copied, so do */
-	    /*  it.  In the case of C-style comments, it happens to */
-	    /*  help us avoid slash-asterisk-slash oddities.        */
-	    *dst++ = *src++;
-	    if (*src=='-' || *src=='/')
-		*dst++ = *src++; /* skip past 2nd char of double char delimiters */
+	    src += 2;	/* skip past 2nd char of double char delimiters */
+	    if (PS_return(DBIpp_cm_dd) || PS_return(DBIpp_cm_dw)) {
+                *dest++ = rt_comment = '-';
+                *dest++ = '-';
+                if (PS_return(DBIpp_cm_dw) && *src!=' ')
+		    *dest++ = ' '; /* insert needed white space */
+            }
+	    else if (PS_return(DBIpp_cm_cs)) {
+                *dest++ = rt_comment = '/';
+                *dest++ = '*';
+            }
+	    else if (PS_return(DBIpp_cm_hs)) {
+                *dest++ = rt_comment = '#';
+            }
+	    else if (PS_return(DBIpp_cm_br)) {
+                *dest++ = rt_comment = DBIpp_L_BRACE;
+            }
 	    continue;
-	}
+        }
+        else if (*src == '/' && *(src+1) == '*' && PS_accept(DBIpp_cm_cs))
+        {
+	    in_comment = *src;
+	    src += 2;	/* skip past 2nd char of double char delimiters */
+	    if (PS_return(DBIpp_cm_cs)) {
+                *dest++ = rt_comment = '/';
+                *dest++ = '*';
+            }
+	    else if (PS_return(DBIpp_cm_dd) || PS_return(DBIpp_cm_dw)) {
+                *dest++ = rt_comment = '-';
+                *dest++ = '-';
+                if (PS_return(DBIpp_cm_dw)) *dest++ = ' '; 
+            }
+	    else if (PS_return(DBIpp_cm_hs)) {
+                *dest++ = rt_comment = '#';
+            }
+	    else if (PS_return(DBIpp_cm_br)) {
+                *dest++ = rt_comment = DBIpp_L_BRACE;
+            }
+	    continue;
+        }
+        else if (*src == '#' && PS_accept(DBIpp_cm_hs))
+        {
+	    in_comment = *src;
+	    src++;
+	    if (PS_return(DBIpp_cm_hs)) {
+                *dest++ = rt_comment = '#';
+            }
+	    else if (PS_return(DBIpp_cm_dd) || PS_return(DBIpp_cm_dw)) {
+                *dest++ = rt_comment = '-';
+                *dest++ = '-';
+                if (PS_return(DBIpp_cm_dw)) *dest++ = ' '; 
+            }
+	    else if (PS_return(DBIpp_cm_cs)) {
+                *dest++ = rt_comment = '/';
+                *dest++ = '*';
+            }
+	    else if (PS_return(DBIpp_cm_br)) {
+                *dest++ = rt_comment = DBIpp_L_BRACE;
+            }
+	    continue;
+        }
+        else if (*src == DBIpp_L_BRACE && PS_accept(DBIpp_cm_br))
+        {
+	    in_comment = *src;
+	    src++;
+	    if (PS_return(DBIpp_cm_br)) {
+                *dest++ = rt_comment = DBIpp_L_BRACE;
+            }
+	    else if (PS_return(DBIpp_cm_dd) || PS_return(DBIpp_cm_dw)) {
+                *dest++ = rt_comment = '-';
+                *dest++ = '-';
+                if (PS_return(DBIpp_cm_dw)) *dest++ = ' '; 
+            }
+	    else if (PS_return(DBIpp_cm_cs)) {
+                *dest++ = rt_comment = '/';
+                *dest++ = '*';
+            }
+	    else if (PS_return(DBIpp_cm_hs)) {
+                *dest++ = rt_comment = '#';
+            }
+	    continue;
+        }
 
-	if (	!(*src==':' && (PS_accept(DBIpp_ph_cn) || PS_accept(DBIpp_ph_cs)))
-	   &&	!(*src=='?' &&  PS_accept(DBIpp_ph_qm))
-	) {
+       if (    !(*src==':' && (PS_accept(DBIpp_ph_cn) || PS_accept(DBIpp_ph_cs)))
+           &&  !(*src=='?' &&  PS_accept(DBIpp_ph_qm))
+       ){
 	    if (*src == '\'' || *src == '"')
 		in_quote = *src;
-	    if (*src == '%' && ph_type == 4)
-		*dst++ = '%';
-	    *dst++ = *src++;
+	    *dest++ = *src++;
 	    continue;
 	}
 
 	/* only here for : or ? outside of a comment or literal	*/
 
-	start = dst;			/* save name inc colon	*/ 
-	*dst++ = *src++;
+	start = dest;			/* save name inc colon	*/ 
+	*dest++ = *src++;		/* copy and move past first char */
 
-	if (*start == '?')			/* X/Open Standard */
-	{
+	if (*start == '?')		/* X/Open Standard */
+        {
 	    style = "?";
-	    switch (ph_type)
-	    {
-	    case 1: /* '?' -> ':p1' (etc) */
-		sprintf(start,":p%d", idx++);
-		dst = start+strlen(start);
-		break;
-	    case 2: 
-		break;
-	    case 4: /* '?' -> '%s' */
-		*start  = '%';
-		*dst++ = 's';
-		break;
-	    }
-	} 
-	else if (isDIGIT(*src))   /* :1 */ 
-	{
-	    style = ":1";
-	    switch (ph_type)
-	    {
-	    case 1: /* ':1'->':p1'  */
-	       idx = atoi(src);
-	       *dst++ = 'p';
-	       if (idx <= 0) {
-		   warn("\tPlaceholder :%d invalid, placeholders must be >= 1\n", idx);
-		   return(0);
-	       }
-	       while(isDIGIT(*src))
-		   *dst++ = *src++;
-	       break;
-	    case 2: 
-	       *start = '?';
-	       *dst = *start;
-	       if (atoi(src) != idx) {
-		   warn("\tPlaceholder :%d out of sequence, must be in sequential order (:a1, :a2 ..)\n", idx);
-		   return(0);
-	       }
-	       while(isDIGIT(*src)) *src++;
-	       idx++;
-	       break;
-	    case 4: /* ':1' -> '%s' */
-	       sprintf(start,"%%s");
-	       dst = start+strlen(start);
-	       if (atoi(src) != idx) {
-		   warn("\tPlaceholder :%d out of sequence, must be in sequential order (:a1, :a2 ..)\n", idx);
-		   return(0);
-	       }
-	       while(isDIGIT(*src)) *src++; 
-	       idx++;
-	       break;
-	    }
-	} 
-	else if (isALNUM(*src))         /* :foo */ 
-	{
-	    style = ":foo";
-	    switch (ph_type)
-	    {
-	    case 1: 
-		while (isALNUM(*src))	/* includes '_'	*/
-		       *dst++ = *src++;
-		break;
-	    case 2: 
-	       *start = '?';
-	       *dst = *start;
-	       while (isALNUM(*src)) *src++; /* includes '_'	*/
-	       break;
-	    case 4: /* ':foo' -> '%s' */
-	       sprintf(start,"%%s");
-	       dst = start+strlen(start);
-	       while (isALNUM(*src)) *src++; /* includes '_'	*/
-	       break;
-	    }
-	}
-	else {			/* perhaps ':=' PL/SQL construct */
-	    continue;
-	}
 
-	/*dst = '\0';*/			/* handy for debugging	*/
+            if (PS_return(DBIpp_ph_qm))
+		;
+            else if (PS_return(DBIpp_ph_cn)) { /* '?' -> ':p1' (etc) */
+                sprintf(start,":p%d", idx++);
+                dest = start+strlen(start);
+            }
+            else if (PS_return(DBIpp_ph_sp)) { /* '?' -> '%s' */
+		   *start  = '%';
+		   *dest++ = 's';
+            }
+	} 
+        else if (isDIGIT(*src)) {   /* :1 */ 
+	    int pln = atoi(src);
+	    style = ":1";
+
+	    if (PS_return(DBIpp_ph_cn)) { /* ':1'->':p1'  */
+		   idx = pln;
+		   *dest++ = 'p';
+		   while(isDIGIT(*src))
+		       *dest++ = *src++;
+            }
+	    else if (PS_return(DBIpp_ph_qm) /* ':1' -> '?'  */
+	    	 ||  PS_return(DBIpp_ph_sp) /* ':1' -> '%s' */
+	    ) {
+		   PS_return(DBIpp_ph_qm) ? sprintf(start,"?") : sprintf(start,"%%s");
+		   dest = start + strlen(start);
+                   if (pln != idx) {
+			char buf[99];
+			sprintf(buf, "preparse found placeholder :%d out of sequence, expected :%d", pln, idx);
+			set_err(dbh, imp_xxh, 1, buf, 0);
+			return 0;
+                   }
+		   while(isDIGIT(*src)) src++;
+                   idx++;
+            }
+	} 
+        else if (isALNUM(*src))         /* :name */ 
+        {
+	    style = ":name";
+
+	    if (PS_return(DBIpp_ph_cs)) {
+		;
+            }
+	    else if (PS_return(DBIpp_ph_qm) /* ':name' -> '?'  */
+	    	 ||  PS_return(DBIpp_ph_sp) /* ':name' -> '%s' */
+	    ) {
+		PS_return(DBIpp_ph_qm) ? sprintf(start,"?") : sprintf(start,"%%s");
+		dest = start + strlen(start);
+		while (isALNUM(*src))	/* consume name, includes '_'	*/
+		    src++;
+	    }
+	}
+        /* perhaps ':=' PL/SQL construct */
+	else { continue; }
+
+	*dest = '\0';			/* handy for debugging	*/
 
 	if (laststyle && style != laststyle) {
-	    warn("\tCan't mix placeholder styles (%s / %s)\n", style, laststyle);
-	    return(0);
-	}
+	    char buf[99];
+	    sprintf(buf, "preparse found mixed placeholder styles (%s / %s)", style, laststyle);
+	    set_err(dbh, imp_xxh, 1, buf, 0);
+            return 0;
+        }
 	laststyle = style;
     }
-    *dst = '\0';
+    *dest = '\0';
 
-    /* warn about probable parsing errors, but continue anyway */
+    /* warn about probable parsing errors, but continue anyway (returning processed string) */
     switch (in_quote)
     {
     case '\'':
-	warn("\tIncomplete single-quoted string\n");
-	break;
+	    set_err(dbh, imp_xxh, 1, "preparse found unterminated single-quoted string", 0);
+	    break;
     case '\"':
-	warn("\tIncomplete double-quoted string (delimited identifier)\n");
-	break;
+	    set_err(dbh, imp_xxh, 1, "preparse found unterminated double-quoted string", 0);
+	    break;
     }
     switch (in_comment)
     {
     case DBIpp_L_BRACE:
-	warn("\tIncomplete bracketed {...} comment\n");
-	break;
+	    set_err(dbh, imp_xxh, 1, "preparse found unterminated bracketed {...} comment", 0);
+	    break;
     case '/':
-	warn("\tIncomplete bracketed C-Style comment\n");
-	break;
-    case '\n':
-	warn("\tIncomplete double-dash or shell comment\n");
-	break;
+	    set_err(dbh, imp_xxh, 1, "preparse found unterminated bracketed C-style comment", 0);
+	    break;
     }
+
     SvCUR_set(new_stmt_sv, strlen(SvPVX(new_stmt_sv)));
     *SvEND(new_stmt_sv) = '\0';
     return new_stmt_sv;
@@ -2482,9 +2659,8 @@ constant()
 	SQL_ALL_TYPES                    = SQL_ALL_TYPES
 	SQL_ARRAY                        = SQL_ARRAY
 	SQL_ARRAY_LOCATOR                = SQL_ARRAY_LOCATOR
-	SQL_BIGINT                       = SQL_BIGINT
 	SQL_BINARY                       = SQL_BINARY
-	SQL_BIT_VARYING                  = SQL_BIT_VARYING
+	SQL_BIT                          = SQL_BIT
 	SQL_BLOB                         = SQL_BLOB
 	SQL_BLOB_LOCATOR                 = SQL_BLOB_LOCATOR
 	SQL_BOOLEAN                      = SQL_BOOLEAN
@@ -2514,6 +2690,8 @@ constant()
 	SQL_INTERVAL_YEAR_TO_MONTH       = SQL_INTERVAL_YEAR_TO_MONTH
 	SQL_LONGVARBINARY                = SQL_LONGVARBINARY
 	SQL_LONGVARCHAR                  = SQL_LONGVARCHAR
+	SQL_MULTISET                     = SQL_MULTISET
+	SQL_MULTISET_LOCATOR             = SQL_MULTISET_LOCATOR
 	SQL_NUMERIC                      = SQL_NUMERIC
 	SQL_REAL                         = SQL_REAL
 	SQL_REF                          = SQL_REF
@@ -2538,25 +2716,21 @@ constant()
 	DBIpp_cm_cs	= DBIpp_cm_cs
 	DBIpp_cm_hs	= DBIpp_cm_hs
 	DBIpp_cm_dd	= DBIpp_cm_dd
+	DBIpp_cm_dw	= DBIpp_cm_dw
 	DBIpp_cm_br	= DBIpp_cm_br
+	DBIpp_cm_XX	= DBIpp_cm_XX
 	DBIpp_ph_qm	= DBIpp_ph_qm
 	DBIpp_ph_cn	= DBIpp_ph_cn
 	DBIpp_ph_cs	= DBIpp_ph_cs
 	DBIpp_ph_sp	= DBIpp_ph_sp
+	DBIpp_ph_XX	= DBIpp_ph_XX
+	DBIpp_st_qq	= DBIpp_st_qq
+	DBIpp_st_bs	= DBIpp_st_bs
+	DBIpp_st_XX	= DBIpp_st_XX
     CODE:
     RETVAL = ix;
     OUTPUT:
     RETVAL
-
-
-SV *
-preparse(h, statement, ps_accept, ps_return, foo=Nullch)
-    SV *	h
-    char *	statement
-    IV		ps_accept
-    IV		ps_return
-    void	*foo
-	
 
 
 void
@@ -2592,37 +2766,6 @@ _handles(sv)
 
 
 void
-set_err(sv, errval, errstr=&sv_no, state=&sv_undef)
-    SV *	sv
-    SV *	errval
-    SV *	errstr
-    SV *	state
-    CODE:
-    {
-    dPERINTERP;
-    D_imp_xxh(sv);
-    sv_setsv(DBIc_ERR(imp_xxh),    errval);
-    if (errstr==&sv_no || !SvOK(errstr))
-	errstr = errval;
-    sv_setsv(DBIc_ERRSTR(imp_xxh), errstr);
-    if (SvOK(state)) {
-	STRLEN len;
-	if (SvPV(state, len) && len != 5)
-	    croak("set_err: state must be 5 character string");
-	sv_setsv(DBIc_STATE(imp_xxh), state);
-    }
-    else {
-	(void)SvOK_off(DBIc_STATE(imp_xxh));
-    }
-    sv = dbih_inner(sv,"set_err");
-    DBI_SET_LAST_HANDLE(sv);
-    /* We don't check RaiseError and call die here because that must be	*/
-    /* done by returning theough dispatch and letting the DBI handle it	*/
-    ST(0) = &sv_undef;
-    }
-
-
-void
 neat(sv, maxlen=0)
     SV *	sv
     U32	maxlen
@@ -2631,11 +2774,11 @@ neat(sv, maxlen=0)
 
 
 int
-hash(key, i=0)
+hash(key, type=0)
     char *key
-    int i
+    long type
     CODE:
-    RETVAL = dbi_hash(key, i);
+    RETVAL = dbi_hash(key, type);
     OUTPUT:
     RETVAL
 
@@ -2757,10 +2900,8 @@ dump_handle(sv, msg="DBI::dump_handle", level=0)
     char *	msg
     int 	level
     CODE:
-    {
-    D_imp_xxh(sv);
-    dbih_dumpcom(imp_xxh, msg, level);
-    }
+    dbih_dumphandle(sv, msg, level);
+
 
 
 void
@@ -2857,6 +2998,17 @@ FETCH(sv)
     }
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
     perl_call_sv((SV*)GvCV(imp_gv), GIMME);
+
+
+MODULE = DBI   PACKAGE = DBD::_::db
+
+SV *
+preparse(dbh, statement, ps_accept, ps_return, foo=Nullch)
+    SV *	dbh
+    char *	statement
+    IV		ps_accept
+    IV		ps_return
+    void	*foo
 
 
 
@@ -3167,6 +3319,46 @@ errstr(h)
     if (!SvTRUE(errstr) && (err=DBIc_ERR(imp_xxh)) && SvTRUE(err))
 	    errstr = err;
     ST(0) = sv_mortalcopy(errstr);
+
+
+void
+set_err(h, errval, errstr=&sv_no, state=&sv_undef, method=&sv_undef, result=Nullsv)
+    SV *	h
+    SV *	errval
+    SV *	errstr
+    SV *	state
+    SV *	method
+    SV *	result
+    CODE:
+    {
+    dPERINTERP;
+    D_imp_xxh(h);
+    STRLEN lna;
+    SV **sem_svp;
+    sv_setsv(DBIc_ERR(imp_xxh),    errval);
+    if (errstr==&sv_no || !SvOK(errstr))
+	errstr = errval;
+    sv_setsv(DBIc_ERRSTR(imp_xxh), errstr);
+    if (SvOK(state)) {
+	STRLEN len;
+	if (SvPV(state, len) && len != 5)
+	    croak("set_err: state must be 5 character string");
+	sv_setsv(DBIc_STATE(imp_xxh), state);
+    }
+    else {
+	(void)SvOK_off(DBIc_STATE(imp_xxh));
+    }
+    /* store provided method name so handler code can find it */
+    sem_svp = hv_fetch((HV*)SvRV(h), "dbi_set_err_method", 18, 1);
+    if (SvOK(method))
+	sv_setpv(*sem_svp, SvPV(method,lna));
+    else
+	(void)SvOK_off(*sem_svp);
+
+    /* We don't check RaiseError and call die here because that must be	*/
+    /* done by returning theough dispatch and letting the DBI handle it	*/
+    ST(0) = (result ? result : &sv_undef);
+    }
 
 
 int

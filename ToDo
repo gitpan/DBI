@@ -1,7 +1,7 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
-Foreign key metadata
+Sponge behave_like - generalize?
 
 Update DBI::DBD with overview (at least) recommend Driver.xst strongly.
 Find XS drivers that don't use it and talk to authors.
@@ -53,6 +53,7 @@ change *.xst to treat eaither that or -2 as an error. (The -2 is
 a transition or old drivers.)
 
 ODBC 3.5 date and intervals types and subtypes (from unixODBC?)
+http://www.vpservices.com/jeff/programs/SQL/docs/odbc-getinfo-msdn.html
 
 Proxy: allow config to speficy SQL to allow/deny via regexen
 Docs for connect_cached and test with proxy.
@@ -103,6 +104,7 @@ codes into SQLSTATE values. The error event mechanism could check for
 the flag and lookup the SQLSTATE value for the error from the hash.
 
 ODBC attribute defining if transactions are supported
+http://www.vpservices.com/jeff/programs/SQL/docs/odbc-getinfo-msdn.html
 
 > I had to override
 > tables from DBD::_::db because it doesn't handle the quoting
@@ -127,6 +129,7 @@ source directory containing key driver and config info.
 attribute for 'last inserted id'?
 
 test suite
+http://www.mipt.sw.ru/en/products/ots/
 
 $sth->more_results, now and $sth->become($sth2) later
 
@@ -173,6 +176,7 @@ $dbh->connect([$user, $passwd])	# to reconnect, possibly as a different user
 
 generic dbd_preparse (for both C and perl)
 Add (ODBC) attribute to indicate if placeholders are supported.
+http://www.vpservices.com/jeff/programs/SQL/docs/odbc-getinfo-msdn.html
 
 Fix shared error codes between (dbh) handles, maybe.
 

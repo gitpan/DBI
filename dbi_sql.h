@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 11.3 2002/01/10 15:14:06 timbo Exp $
+/* $Id: dbi_sql.h,v 11.4 2002/02/07 03:00:53 timbo Exp $
  *
  * Copyright (c) 1997,1998,1999  Tim Bunce  England
  *
@@ -14,6 +14,7 @@
 #define SQL_WLONGVARCHAR                 (-10)
 #define SQL_WVARCHAR                      (-9)
 #define SQL_WCHAR                         (-8)
+#define SQL_BIT                           (-7)
 #define SQL_TINYINT                       (-6)
 #define SQL_BIGINT                        (-5)
 #define SQL_LONGVARBINARY                 (-4)
@@ -36,8 +37,6 @@
 #define SQL_TIME                           10
 #define SQL_TIMESTAMP                      11
 #define SQL_VARCHAR                        12
-#define SQL_BIT                            14
-#define SQL_BIT_VARYING                    15
 #define SQL_BOOLEAN                        16
 #define SQL_UDT                            17
 #define SQL_UDT_LOCATOR                    18
@@ -49,6 +48,8 @@
 #define SQL_CLOB_LOCATOR                   41
 #define SQL_ARRAY                          50
 #define SQL_ARRAY_LOCATOR                  51
+#define SQL_MULTISET                       55
+#define SQL_MULTISET_LOCATOR               56
 #define SQL_TYPE_DATE                      91
 #define SQL_TYPE_TIME                      92
 #define SQL_TYPE_TIMESTAMP                 93

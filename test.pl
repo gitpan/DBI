@@ -71,14 +71,15 @@ if (0) {
 
 if ($::opt_m) {
     #$dbh->trace(9);
+    my $level = 4;
     my $cnt = 10000;
     print "Using $driver, same dbh...\n";
-    #for (my $i=0; $i<$cnt; ++$i) { mem_test($dbh, undef, 4) }
+    #for (my $i=0; $i<$cnt; ++$i) { mem_test($dbh, undef, $level) }
     print "Using NullP, reconnecting each time...\n";
-    #for (my $i=0; $i<$cnt; ++$i) { mem_test(undef, ['dbi:NullP:'], 4) }
+    #for (my $i=0; $i<$cnt; ++$i) { mem_test(undef, ['dbi:NullP:'], $level) }
     print "Using ExampleP, reconnecting each time...\n";
-    mem_test(undef, ['dbi:ExampleP:'], 4) while 1;
-    #mem_test(undef, ['dbi:mysql:VC'], 4, "select * from campaigns where length(?)>0") while 1;
+    mem_test(undef, ['dbi:ExampleP:'], $level) while 1;
+    #mem_test(undef, ['dbi:mysql:VC'], $level, "select * from campaigns where length(?)>0") while 1;
 }
 elsif ($::opt_t) {
 	thread_test();

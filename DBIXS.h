@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.2 2001/08/24 22:10:44 timbo Exp $
+/* $Id: DBIXS.h,v 11.3 2002/02/05 02:12:25 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -192,6 +192,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
+#define DBIc_LAST_METHOD(imp)  	_imp2com(imp, std.last_method)
 
 #define DBIc_DEBUG(imp)		(_imp2com(imp, attr.Debug))
 #define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))
@@ -382,7 +383,8 @@ typedef struct {
     dbi_mutex	*mutex;
 
     int         (*logmsg)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
-    void *pad[8];
+    int         (*set_err)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
+    void *pad[7];
 } dbistate_t;
 
 /* macros for backwards compatibility */

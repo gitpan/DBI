@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
+#   $Id: Sponge.pm,v 11.3 2002/02/05 02:12:25 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -49,13 +49,16 @@
 
     sub prepare {
 	my($dbh, $statement, $attribs) = @_;
-	my $rows = $attribs->{'rows'}
+	my $rows = delete $attribs->{'rows'}
 	    || Carp::croak("No rows attribute supplied to prepare");
-	delete $attribs->{'rows'};
 	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'   => $statement,
 	    'rows'        => $rows,
 	});
+	if (my $behave_like = $attribs->{behave_like}) {
+	    $outer->{$_} = $behave_like->{$_}
+		foreach (qw(RaiseError PrintError HandleError ShowErrorStatement));
+	}
 	# we need to set NUM_OF_FIELDS
 	my $numFields;
 	if ($attribs->{'NUM_OF_FIELDS'}) {

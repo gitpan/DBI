@@ -182,6 +182,7 @@ use vars qw(%ATTR $AUTOLOAD);
 sub AUTOLOAD {
     my $method = $AUTOLOAD;
     $method =~ s/(.*::(.*)):://;
+    # warn "AUTOLOAD of $method";
     my $class = $1;
     my $type = $2;
     my %expand =
@@ -307,6 +308,7 @@ sub quote {
 sub table_info {
     my $dbh = shift;
     my $rdbh = $dbh->{'proxy_dbh'};
+    #warn "table_info(@_)";
     my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
     return DBI::set_err($dbh, 1, $@) if $@;
     my $sth = DBI::_new_sth($dbh, {
@@ -324,6 +326,13 @@ sub table_info {
     $sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
     return $sth;
 }
+
+sub tables {
+    my $dbh = shift;
+    #warn "tables(@_)";
+    return $dbh->SUPER::tables(@_);
+}
+
 
 sub type_info_all {
     my $dbh = shift;

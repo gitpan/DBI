@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.4 2002/01/10 15:14:06 timbo Exp $
+# $Id: DBI.pm,v 11.7 2002/02/07 03:00:53 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = 1.20_1; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.21; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -92,8 +92,8 @@ Also worth a visit is the DBI home page at:
 
 Before asking any questions, reread this document, consult the
 archives and read the DBI FAQ. The archives are listed
-at the end of this document.
-The FAQ is installed as a DBI::FAQ module so
+at the end of this document and on the DBI home page.
+The FAQ is installed as a L<DBI::FAQ> module so
 you can read it by executing C<perldoc DBI::FAQ>.
 
 Please note that Tim Bunce does not maintain the mailing lists or the
@@ -104,37 +104,25 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.20_1
-(C<$Date: 2002/01/10 15:14:06 $>).
+This is the DBI specification that corresponds to the DBI version 1.21
+(C<$Date: 2002/02/07 03:00:53 $>).
 
 The DBI specification is evolving at a steady pace, so it's
-important to check that you have the latest copy. The RECENT CHANGES
-section below has a summary of user-visible changes. The F<Changes>
-file supplied with the DBI holds more detailed change information.
+important to check that you have the latest copy.
+
+The significant user-visible changes in each release are documented
+in the L<DBI::FAQ> module so you can read them by executing
+C<perldoc DBI::Changes>.
 
 Note also that whenever the DBI changes, the drivers take some time to
 catch up. Recent versions of the DBI have added new features
-(marked I<NEW> in the text) that may not yet be supported by the drivers
-you use. Talk to the authors of those drivers if you need the features.
+(generally marked I<NEW> in the text) that may not yet be supported by the drivers
+you use. Talk to the authors of those drivers if you need the new features.
 
-Extensions to the DBI and other DBI related modules use the C<DBIx::*>
+Extensions to the DBI use the C<DBIx::*>
 namespace. See L</Naming Conventions and Name Space> and:
 
   http://search.cpan.org/search?mode=module&query=DBIx%3A%3A
-
-=head2 RECENT CHANGES 
-
-Here is a brief summary of significant user-visible changes in recent versions.
-(If a recent version isn't mentioned, it simply means that there were no
-significant user-visible changes in that version.)
-
-=over 4 
-
-=item DBI 1.15
-
-Added selectall_hashref, selectrow_hashref, selectrow_arrayref methods.
-
-=back 
 
 =cut
 
@@ -144,7 +132,7 @@ Added selectall_hashref, selectrow_hashref, selectrow_arrayref methods.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.4 $, 10);
+my $Revision = substr(q$Revision: 11.7 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -155,15 +143,15 @@ BEGIN {
 
 # Make some utility functions available if asked for
 @EXPORT    = ();		    # we export nothing by default
-@EXPORT_OK = qw(%DBI %DBI_methods); # also populated by export_ok_tags:
+@EXPORT_OK = qw(%DBI %DBI_methods hash); # also populated by export_ok_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(
 	SQL_GUID
 	SQL_WLONGVARCHAR
 	SQL_WVARCHAR
 	SQL_WCHAR
+	SQL_BIT
 	SQL_TINYINT
-	SQL_BIGINT
 	SQL_LONGVARBINARY
 	SQL_VARBINARY
 	SQL_BINARY
@@ -184,7 +172,6 @@ BEGIN {
 	SQL_TIME
 	SQL_TIMESTAMP
 	SQL_VARCHAR
-	SQL_BIT_VARYING
 	SQL_BOOLEAN
 	SQL_UDT
 	SQL_UDT_LOCATOR
@@ -196,6 +183,8 @@ BEGIN {
 	SQL_CLOB_LOCATOR
 	SQL_ARRAY
 	SQL_ARRAY_LOCATOR
+	SQL_MULTISET
+	SQL_MULTISET_LOCATOR
 	SQL_TYPE_DATE
 	SQL_TYPE_TIME
 	SQL_TYPE_TIMESTAMP
@@ -215,15 +204,10 @@ BEGIN {
 	SQL_INTERVAL_HOUR_TO_SECOND
 	SQL_INTERVAL_MINUTE_TO_SECOND
    ) ],
-   preparse_flags => [ qw(
-        DBIpp_cm_cs DBIpp_cm_hs DBIpp_cm_dd DBIpp_cm_br
-        DBIpp_ph_qm DBIpp_ph_cn DBIpp_ph_cs DBIpp_ph_sp
-   ) ],
    utils     => [ qw(
 	neat neat_list dump_results looks_like_number
    ) ],
 );
-Exporter::export_ok_tags('sql_types', 'utils', 'preparse_flags');
 
 $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 
@@ -232,8 +216,14 @@ $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 # then install it again.
 bootstrap DBI;
 
+$EXPORT_TAGS{preparse_flags} = [ grep { /^DBIpp_\w\w_/ } keys %{__PACKAGE__."::"} ];
+
+Exporter::export_ok_tags(keys %EXPORT_TAGS);
+
 }
+
 *trace_msg = \&DBD::_::common::trace_msg;
+*set_err   = \&DBD::_::common::set_err;
 
 use strict;
 
@@ -305,6 +295,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
 	state   =>	{ U =>[1,1], O=>0x04 },
+	set_err =>	{ },
 	_not_impl => $std,
 );
 
@@ -327,6 +318,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	commit     	=> { U =>[1,1], O=>0x0080 },
 	rollback   	=> { U =>[1,1], O=>0x0080 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	preparse    	=> {  }, # XXX
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
 	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
@@ -339,7 +331,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	ping       	=> { U =>[1,1], O=>0x04 },
 	disconnect 	=> { U =>[1,1] },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x30 },
-	quote_identifier=> { U =>[2,4, '$name [, ...]' ],	    O=>0x30 },
+	quote_identifier=> { U =>[2,5, '$name [, ...]' ],	    O=>0x30 },
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
@@ -349,8 +341,8 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
 	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ] },
 	type_info_all	=> { U =>[1,1] },
-	type_info	=> { U =>[1,2] },
-	get_info	=> { U =>[2,2] },
+	type_info	=> { U =>[1,2,'$data_type'] },
+	get_info	=> { U =>[2,2,'$info_type'] },
     },
     st => {		# Statement Class Interface
 	@Common_IF,
@@ -454,16 +446,21 @@ sub connect {
 	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver:$dsn\n");
     }
 
-    unless ($old_driver) { # new-style connect so new default semantics
-	$attr = {
+    my %attr;	# take a copy we can delete from
+    if ($old_driver) {
+	%attr = %$attr if $attr;
+    }
+    else {		# new-style connect so new default semantics
+	%attr = (
 	    PrintError=>1, AutoCommit=>1,
 	    ref $attr ? %$attr : (),
 	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec) : (),
-	};
-	# XXX to be enabled for DBI v2.0
+	);
+	# XXX to be enabled for DBI v2.0?
 	#Carp::carp("AutoCommit attribute not specified in $class->connect")
 	#    if $^W && !defined($attr->{AutoCommit});
     }
+    $attr = \%attr;	# now set $attr at our local copy
 
     my $drh = $DBI::installed_drh{$driver} || $class->install_driver($driver)
 	or die "panic: $class->install_driver($driver) failed";
@@ -473,8 +470,8 @@ sub connect {
 
     unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
 	my $msg = "$class->connect($dsn) failed: ".$drh->errstr;
-	if (ref $attr) {
-	    # XXX add $attr->{HandleError} logic here?
+	if (%attr) {
+	    # XXX add $attr{HandleError} logic here?
 	    Carp::croak($msg) if $attr->{RaiseError};
 	    Carp::carp ($msg) if $attr->{PrintError};
 	}
@@ -485,9 +482,12 @@ sub connect {
 
 
     # handle basic RootClass subclassing:
-    my $rebless_class = delete($attr->{RootClass}) || ($class ne 'DBI' ? $class : '');
+    my $rebless_class = $attr->{RootClass} || ($class ne 'DBI' ? $class : '');
     if ($rebless_class) {
-	DBI::_load_module($rebless_class) if $attr->{RootClass};
+	if ($attr->{RootClass}) {	# explicit attribute (rather than static call)
+	    delete $attr->{RootClass};
+	    DBI::_load_module($rebless_class);
+	}
         no strict 'refs';
         unless (@{"$rebless_class\::db::ISA"}) {
             Carp::carp("DBI subclass '$rebless_class\::db' isn't setup, ignored");
@@ -502,24 +502,23 @@ sub connect {
     }
 
 
-    if (ref $attr) {
-	my %a = %$attr;	# take a copy we can delete from
+    if (%$attr) {
 
-	DBI::_rebless_dbtype_subclass($dbh, $rebless_class||$class, delete $a{DbTypeSubclass}, \%a)
-	    if $a{DbTypeSubclass};
+	DBI::_rebless_dbtype_subclass($dbh, $rebless_class||$class, delete $attr->{DbTypeSubclass}, $attr)
+	    if $attr->{DbTypeSubclass};
 
 	my $a;
 	foreach $a (qw(RaiseError PrintError AutoCommit)) { # do these first
-	    next unless exists $a{$a};
-	    $dbh->{$a} = delete $a{$a};
+	    next unless  exists $attr->{$a};
+	    $dbh->{$a} = delete $attr->{$a};
 	}
-	foreach $a (keys %a) {
-	    $dbh->{$a} = $a{$a};
+	foreach $a (keys %$attr) {
+	    $dbh->{$a} = $attr->{$a};
 	}
     }
 
     # if we've been subclassed then let the subclass know that we're connected
-    $dbh->connected($dsn, $user, $pass, $attr) if ref $dbh ne 'DBI::db';
+    $dbh->connected($dsn, $user, $pass, \%attr) if ref $dbh ne 'DBI::db';
 
     DBI->trace_msg("    <- connect= $dbh\n") if $DBI::dbi_debug;
 
@@ -545,7 +544,6 @@ sub install_driver {		# croaks on failure
     my $class = shift;
     my($driver, $attr) = @_;
     my $drh;
-    local $@;
 
     $driver ||= $ENV{DBI_DRIVER} || '';
 
@@ -1095,17 +1093,34 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     sub DESTROY  { Carp::croak("Driver has not implemented DESTROY for @_") }
 
     sub quote_identifier {
-	my $dbh = shift;
-	my $id  = shift;
-	my $opt = shift;		# optional, quote only if needed
-	# ignore null elements (ie catalog, schema)
-	my @id  = (ref $id) ? grep { defined } @$id : ($id);
-	s/"/""/g foreach @id;		# escape embedded quotes
+	my ($dbh, @id) = @_;
+	my $attr = (@id > 3) ? pop @id : undef;
+
+	my $info = $dbh->{dbi_quote_identifier_cache} ||= [
+	    $dbh->get_info(29)  || '"',	# SQL_IDENTIFIER_QUOTE_CHAR
+	    $dbh->get_info(41)  || '.',	# SQL_CATALOG_NAME_SEPARATOR
+	    $dbh->get_info(114) ||   1,	# SQL_CATALOG_LOCATION
+	];
+
+	my $quote = $info->[0];
 	foreach (@id) {			# quote the elements
-	    next if $opt && /^[a-z_]\w*$/i;
-	    $_ = qq{"$_"};
+	    next unless defined;
+	    s/$quote/$quote$quote/g;	# escape embedded quotes
+	    $_ = qq{$quote$_$quote};
 	}
-	return join '.', @id;		# ... and join the dots
+
+	# strip out catalog if present for special handling
+	my $catalog = (@id >= 3) ? shift @id : undef;
+
+	# join the dots, ignoring any null/undef elements (ie schema)
+	my $quoted_id = join '.', grep { defined } @id;
+
+	if ($catalog) {			# add catalog correctly
+	    $quoted_id = ($info->[2] == 2)	# SQL_CL_END
+		    ? $quoted_id . $info->[1] . $catalog
+		    : $catalog   . $info->[1] . $quoted_id;
+	}
+	return $quoted_id;
     }
 
     sub quote {
@@ -1287,18 +1302,23 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub tables {
 	my ($dbh, @args) = @_;
-	my $sth = $dbh->table_info(@args);
-	return unless $sth;
-	my ($row, @tables);
-	while($row = $sth->fetch) {
-	    my $name = $row->[2];
-	    if ($row->[1]) {
-		my $schema = $row->[1];
-		# a little hack
-		my $quote = ($schema eq uc($schema)) ? '' : '"';
-		$name = "$quote$schema$quote.$name"
-	    }
-	    push @tables, $name;
+	my $sth    = $dbh->table_info(@args) or return;
+	my $tables = $sth->fetchall_arrayref or return;
+	my @tables;
+	if ($dbh->get_info(29)) { # SQL_IDENTIFIER_QUOTE_CHAR
+	    @tables = map { $dbh->quote_identifier( @{$_}[0,1,2] ) } @$tables;
+	}
+	else {		# temporary old style hack (yeach)
+	    @tables = map {
+		my $name = $_->[2];
+		if ($_->[1]) {
+		    my $schema = $_->[1];
+		    # a sad hack (mostly for Informix I recall)
+		    my $quote = ($schema eq uc($schema)) ? '' : '"';
+		    $name = "$quote$schema$quote.$name"
+		}
+		$name;
+	    } @$tables;
 	}
 	return @tables;
     }
@@ -1463,7 +1483,7 @@ The DBI is a database access module for the Perl programming language.  It defin
 a set of methods, variables, and conventions that provide a consistent
 database interface, independent of the actual database being used.
 
-It is important to remember that the DBI is just an interface. 
+It is important to remember that the DBI is just an interface.
 The DBI is a layer
 of "glue" between an application and one or more database I<driver>
 modules.  It is the driver modules which do most of the real work. The DBI
@@ -1485,7 +1505,7 @@ within.
   `-------'       | |...
                   `-'
 
-The API, or Application Programming Interface, defines the 
+The API, or Application Programming Interface, defines the
 call interface and variables for Perl scripts to use. The API
 is implemented by the Perl DBI extension.
 
@@ -1494,7 +1514,7 @@ actual execution.  The DBI is also responsible for the dynamic loading
 of drivers, error checking and handling, providing default
 implementations for methods, and many other non-database specific duties.
 
-Each driver 
+Each driver
 contains implementations of the DBI methods using the
 private interface functions of the corresponding database engine.  Only authors
 of sophisticated/multi-database applications or generic library
@@ -1522,7 +1542,7 @@ if all references to them are deleted.
 
 =head2 Outline Usage
 
-To use DBI, 
+To use DBI,
 first you need to load the DBI module:
 
   use DBI;
@@ -1704,7 +1724,7 @@ Driver Specific Prefix Registry:
 
 =head2 SQL - A Query Language
 
-Most DBI drivers require applications to use a dialect of SQL 
+Most DBI drivers require applications to use a dialect of SQL
 (Structured Query Language) to interact with the database engine.
 The following links provide useful information and further links about
 SQL:
@@ -1730,7 +1750,7 @@ SQL history.
 
 =head2 Placeholders and Bind Values
 
-Some drivers support placeholders and bind values. 
+Some drivers support placeholders and bind values.
 I<Placeholders>, also called parameter markers, are used to indicate
 values in a database statement that will be supplied later,
 before the prepared statement is executed.  For example, an application
@@ -1818,7 +1838,7 @@ produced like this:
   }
 
 These constants are defined by SQL/CLI, ODBC or both.
-C<SQL_BIT> is (currently) omitted, because SQL/CLI and ODBC provide
+C<SQL_BIGINT> is (currently) omitted, because SQL/CLI and ODBC provide
 conflicting codes.
 
 See the L</type_info>, L</type_info_all>, and L</bind_param> methods
@@ -1889,15 +1909,15 @@ and passed to the DBD::Proxy module. C<DBI_AUTOPROXY> is typically set as
 If C<$username> or C<$password> are undefined (rather than just empty),
 then the DBI will substitute the values of the C<DBI_USER> and C<DBI_PASS>
 environment variables, respectively.  The DBI will warn if the
-environment variables are not defined.  However, the everyday use of 
-these environment 
+environment variables are not defined.  However, the everyday use of
+these environment
 variables is not recommended for security reasons. The mechanism is
 primarily intended to simplify testing.
 
 C<DBI->E<gt>C<connect> automatically installs the driver if it has not been
 installed yet. Driver installation either returns a valid driver
 handle, or it I<dies> with an error message that includes the string
-"C<install_driver>" and the underlying problem. So C<DBI->E<gt>C<connect> 
+"C<install_driver>" and the underlying problem. So C<DBI->E<gt>C<connect>
 will die
 on a driver installation failure and will only return C<undef> on a
 connect failure, in which case C<$DBI::errstr> will hold the error message.
@@ -1908,7 +1928,7 @@ processing. The DBI does not define any interpretation for the
 contents of these fields.  The driver is free to interpret the
 C<$data_source>, C<$username>, and C<$password> fields in any way, and supply
 whatever defaults are appropriate for the engine being accessed.
-(Oracle, for example, uses the ORACLE_SID and TWO_TASK environment 
+(Oracle, for example, uses the ORACLE_SID and TWO_TASK environment
 variables if no C<$data_source> is specified.)
 
 The C<AutoCommit> and C<PrintError> attributes for each connection default to
@@ -1917,7 +1937,7 @@ However, it is strongly recommended that you explicitly define C<AutoCommit>
 rather than rely on the default. Future versions of
 the DBI may issue a warning if C<AutoCommit> is not explicitly defined.
 
-The C<\%attr> parameter can be used to alter the default settings of 
+The C<\%attr> parameter can be used to alter the default settings of
 C<PrintError>, C<RaiseError>, C<AutoCommit>, and other attributes. For example:
 
   $dbh = DBI->connect($data_source, $user, $pass, {
@@ -1952,11 +1972,11 @@ passing its name as the fourth argument to C<connect> (instead of C<\%attr>):
 
 In this "old-style" form of C<connect>, the C<$data_source> should not start
 with "C<dbi:driver_name:>". (If it does, the embedded driver_name
-will be ignored). Also note that in this older form of C<connect>, 
+will be ignored). Also note that in this older form of C<connect>,
 the C<$dbh->E<gt>C<{AutoCommit}> attribute is I<undefined>, the
 C<$dbh->E<gt>C<{PrintError}> attribute is off, and the old C<DBI_DBNAME>
 environment variable is
-checked if C<DBI_DSN> is not defined. Beware that this "old-style" 
+checked if C<DBI_DSN> is not defined. Beware that this "old-style"
 C<connect> will be withdrawn in a future version of DBI.
 
 =item C<connect_cached> I<NEW>
@@ -2108,6 +2128,23 @@ Returns true for each element that looks like a number.
 Returns false for each element that does not look like a number.
 Returns C<undef> for each element that is undefined or empty.
 
+=item C<hash>
+
+  $hash_value = DBI::hash($buffer, $type);
+
+Return a 32-bit integer 'hash' value corresponding to the contents of $buffer.
+The $type parameter selects which kind of hash algorithm should be used.
+
+For the technically curious, type 0 (which is the default if $type
+isn't specified) is based on the Perl 5.1 hash except that the value
+is forced to be negative (for obscure historical reasons).
+Type 1 is the better "Fowler / Noll / Vo" (FNV) hash. See
+http://www.isthe.com/chongo/tech/comp/fnv/ for more information.
+Both types are implemented in C and are very fast.
+
+This function doesn't have much to do with databases, except that
+it can be handy to store hash values in a database.
+
 =back
 
 
@@ -2142,7 +2179,7 @@ Equivalent to C<$h->E<gt>C<state>.
 
 =item C<$DBI::rows>
 
-Equivalent to C<$h->E<gt>C<rows>. Please refer to the documentation 
+Equivalent to C<$h->E<gt>C<rows>. Please refer to the documentation
 for the L</rows> method.
 
 =item C<$DBI::lasth>
@@ -2199,6 +2236,26 @@ then state will return C<S1000> (General Error) for all errors.
 The driver is free to return any value via C<state>, e.g., warning
 codes, even if it has not declared an error by returning a true value
 via the L</err> method described above.
+
+=item C<set_err> I<NEW>
+
+  $rv = $h->set_err($err, $errstr);
+  $rv = $h->set_err($err, $errstr, $state, $method);
+  $rv = $h->set_err($err, $errstr, $state, $method, $rv);
+
+Set the C<err>, C<errstr>, and C<state> values for the handle.
+This will trigger the normal DBI error handling mechanisms,
+such as C<RaiseError> and C<HandleError>, if they are enabled.
+This method is typically only used by DBI drivers and DBI subclasses.
+
+The $method parameter provides an alternate method name, instead
+of the fairly unhelpful 'C<set_err>', for the
+C<RaiseError>/C<PrintError> error string.
+
+The C<set_err> method normally returns undef.  The $rv parameter
+provides an alternate return value. The C<HandleError> subroutine
+can access and alter this value.
+
 
 =item C<trace>
 
@@ -2397,10 +2454,11 @@ For backwards compatibility, you could just use C<eval { ... }> instead.
 
 This attribute can be used to provide your own alternative behaviour
 in case of errors. If set to a reference to a subroutine then that
-subroutine is called when an error is detected.
+subroutine is called when an error is detected (at the same point that
+C<RaiseError> and C<PrintError> are handled).
 
 The subroutine is called with three parameters: the error message
-string that C<RaiseError> and C<PrintError> would use (see above),
+string that C<RaiseError> and C<PrintError> would use,
 the DBI handle being used, and the first value being returned by
 the method that failed (typically undef).
 
@@ -2411,6 +2469,43 @@ For example, to get a full stack trace for any error:
 
   use Carp;
   $h->{HandleError} = sub { confess(shift) };
+
+Or to turn errors into exceptions:
+
+  use Exception; # or your own favourite exception module
+  $h->{HandleError} = sub { Exception->new('DBI')->raise($_[0]) };
+
+It is possible to 'stack' multiple HandleError handlers by using
+closures:
+
+  sub your_subroutine {
+    my $previous_handler = $h->{HandleError};
+    $h->{HandleError} = sub {
+      return 1 if $previous_handler and &$previous_handler(@_);
+      ... your code here ...
+    }
+  }
+
+Using a C<my> inside a subroutine to store the previous C<HandleError>
+value is important.  See L<perlsub> and L<perlref> for more information
+about I<closures>.
+
+It is possible for C<HandleError> to hide an error, to a limited
+degree, by using L</set_err> to reset $DBI::err and $DBI::errstr,
+and altering the return value of the failed method. For example:
+
+  $h->{HandleError} = sub {
+    return 0 unless $_[0] =~ /^\S+ fetchrow_arrayref failed:/;
+    return 0 unless $_[1]->err == 1234; # the error to 'hide'
+    $h->set_err(0,"");	# turn off the error
+    $_[2] = [ ... ];	# supply alternative return value
+    return 1;
+  };
+
+This only works for methods which return a single value and is hard
+to make reliable (avoiding infinite loops, for example) and so isn't
+recommended for general use!  If you find a I<good> use for it then
+please let me know.
 
 
 =item C<ShowErrorStatement> (boolean, inherited) I<NEW>
@@ -2428,7 +2523,7 @@ This attribute can be used as an alternative to the L</trace> method
 to set the DBI trace level for a specific handle.
 
 
-=item C<FetchHashKeyName> (string, inherited) I<NEW>
+=item C<FetchHashKeyName> (string, inherited)
 
 This attribute is used to specify which attribute name the
 fetchrow_hashref() method should use to get the field names for the
@@ -2524,11 +2619,23 @@ please report your experience and any suggestions for changes.
 
 The DBI provides a way to store extra information in a DBI handle as
 "private" attributes. The DBI will allow you to store and retreive any
-attribute which has a name starting with "C<private_>". It is I<strongly>
-recommended that you use just I<one> private attribute (e.g., use a
-hash ref) I<and> give it a long and unambiguous name that includes the
-module or application name that the attribute relates to (e.g.,
-"C<private_YourFullModuleName_thingy>").
+attribute which has a name starting with "C<private_>".
+
+It is I<strongly> recommended that you use just I<one> private
+attribute (e.g., use a hash ref) I<and> give it a long and unambiguous
+name that includes the module or application name that the attribute
+relates to (e.g., "C<private_YourFullModuleName_thingy>").
+
+Because of the way the Perl tie mechanism works you cannot reliably
+use the C<||=> operator directly to initialise the attribute, like this:
+
+  my $foo = $dbh->{private_yourmodname_foo} ||= { ... }; # WRONG
+
+you should use a two step approach like this:
+
+  my $foo = $dbh->{private_yourmodname_foo};
+  $foo ||= $dbh->{private_yourmodname_foo} = { ... };
+
 
 =back
 
@@ -2546,13 +2653,13 @@ The following methods are specified for DBI database handles:
 
 =item C<do>
 
-  $rc  = $dbh->do($statement)           or die $dbh->errstr;
-  $rc  = $dbh->do($statement, \%attr)   or die $dbh->errstr;
-  $rv  = $dbh->do($statement, \%attr, @bind_values) or ...
+  $rows = $dbh->do($statement)           or die $dbh->errstr;
+  $rows = $dbh->do($statement, \%attr)   or die $dbh->errstr;
+  $rows = $dbh->do($statement, \%attr, @bind_values) or die ...
 
 Prepare and execute a single statement. Returns the number of rows
-affected or C<undef> on error. A return value of C<-1> means the 
-number of rows is not known or is not available.
+affected or C<undef> on error. A return value of C<-1> means the
+number of rows is not known, not applicable, or not available.
 
 This method is typically most useful for I<non>-C<SELECT> statements that
 either cannot be prepared in advance (due to a limitation of the
@@ -2641,7 +2748,7 @@ If any method fails, and L</RaiseError> is not set, C<selectrow_hashref>
 will return undef.
 
 
-=item C<selectall_arrayref> I<NEW>
+=item C<selectall_arrayref>
 
   $ary_ref = $dbh->selectall_arrayref($statement);
   $ary_ref = $dbh->selectall_arrayref($statement, \%attr);
@@ -2672,7 +2779,7 @@ In which case the array is copied and each value decremented before
 passing to C</fetchall_arrayref>.
 
 
-=item C<selectall_hashref> I<NEW>
+=item C<selectall_hashref>
 
   $hash_ref = $dbh->selectall_hashref($statement, $key_field);
   $hash_ref = $dbh->selectall_hashref($statement, $key_field, \%attr);
@@ -2871,7 +2978,7 @@ before disconnecting.
 
 If you disconnect from a database while you still have active statement
 handles, you will get a warning. The statement handles should either be
-cleared (destroyed) before disconnecting, or the C<finish> method 
+cleared (destroyed) before disconnecting, or the C<finish> method
 should be called on
 each one.
 
@@ -2895,6 +3002,40 @@ Few applications would have direct use for this method. See the specialized
 Apache::DBI module for one example usage.
 
 
+=item C<get_info> I<NEW>
+
+B<Warning:> This method is experimental and may change.
+
+  $value = $dbh->get_info( $info_type );
+
+Returns information about the implementation, i.e. driver and data
+source capabilities, restrictions etc. It returns C<undef> for
+unknown or unimplemented information types. For example:
+
+  $database_version  = $dbh->get_info(  18 ); # SQL_DBMS_VER
+  $max_select_tables = $dbh->get_info( 106 ); # SQL_MAXIMUM_TABLES_IN_SELECT
+
+See L</"Standards Reference Information"> for more detailed information
+about the information types and their meanings and possible return values.
+
+The DBI curently doesn't provide a name to number mapping for the
+information type codes or the results. Applications are expected to use
+the integer values directly, with the name in a comment, or define
+their own named values using something like the L<constant> pragma.
+
+Because some DBI methods make use of get_info(), drivers are strongly
+encouraged to support I<at least> the following very minimal set
+of information types to ensure the DBI itself works properly:
+
+ Type  Name                        Example A     Example B
+ ----  --------------------------  ------------  ------------
+   17  SQL_DBMS_NAME               'ACCESS'      'Oracle'
+   18  SQL_DBMS_VER                '03.50.0000'  '08.01.0721'
+   29  SQL_IDENTIFIER_QUOTE_CHAR   '`'           '"'
+   41  SQL_CATALOG_NAME_SEPARATOR  '.'           '@'
+  114  SQL_CATALOG_LOCATION        1             2
+
+
 =item C<table_info> I<NEW>
 
 B<Warning:> This method is experimental and may change.
@@ -2906,8 +3047,8 @@ B<Warning:> This method is experimental and may change.
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
 
-The old style interface passes all the parameters as a reference to an attribute
-hash with some or all of the following attributes:
+The old style interface passes all the parameters as a reference
+to an attribute hash with some or all of the following attributes:
 
   %attr = (
        TABLE_CAT   => $catalog  # String value of the catalog name
@@ -2916,12 +3057,17 @@ hash with some or all of the following attributes:
      , TABLE_TYPE  => $type     # String value of the table type(s)
   );
 
-Note: The support for the selection criteria is driver specific. If the
-driver doesn't support one or more then them then you may get back more
+The old style interface is deprecated and will be removed in a future version.
+
+The support for the selection criteria is driver specific. If the
+driver doesn't support one or more of them then you may get back more
 than you asked for and can do the filtering yourself.
 
 The arguments $catalog, $schema and $table may accept search patterns
 according to the database/driver, for example: $table = '%FOO%';
+Remember that the underscore character ('C<_>') is a search pattern
+that means match any character, so 'FOO_%' is the same as 'FOO%'
+and 'FOO_BAR%' will match names like 'FOO1BAR'.
 
 The value of $type is a comma-separated list of one or more types of
 tables to be returned in the result set. Each value may optionally be
@@ -3265,21 +3411,21 @@ See also L</"Standards Reference Information">.
 
 B<Warning:> This method is experimental and may change.
 
-  @names = $dbh->tables;
   @names = $dbh->tables( $catalog, $schema, $table, $type );
-  @names = $dbh->tables( \%attr );
+  @names = $dbh->tables;	# deprecated
 
-Simple interface to table_info(). Returns a plain list of name names,
-possibly including a schema prefix.  This list should include all
-tables that can be used in a C<SELECT> statement without further
-qualification.
+Simple interface to table_info(). Returns a list of matching
+table names, possibly including a catalog/schema prefix.
 
-Note that C<table_info> might not return records for all tables.
-Applications can use any valid table regardless of whether it's
-returned by tables.  See also L</table_info>.
+See L</table_info> for a description of the parameters.
+
+If C<$dbh->E<gt>C<get_info(29)> returns true (29 is SQL_IDENTIFIER_QUOTE_CHAR)
+then the table names are constructed and quoted by L</quote_identifier>
+to ensure they are usable even if they contain whitespace or reserved
+words etc.
 
 
-=item C<type_info_all> I<NEW>
+=item C<type_info_all>
 
 B<Warning:> This method is experimental and may change.
 
@@ -3348,22 +3494,22 @@ they start at column index 50 to leave room for expansion of the
 DBI/ODBC specification.
 
 
-=item C<type_info> I<NEW>
+=item C<type_info>
 
 B<Warning:> This method is experimental and may change.
 
   @type_info = $dbh->type_info($data_type);
 
 Returns a list of hash references holding information about one or more
-variants of C<$data_type>. The list is ordered by C<DATA_TYPE> first and
+variants of $data_type. The list is ordered by C<DATA_TYPE> first and
 then by how closely each type maps to the corresponding ODBC SQL data
 type, closest first.  If called in a scalar context then only the first
 (best) element is returned.
 
-If C<$data_type> is undefined or C<SQL_ALL_TYPES>, then the list will
+If $data_type is undefined or C<SQL_ALL_TYPES>, then the list will
 contain hashes for all data type variants supported by the database and driver.
 
-If C<$data_type> is an array reference then C<type_info> returns the
+If $data_type is an array reference then C<type_info> returns the
 information for the I<first> type in the array that has any matches.
 
 The keys of the hash follow the same letter case conventions as the
@@ -3439,7 +3585,7 @@ for data types for which this is not applicable.
 =item FIXED_PREC_SCALE (boolean)
 
 Indicates whether the data type always has the same precision and scale
-(such as a money type).  NULL (C<undef>) is returned for data types 
+(such as a money type).  NULL (C<undef>) is returned for data types
 for which
 this is not applicable.
 
@@ -3485,7 +3631,7 @@ NULL (C<undef>).
 
 =item NUM_PREC_RADIX (integer)
 
-The radix value of the data type. For approximate numeric types, 
+The radix value of the data type. For approximate numeric types,
 C<NUM_PREC_RADIX>
 contains the value 2 and C<COLUMN_SIZE> holds the number of bits. For
 exact numeric types, C<NUM_PREC_RADIX> contains the value 10 and C<COLUMN_SIZE> holds
@@ -3534,7 +3680,7 @@ For most database types, quote would return C<'Don''t'> (including the
 outer quotation marks).
 
 An undefined C<$value> value will be returned as the string C<NULL> (without
-quotation marks) to match how NULLs are represented in SQL.
+single quotation marks) to match how NULLs are represented in SQL.
 
 If C<$data_type> is supplied, it is used to try to determine the required
 quoting behavior by using the information returned by L</type_info>.
@@ -3545,6 +3691,32 @@ Quote will probably I<not> be able to deal with all possible input
 (such as binary data or data containing newlines), and is not related in
 any way with escaping or quoting shell meta-characters. There is no
 need to quote values being used with L</"Placeholders and Bind Values">.
+
+=item C<quote_identifier>
+
+  $sql = $dbh->quote_identifier( $name );
+  $sql = $dbh->quote_identifier( $name1, $name2, $name3, \%attr );
+
+Quote an identifier (table name etc.) for use in an SQL statement,
+by escaping any special characters (such as double quotation marks)
+it contains and adding the required type of outer quotation marks.
+
+Undefined names are ignored and the remainder are quoted and then
+joined together, typically with a dot (C<.>) character. For example:
+
+  $id = $dbh->quote_identifier( undef, 'Her schema', 'My table' );
+
+would, for most database types, return C<"Her schema"."My table">
+(including all the double quotation marks).
+
+If three names are supplied then the first is assumed to be a catalog
+name and special rules may be applied based on what L</get_info>
+returns for SQL_CATALOG_NAME_SEPARATOR (41) and SQL_CATALOG_LOCATION (114).
+For example, for Oracle:
+
+  $id = $dbh->quote_identifier( 'link', 'schema', 'table' );
+
+would return C<"schema"."table"@"link">.
 
 =back
 
@@ -3580,7 +3752,7 @@ choice largely forced on the DBI by ODBC and JDBC conventions.)
 Attempting to set C<AutoCommit> to an unsupported value is a fatal error.
 This is an important feature of the DBI. Applications that need
 full transaction behavior can set C<$dbh->E<gt>C<{AutoCommit} = 0> (or
-set C<AutoCommit> to 0 via L</connect>) 
+set C<AutoCommit> to 0 via L</connect>)
 without having to check that the value was assigned successfully.
 
 For the purposes of this description, we can divide databases into three
@@ -3605,7 +3777,7 @@ lasting effect unless L</commit> is called (but see also
 L</disconnect>). If L</rollback> is called then any changes since the
 last commit are undone.
 
-If C<AutoCommit> is on, then the effect is the same as if the DBI 
+If C<AutoCommit> is on, then the effect is the same as if the DBI
 called C<commit> automatically after every successful database
 operation. In other words, calling C<commit> or C<rollback> explicitly while
 C<AutoCommit> is on would be ineffective because the changes would
@@ -3676,7 +3848,7 @@ Some C<RowCacheSize> values have special meaning, as follows:
 
 Note that large cache sizes may require a very large amount of memory
 (I<cached rows * maximum size of row>). Also, a large cache will cause
-a longer delay not only for the first fetch, but also whenever the 
+a longer delay not only for the first fetch, but also whenever the
 cache needs refilling.
 
 See also the L</RowsInCache> statement handle attribute.
@@ -3910,7 +4082,7 @@ change> in the future to return the same hash ref each time, so don't
 rely on the current behaviour.
 
 
-=item C<fetchall_arrayref> I<NEW>
+=item C<fetchall_arrayref>
 
   $tbl_ary_ref = $sth->fetchall_arrayref;
   $tbl_ary_ref = $sth->fetchall_arrayref( $columns_array_ref );
@@ -3967,7 +4139,7 @@ The first two examples return a reference to an array of array refs.
 The third and forth return a reference to an array of hash refs.
 
 
-=item C<fetchall_hashref> I<NEW>
+=item C<fetchall_hashref>
 
   $hash_ref = $dbh->fetchall_hashref($key_field);
 
@@ -4010,8 +4182,9 @@ situations to allow the server to free up resources (such as sort
 buffers).
 
 When all the data has been fetched from a C<SELECT> statement, the driver
-should automatically call C<finish> for you. So you should not normally
-need to call it explicitly.
+should automatically call C<finish> for you. So you should I<not> normally
+need to call it explicitly. (Adding calls to C<finish> after each
+fetch loop is a common mistake, don't do it, it can mask other problems.)
 
 Consider a query like:
 
@@ -4160,7 +4333,7 @@ Example:
 Note that some drivers cannot provide valid values for some or all of
 these attributes until after C<$sth->E<gt>C<execute> has been called.
 
-See also L</finish> to learn more about the effect it 
+See also L</finish> to learn more about the effect it
 may have on some attributes.
 
 =over 4
@@ -4231,9 +4404,9 @@ has officially registered with the ISO working group:
 
   ftp://sqlstandards.org/SC32/SQL_Registry/
 
-Where there's no vendor-supplied ODBC driver to be compatible with, the
-DBI driver can use type numbers in the range that is now officially reserved
-for use by the DBI: -9999 to -9000.
+Where there's no vendor-supplied ODBC driver to be compatible with,
+the DBI driver can use type numbers in the range that is now
+officially reserved for use by the DBI: -9999 to -9000.
 
 All possible values for C<TYPE> should have at least one entry in the
 output of the C<type_info_all> method (see L</type_info_all>).
@@ -4466,12 +4639,12 @@ engine does not have cancel implemented.
 
 DBI can be subclassed and extended just like any other object
 oriented module.  Before we talk about how to do that, it's important
-to be clear about how the DBI classes work together.
+to be clear about how the DBI classes and how they work together.
 
 By default C<$dbh = DBI->E<gt>C<connect(...)> returns a $dbh blessed
 into the C<DBI::db> class.  And the C<$dbh->E<gt>C<prepare> method
 returns an $sth blessed into the C<DBI::st> class (actually it
-simply changes the last for characters of the calling handle class
+simply changes the last four characters of the calling handle class
 to be C<::st>).
 
 The leading 'C<DBI>' is known as the 'root class' and the extra
@@ -4483,10 +4656,10 @@ then your do() and prepare() methods should be in the C<MySubDBI::db>
 class and the execute() method should be in the C<MySubDBI::st> class.
 
 To setup the inheritance hierarchy the @ISA variable in C<MySubDBI::db>
-should contain C<DBI::db> and the @ISA variable in C<MySubDBI::st>
-should contain C<DBI::st>.  The C<MySubDBI> root class itself isn't
-currently used and, apart from setting @ISA to include C<DBI>, it
-should be left empty.
+should include C<DBI::db> and the @ISA variable in C<MySubDBI::st>
+should include C<DBI::st>.  The C<MySubDBI> root class itself isn't
+currently used for anything visible and so, apart from setting @ISA
+to include C<DBI>, it should be left empty.
 
 So, having put your overriding methods into the right classes, and
 setup the inheritance hierarchy, how do you get the DBI to use them?
@@ -4523,7 +4696,7 @@ can be found in t/subclass.t in the DBI distribution.
     my ($dbh, @args) = @_;
     my $sth = $dbh->SUPER::prepare(@args)
         or return;
-    $sth->{private_mysubdbi_foo} = 'bar';
+    $sth->{private_mysubdbi_info} = { foo => 'bar' };
     return $sth;
   }
 
@@ -4536,40 +4709,38 @@ can be found in t/subclass.t in the DBI distribution.
     my $row = $sth->SUPER::fetch(@args)
         or return;
     do_something_magical_with_row_data($row)
-        or return $sth->set_error(1234, "The magic failed");
+        or return $sth->set_err(1234, "The magic failed", undef, "fetch");
     return $row;
   }
 
-You can stash private class data in a handle and carry it around
-via C<$h->E<gt>C<{private_..._*}>.  See the entry under L</ATTRIBUTES
-COMMON TO ALL HANDLES> for info and important caveats.
-
-When calling a supermethod that returns a handle, be careful to
+When calling a SUPER::method that returns a handle, be careful to
 check the return value before trying to do other things with it in
 your overridden method. This is especially important if you want
 to set a hash attribute on the handle, as Perl's autovivification
 will bite you by (in)conveniently creating an unblessed hashref,
-which your method will then return with occasionally baffling results
-later on.
-
-It's best to check right after the supermethod call and return undef
+which your method will then return with usually baffling results
+later on.  It's best to check right after the call and return undef
 immediately on error, just like DBI would and just like the example
 above.
 
-If your method needs to record an error it should call the set_error()
+If your method needs to record an error it should call the set_err()
 method with the error code and error string, as shown in the example
 above. The error code and error string will be recorded in the
 handle and available via C<$h->E<gt>C<err> and C<$DBI::errstr> etc.
-The set_error() method always returns an undef or empty list as
+The set_err() method always returns an undef or empty list as
 approriate. Since your method should nearly always return an undef
 or empty list as soon as an error is detected it's handy to simply
-return what set_error() returns, as shown in the example above.
+return what set_err() returns, as shown in the example above.
 
 If the handle has C<RaiseError>, C<PrintError>, or C<HandleError>
-etc. set then the set_error() method will honour them. This means
-that if C<RaiseError> is set then set_error() won't return in the
+etc. set then the set_err() method will honour them. This means
+that if C<RaiseError> is set then set_err() won't return in the
 normal way but will 'throw an exception' that can be caught with
 an C<eval> block.
+
+You can stash private data into DBI handles
+via C<$h->E<gt>C<{private_..._*}>.  See the entry under L</ATTRIBUTES
+COMMON TO ALL HANDLES> for info and important caveats.
 
 
 =head1 DEBUGGING
@@ -4689,28 +4860,39 @@ standard:
 
  DBI method        ODBC function     SQL/CLI Working Draft
  ----------        -------------     ---------------------
- column_info       SQLColumns        Page 135
- type_info         SQLGetTypeInfo    Page ???
- table_info        SQLTables         Page 306
- primary_key_info  SQLPrimaryKeys    Page 266
- foreign_key_info  SQLForeignKeys    Page 174
+ column_info       SQLColumns        Page 124
+ foreign_key_info  SQLForeignKeys    Page 163
+ get_info          SQLGetInfo        Page 214
+ primary_key_info  SQLPrimaryKeys    Page 254
+ table_info        SQLTables         Page 294
+ type_info         SQLGetTypeInfo    Page 239
 
 For example, for ODBC information on SQLColumns you'd visit:
 
   http://msdn.microsoft.com/library/en-us/odbc/htm/odbcsqlcolumns.asp
 
 If that URL ceases to work then use the MSDN search facility at:
- 
+
   http://search.microsoft.com/us/dev/
- 
+
 and search for C<SQLColumns returns> using the exact phrase option.
 The link you want will probably just be called C<SQLColumns> and will
 be part of the Data Access SDK.
 
-And for SQL/CLI standard information on SQLColumns you'd read page 135 of
+And for SQL/CLI standard information on SQLColumns you'd read page 124 of
 the (very large) SQL/CLI Working Draft available from:
 
-  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
+  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/7E3B41486BD99C3488256B410064C877/$FILE/32N0744T.PDF
+
+
+A hyperlinked, browsable version of the BNF syntax for SQL92 (plus
+Oracle 7 SQL and PL/SQL) is available here:
+
+  http://cui.unige.ch/db-research/Enseignement/analyseinfo/SQL92/BNFindex.html
+
+A BNF syntax for SQL3 is available here:
+
+  http://www.sqlstandards.org/SC32/WG3/Progression_Documents/Informal_working_drafts/iso-9075-2-1999.bnf
 
 
 =head2 Books and Journals
@@ -4797,7 +4979,7 @@ Recommended Perl Programming Links
 
 =head2 FAQ
 
-Please also read the DBI FAQ which is installed as a DBI::FAQ module. 
+Please also read the DBI FAQ which is installed as a DBI::FAQ module.
 You can use I<perldoc> to read it by executing the C<perldoc DBI::FAQ> command.
 
 =head1 AUTHORS
@@ -4990,8 +5172,8 @@ connect and disconnect for every database access becomes superfluous.
 
 =item JDBC Server by Stuart 'Zen' Bishop zen@bf.rmit.edu.au
 
-The server is written in Perl. The client classes that talk to it are 
-of course in Java. Thus, a Java applet or application will be able to 
+The server is written in Perl. The client classes that talk to it are
+of course in Java. Thus, a Java applet or application will be able to
 comunicate via the JDBC API with any database that has a DBI driver installed.
 The URL used is in the form C<jdbc:dbi://host.domain.etc:999/Driver/DBName>.
 It seems to be very similar to some commercial products, such as jdbcKona.

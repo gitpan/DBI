@@ -38,7 +38,18 @@ sub fetch {
     my($sth, @args) = @_;
     ++$calls;
     my $row = $sth->SUPER::fetch(@args);
-    $row->[1] = lc($row->[1]) if $row; # modify data as an example
+    if ($row) {
+	# modify fetched data as an example
+	$row->[1] = lc($row->[1]);
+
+	# also demonstrate calling set_err()
+	return $sth->set_err(1,"Don't be so negative",undef,"fetch")
+		if $row->[0] < 0;
+	# ... and providing alternate results
+	# (although typically would trap and hide and error from SUPER::fetch)
+	return $sth->set_err(2,"Don't exagerate",undef, undef, [ 42,"zz",0 ])
+		if $row->[0] > 42;
+    }
     return $row;
 }
 
@@ -53,9 +64,12 @@ sub ok ($$$) {
     ++$t;
     die "sequence error, expected $n but actually $t"
 	if $n and $n != $t;
-    return print "ok $t\n" if $got eq $want;
+    my $line = (caller)[2];
+    return print "ok $t at $line\n"
+	if(	( defined($got) && defined($want) && $got eq $want)
+	||	(!defined($got) && !defined($want)) );
     warn "Test $n: wanted '$want', got '$got'\n";
-    print "not ok $t\n";
+    print "not ok $t at $line\n";
 }
 
 
@@ -64,17 +78,23 @@ package main;
 
 use DBI;
 
-# tell the DBI that MyDBI is a new 'root class'
-MyDBI->init_rootclass;
-ok(0, 1, 1);
-
-$dbh = MyDBI->connect("dbi:Sponge:foo","","");
+#DBI->trace(2);
+$dbh = MyDBI->connect("dbi:Sponge:foo","","", {
+	PrintError => 0,
+	RaiseError => 1,
+});
 ok(0, ref $dbh, 'MyDBI::db');
-#$dbh->trace(3);
 
+#$dbh->trace(5);
 $sth = $dbh->prepare("foo",
-	# data for DBD::Sponge to return via fetch
-	{ rows => [ [ 42, "AAA", 9 ], [ 43, "BB", 8 ], ] }
+    # data for DBD::Sponge to return via fetch
+    { rows => [
+	[ 40, "AAA", 9 ],
+	[ 41, "BB",  8 ],
+	[ -1, "C",   7 ],
+	[ 49, "DD",  6 ]
+	],
+    }
 );
 ok(0, $calls, 1);
 ok(0, ref $sth, 'MyDBI::st');
@@ -83,5 +103,24 @@ my $row = $sth->fetch;
 ok(0, $calls, 2);
 ok(0, $row->[1], "aaa");
 
+$row = $sth->fetch;
+ok(0, $calls, 3);
+ok(0, $row->[1], "bb");
 
-BEGIN { $tests = 6 }
+ok(0, $DBI::err, undef);
+$row = eval { $sth->fetch };
+ok(0, !defined $row, 1);
+ok(0, substr($@,0,50), "DBD::Sponge::st fetch failed: Don't be so negative");
+
+#$sth->trace(5);
+#$sth->{PrintError} = 1;
+$sth->{RaiseError} = 0;
+$row = eval { $sth->fetch };
+ok(0, ref $row, 'ARRAY');
+ok(0, $row->[0], 42);
+ok(0, $DBI::err, 2);
+ok(0, $DBI::errstr =~ /Don't exagerate/, 1);
+ok(0, $@ =~ /Don't be so negative/, $@);
+
+
+BEGIN { $tests = 15 }

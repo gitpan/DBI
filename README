@@ -107,11 +107,7 @@ Tim Bunce.
 
 ---
 If you get an error like "fatal: relocation error: symbol not found: ..."
-do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
-just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
-Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
-mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
-in the Makefile to see what GCC is using.
+using gcc <3.x then try not using GNU as or GNU ld on Solaris.
 
 ---
 If you get compiler warnings like "value computed is not used" and
