@@ -292,14 +292,9 @@
 		$sth->finish;     # no more data so finish
 		return;
 	    }
-	    my $haveFileSpec = eval { require File::Spec };
-	    my $file = $haveFileSpec
-		? File::Spec->catfile($sth->{'dbd_dir'}, $f)
-		: "$sth->{'dbd_dir'}/$f";
-
-        # put in all the data fields
+	    # put in all the data fields
 	    @s{@DBD::ExampleP::statnames} =
-		(stat($file), $f);
+		(stat("$sth->{'dbd_dir'}/$f"), $f);
 	}
 
 	# return just what fields the query asks for

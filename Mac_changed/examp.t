@@ -50,7 +50,7 @@ ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
 ok(0, $dbh->quote(undef)     eq "NULL");
 
 eval { $dbh->commit('dummy') };
-ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/);
+ok(0, $@ =~ m/^DBI commit: invalid number of parameters: handle \+ 1/);
 
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 ok(0, !defined $cursor_e);
@@ -200,13 +200,8 @@ ok(0, !$dbh->{RaiseError});
 }
 
 ok(0, $csr_a = $dbh->prepare($std_sql));
-ok(0, $csr_a->execute($haveFileSpec ? File::Spec->rootdir : '/'));
-
-my $dump_dir = ($ENV{TMP} || $ENV{TEMP} || $ENV{TMPDIR} || '/tmp');
-my $dump_file = $haveFileSpec
-    ? File::Spec->catfile($dump_dir, 'dumpcsr.tst')
-    : "$dump_dir/dumpcsr.tst";
-
+ok(0, $csr_a->execute('/'));
+my $dump_file = ($ENV{TMP} || $ENV{TEMP} || "/tmp")."/dumpcsr.tst";
 if (open(DUMP_RESULTS, ">$dump_file")) {
 	ok(0, $csr_a->dump_results("4", "\n", ",\t", \*DUMP_RESULTS));
 	close(DUMP_RESULTS);

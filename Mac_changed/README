@@ -1,33 +1,3 @@
-Wednesday, June 2, 1999
-
-This is the DBI module with shared libraries compiled for 
-MacPerl.  Shared libraries run only on PPC and CFM68K versions, not 
-non-CFM 68K versions.
-
-This was compiled with MPW and Codewarrior.  Passed all tests.  
-I have no 68K machine so I can't test the CFM68K version.  Let me 
-know of any problems.
-
-shell.t will only work if ToolServer and the perl MPW tool are
-installed, I believe.  proxy.t won't work.  Everything else should.
-Note that for examp.t, you need to turn on Taint Checks in the
-MacPerl "Script" menu.
-
-Best installed using cpan-mac, either with the CPAN shell,
-or the installme droplet.  From the CPAN shell, type:
-
-    cpan> install CNANDOR/DBI-1.08-bin-2-MacOS.tar.gz
-
-Also, see the MMP page:
-
-    http://pudge.net/mmp/
-
---
-Chris Nandor          mailto:pudge@pobox.com         http://pudge.net/
-%PGPKey = ('B76E72AD', [1024, '0824090B CE73CA10  1FF77F13 8180B6B6'])
-
-#===================================
-
 DBI - The Perl Database Interface by Tim Bunce.
 
 Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England.
