@@ -111,6 +111,7 @@ Tim Bunce.
 
 =======================================================================
 
+---
 If you get an error like "fatal: relocation error: symbol not found: ..."
 do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
 just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
@@ -118,10 +119,20 @@ Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
 mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
 in the Makefile to see what GCC is using.
 
+---
 If you get compiler warnings like "value computed is not used" and
 "unused variable" you can ignore them.
 
+---
 For perl5.005 onwards: If you get "`thr' undeclared" compiler error,
 you'll need to add "dTHR;" to the top of the function that has the error.
+
+---
+If you get compiler errors refering to Perl's own header files
+(.../CORE/*.h) or the compiler complains about bad options etc then
+there is something wrong with your installation.  It is best to use a
+Perl that was built on the system you are trying to use and it's also
+important to use the same compiler that was used to build the Perl you
+are using.
 
 End.

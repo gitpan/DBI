@@ -1,3 +1,11 @@
+Changes in DBI 1.12,	29th June 1999
+
+  Fixed significant DBD::ADO bug (fetch skipped first row).
+  Fixed ProxyServer bug handling non-select statements.
+  Fixed VMS problem with t/examp.t thanks to Craig Berry.
+  Trace only shows calls to trace_msg and _set_fbav at high levels.
+  Modified t/examp.t to workaround Cygwin buffering bug.
+
 Changes in DBI 1.11,	17th June 1999
 
   Fixed bind_columns argument checking to allow a single arg.

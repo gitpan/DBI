@@ -5,6 +5,8 @@ Docs for connect_cached and test with proxy.
 
 Primary Key metadata
 
+Seperate log for sql statements?
+
 Enable warnings in default_user().
 Add prompt for user/pass in default_user().
 

@@ -255,8 +255,14 @@ sub prepare {
     my $sth = $dbh->SUPER::prepare($statement, $attr);
     my @result = $sth->execute($params);
     my $handle = $server->StoreHandle($sth);
-    ($handle, $sth->{'NUM_OF_FIELDS'}, $sth->{'NUM_OF_PARAMS'},
-     $sth->{'NAME'}, $sth->{'TYPE'}, @result);
+    my ($NAME, $TYPE);
+    my $NUM_OF_FIELDS = $sth->{NUM_OF_FIELDS};
+    if ($NUM_OF_FIELDS) {	# is a SELECT
+	$NAME = $sth->{NAME};
+	$TYPE = $sth->{TYPE};
+    }
+    ($handle, $NUM_OF_FIELDS, $sth->{'NUM_OF_PARAMS'},
+     $NAME, $TYPE, @result);
 }
 
 sub table_info {

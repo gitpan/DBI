@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.22 1999/06/17 13:17:22 timbo Exp $
+/* $Id: DBI.xs,v 10.23 1999/06/29 22:49:21 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -61,6 +61,7 @@ typedef struct dbi_ima_st {
     short maxargs;
     char *usage_msg;
     U16   flags;
+    U16   trace_level;
 } dbi_ima_t;
 
 #define IMA_HAS_USAGE		0x0001	/* check parameter usage	*/
@@ -1653,6 +1654,9 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (debug) {
 	    SAVEI32(DBIS->debug);	/* fall back to orig value later */
 	    DBIS->debug = debug;	/* make value global (for now)	 */
+	    if (ima && debug < ima->trace_level) {
+		debug = 0;		/* silence dispatch log for this method	*/
+	    }
 	}
 
 #ifdef DBI_USE_THREADS		/* only pay the cost with threaded perl	*/
@@ -2049,18 +2053,19 @@ _install_method(class, meth_name, file, attribs=Nullsv)
 	ima = (dbi_ima_t*)(void*)SvPVX(sv);
 	memzero((char*)ima, sizeof(*ima));
 	DBD_ATTRIB_GET_IV(attribs, "O",1, svp, ima->flags);
+	DBD_ATTRIB_GET_IV(attribs, "T",1, svp, ima->trace_level);
 
 	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, "U",1)) != NULL) {
 	    STRLEN lna;
 	    AV *av = (AV*)SvRV(*svp);
-	    ima->minargs= SvIV(*av_fetch(av, 0, 1));
-	    ima->maxargs= SvIV(*av_fetch(av, 1, 1));
-			  svp = av_fetch(av, 2, 0);
+	    ima->minargs    = SvIV(*av_fetch(av, 0, 1));
+	    ima->maxargs    = SvIV(*av_fetch(av, 1, 1));
+			      svp = av_fetch(av, 2, 0);
 	    ima->usage_msg  = savepv( (svp) ? SvPV(*svp,lna) : "");
 	    ima->flags |= IMA_HAS_USAGE;
 	    if (debug)
-		fprintf(DBILOGFP,"    usage: min %d, max %d, '%s'\n",
-			ima->minargs, ima->maxargs, ima->usage_msg);
+		fprintf(DBILOGFP,"    usage: min %d, max %d, '%s', tl %d\n",
+			ima->minargs, ima->maxargs, ima->usage_msg, ima->trace_level);
 	}
 	if (debug)
 	    fprintf(DBILOGFP,", flags 0x%x", ima->flags);

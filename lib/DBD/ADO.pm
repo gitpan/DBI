@@ -6,9 +6,9 @@
     require Carp;
 
     @EXPORT = ();
-    $VERSION = substr(q$Revision: 1.12 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 1.13 $, 9,-1) -1;
 
-#   $Id: ADO.pm,v 1.12 1999/06/17 13:08:26 timbo Exp $
+#   $Id: ADO.pm,v 1.13 1999/06/29 22:49:21 timbo Exp $
 #
 #   Copyright (c) 1999, Phlip & Tim Bunce
 #
@@ -170,7 +170,6 @@ my $VT_I4_BYREF;
 	}
 
 	$sth->STORE(NUM_OF_FIELDS => $NUM_OF_FIELDS);
-	$sth->{ado_first} = $rs->BOF && !$rs->EOF;
 	$sth->{NAME} = [ map { $rs->Fields($_)->Name } 0..$NUM_OF_FIELDS-1 ];
 
 	# We need to return any true value for a successful select,
@@ -183,13 +182,6 @@ my $VT_I4_BYREF;
 	my ($sth) = @_;
 	my $rs = $sth->{ado_rs};
 
-	if ($sth->{ado_first}) {
-	    $sth->{ado_first} = 0;
-	}
-	else {
-	    $rs->MoveNext if !$rs->EOF;	# check for errors
-	}
-
 	if ($rs->EOF) {
 	    $sth->finish;
 	    $sth->{ado_rs} = undef;
@@ -199,6 +191,8 @@ my $VT_I4_BYREF;
 	my $NUM_OF_FIELDS = $sth->FETCH('NUM_OF_FIELDS');
 
 	my $row = [ map { $rs->Fields($_)->Value } 0..$NUM_OF_FIELDS-1 ];
+
+	$rs->MoveNext;	# XXX need to check for errors and record for next itteration
 
 	return $sth->_set_fbav($row);
     }

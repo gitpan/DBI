@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.10 1999/06/09 20:52:53 timbo Exp $
+# $Id: Makefile.PL,v 10.11 1999/06/29 22:49:21 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -149,10 +149,17 @@ warn <<EOT;
     Remember to actually *read* the README file!
     Build, TEST and INSTALL Perl 5 first.
     Do NOT build the DBI under the Perl source tree.
+    Use 'make' to build the software (dmake or nmake on Windows).
     Use 'make test' to execute self tests.
     Use 'make install' to install the DBI and then delete this working
     directory before unpacking and building any DBD::* drivers.
 
+EOT
+warn <<EOT if $os eq 'MSWin32';
+    Windows users need to use the correct make command.
+    That may be nmake or dmake depending on which Perl you are using.
+    If using the ActiveState build then it is recommended that you
+    use the ppm utility to fetch and install a prebuilt DBI instead.
 EOT
 
 exit 0;

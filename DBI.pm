@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.23 1999/06/17 13:08:26 timbo Exp $
+# $Id: DBI.pm,v 10.24 1999/06/29 22:49:21 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = "1.11"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.12"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -67,8 +67,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.11
-($Date: 1999/06/17 13:08:26 $).
+This is the DBI specification that corresponds to the DBI version 1.12
+($Date: 1999/06/29 22:49:21 $).
 
 The DBI specification is evolving at a steady pace so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -76,7 +76,7 @@ section below has a summary of user-visible changes and the F<Changes>
 file supplied with the DBI holds more detailed change information.
 
 Note also that whenever the DBI changes the drivers take some time to
-catch up. Recent versions of the DBI have added many new features
+catch up. Recent versions of the DBI have added new features
 (marked *NEW* in the text) that may not yet be supported by the drivers
 you use. Talk to the authors of those drivers if you need the features.
 
@@ -118,7 +118,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.23 $, 10);
+my $Revision = substr(q$Revision: 10.24 $, 10);
 
 
 use Carp;
@@ -220,7 +220,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	func    =>	{				O=>0x06	},
 	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x04 },
 	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x04 },
-	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x04 },
+	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x04, T=>7 },
 	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x04 }, # old name for trace
 	private_data =>	{ U =>[1,1],			O=>0x04 },
 	err     =>	$keeperr,
@@ -289,7 +289,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	rows       =>	$keeperr,
 
 	_get_fbav	=> undef,
-	_set_fbav	=> undef,
+	_set_fbav	=> { T=>4 },
     },
 );
 
@@ -1202,7 +1202,7 @@ First you need to load the DBI module:
 
   use DBI;
 
-(also adding C<use strict;> is recommended), then you need to
+(also adding C<use strict;> is recommended). Then you need to
 L</connect> to your data source and get a I<handle> for that
 connection:
 
@@ -1253,6 +1253,11 @@ for example:
 	$sth->execute( $foo, $bar, $baz );
   }
 
+The C<do()> method can be used for non repeated non-select statement
+(or with drivers that don't support placeholders):
+
+  $rows_affected = $dbh->do("update your_table set foo = foo + 1");
+
 To commit your changes to the database (when L</AutoCommit> is off):
 
   $dbh->commit;  # or call $dbh->rollback; to undo changes
@@ -1282,12 +1287,21 @@ Perl supports binary data in perl strings and the DBI will pass binary
 data to and from the Driver without change. It is up to the Driver
 implementors to decide how they wish to handle such binary data.
 
-Multiple SQL statements may not be combined in a single statement
-handle, e.g., a single $sth (some drivers do support this).
+Character sets: Most databases which understand character sets have a
+default global charset and text stored in the database is, or should
+be, stored in that charset (if it's not then that's the fault of either
+the database or the application that inserted the data). When text is
+fetched it should be (automatically) converted to the charset of the
+client (presumably based on the locale). If a driver needs to set a
+flag to get that behaviour then it should do so. It should not require
+the application to do that.
 
-Non-sequential record reads are not supported in this version of the
-DBI. E.g., records can only be fetched in the order that the database
-returned them and once fetched they are forgotten.
+Multiple SQL statements may not be combined in a single statement
+handle, e.g., a single $sth (though some drivers do support this).
+
+Non-sequential record reads are not supported in this version of the DBI.
+In other words, records can only be fetched in the order that the
+database returned them and once fetched they are forgotten.
 
 Positioned updates and deletes are not directly supported by the DBI.
 See the description of the CursorName attribute for an alternative.
@@ -1302,15 +1316,6 @@ pass information to the driver implementing the method. Except where
 specifically documented the \%attr parameter can only be used to pass
 driver specific hints. In general you can ignore \%attr parameters
 or pass it as undef.
-
-Character sets: Most databases which understand character sets have a
-default global charset and text stored in the database is, or should
-be, stored in that charset (if it's not then that's the fault of either
-the database or the application that inserted the data). When text is
-fetched it should be (automatically) converted to the charset of the
-client (presumably based on the locale). If a driver needs to set a
-flag to get that behaviour then it should do so. It should not require
-the application to do that.
 
 
 =head2 Naming Conventions and Name Space
@@ -2153,7 +2158,8 @@ affected (-1 if not known or not available) or undef on error.
 This method is typically most useful for I<non-select> statements which
 either cannot be prepared in advance (due to a limitation of the
 driver) or which do not need to be executed repeatedly. It should not
-be used for select statements.
+be used for select statements because it does not return a statement
+handle so you can't fetch any data.
 
 The default do method is logically similar to:
 
