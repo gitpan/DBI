@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.95 $ ' =~ /(\d+)\.(\d+)/;
+$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.96 $ ' =~ /(\d+)\.(\d+)/;
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -103,12 +103,14 @@ use constant IMA_STUB		=> 0x0100; #/* donothing eg $dbh->connected */
 #define IMA_CLEAR_STMT             0x0200  /* clear Statement before call  */
 #define IMA_PROF_EMPTY_STMT        0x0400  /* profile as empty Statement   */
 use constant IMA_NOT_FOUND_OKAY	=> 0x0800; #/* not error if not found */
+use constant IMA_EXECUTE	=> 0x1000; #/* do/execute: DBIcf_Executed   */
 
 my %is_flag_attribute = map {$_ =>1 } qw(
 	Active
 	AutoCommit
 	ChopBlanks
 	CompatMode
+	Executed
 	Taint
 	TaintIn
 	TaintOut
@@ -116,6 +118,7 @@ my %is_flag_attribute = map {$_ =>1 } qw(
 	LongTruncOk
 	MultiThread
 	PrintError
+	PrintWarn
 	RaiseError
 	ShowErrorStatement
 	Warn
@@ -129,8 +132,10 @@ my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
 	Database
 	DebugDispatch
 	Driver
+	ErrCount
 	FetchHashKeyName
 	HandleError
+	HandleSetErr
 	ImplementorClass
 	Kids
 	LongReadLen
@@ -160,7 +165,8 @@ sub valid_attribute {
 my $initial_setup;
 sub initial_setup {
     $initial_setup = 1;
-    warn __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n" if $DBI::dbi_debug;
+    print $DBI::tfh  __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n"
+	if $DBI::dbi_debug & 0xF;
     untie $DBI::err;
     untie $DBI::errstr;
     untie $DBI::state;
@@ -195,43 +201,60 @@ sub  _install_method {
 	if IMA_STUB & $bitmask;
 
     push @pre_call_frag, q{
-#warn "func";
 	#$method_name = $imp . '::' . pop @_;
 	$method_name = pop @_;
     } if IMA_FUNC_REDIRECT & $bitmask;
 
     push @pre_call_frag, q{
-	my $dbh = $h->{Database};
-	warn "No Database set for $h on $method_name!" unless $dbh; # eg proxy problems
-	$dbh->{Statement} = $h->{Statement} if $dbh;
+	my $parent_dbh = $h->{Database};
+    } if (IMA_COPY_STMT|IMA_EXECUTE) & $bitmask;
+
+    push @pre_call_frag, q{
+	warn "No Database set for $h on $method_name!" unless $parent_dbh; # eg proxy problems
+	$parent_dbh->{Statement} = $h->{Statement} if $parent_dbh;
     } if IMA_COPY_STMT & $bitmask;
+
+    push @pre_call_frag, q{
+	$h->{Executed} = 1;
+	$parent_dbh->{Executed} = 1 if $parent_dbh;
+    } if IMA_EXECUTE & $bitmask;
 
     if (IMA_KEEP_ERR & $bitmask) {
 	push @pre_call_frag, q{
 	    my $keep_error = 1;
 	};
     }
-    elsif (IMA_KEEP_ERR_SUB & $bitmask) {
-	push @pre_call_frag, q{
-	    my $keep_error = $h->{_parent}->{_call_depth};
-	    unless ($keep_error) {
-		#warn "$method_name cleared err";
-		$h->{err} = 0;
-		$h->{errstr} = $DBI::state = '';
-	    };
-	};
-    }
     else {
-	push @pre_call_frag, q{
-	    my $keep_error;
-	    #warn "$method_name cleared err";
-	    $h->{err} = 0;
-	    $h->{errstr} = $DBI::state = '';
+	my $ke_init = (IMA_KEEP_ERR_SUB & $bitmask)
+		? q{= $h->{_parent}->{_call_depth} }
+		: "";
+	push @pre_call_frag, qq{
+	    my \$keep_error $ke_init;
 	};
+	my $keep_error_code = q{
+	    #warn "$method_name cleared err";
+	    $h->{err}    = $DBI::err    = undef;
+	    $h->{errstr} = $DBI::errstr = undef;
+	    $h->{state}  = $DBI::state  = '';
+	};
+	$keep_error_code = q{
+	    printf $DBI::tfh "    !! %s: %s CLEARED by call to }.$method_name.q{ method\n".
+		    $h->{err}, $h->{err}
+		if defined $h->{err} && $DBI::dbi_debug & 0xF;
+	}. $keep_error_code
+	    if exists $ENV{DBI_TRACE};
+	push @pre_call_frag, ($ke_init)
+		? qq{ unless (\$keep_error) { $keep_error_code }}
+		: $keep_error_code
+	    unless $method_name eq 'set_err';
     }
 
     push @pre_call_frag, q{
-        if ($DBI::dbi_debug >= 2) {
+	my $ErrCount = $h->{ErrCount};
+    };
+
+    push @pre_call_frag, q{
+        if (($DBI::dbi_debug & 0xF) >= 2) {
 	    local $^W;
 	    my $args = join " ", map { DBI::neat($_) } ($h, @_);
 	    printf $DBI::tfh "    > $method_name in $imp ($args) [$@]\n";
@@ -246,7 +269,7 @@ sub  _install_method {
     my @post_call_frag;
 
     push @post_call_frag, q{
-        if ($DBI::dbi_debug) {
+        if ($DBI::dbi_debug & 0xF) {
 	    if ($h->{err}) {
 		printf $DBI::tfh "    !! ERROR: %s %s\n", $h->{err}, $h->{errstr};
 	    }
@@ -256,6 +279,7 @@ sub  _install_method {
     } if exists $ENV{DBI_TRACE}; # note use of exists
 
     push @post_call_frag, q{
+	$h->{Executed} = 0;
 	if ($h->{BegunWork}) {
 	    $h->{BegunWork}  = 0;
 	    $h->{AutoCommit} = 1;
@@ -263,36 +287,54 @@ sub  _install_method {
     } if IMA_END_WORK & $bitmask;
 
     push @post_call_frag, q{
-        if ($h->{err} && !$keep_error && $call_depth <= 1 && !$h->{_parent}{_call_depth}) {
-            my $last = ($DBI::last_method_except{$method_name})
-		? ($h->{'_last_method'}||$method_name) : $method_name;
-            my $errstr = $h->{errstr} || $DBI::errstr || $DBI::err || '';
-            my $msg = sprintf "%s %s failed: %s", $imp, $last, $errstr;
-            if ($h->{'ShowErrorStatement'} and my $Statement = $h->{Statement}) {
-		$msg .= ' for [``' . $Statement . "''";
-		my $ParamValues = $h->FETCH('ParamValues');
-		if ($ParamValues) {
-		    my $pv_idx = 0;
-		    $msg .= " with params: ";
-		    while ( my($k,$v) = each %$ParamValues ) {
-			$msg .= sprintf "%s%s=%s", ($pv_idx++==0) ? "" : ", ", $k, DBI::neat($v);
+	$keep_error = 0 if $keep_error && $h->{ErrCount} > $ErrCount;
+
+        if ( !$keep_error
+	&& defined(my $err = $h->{err})
+	&& ($call_depth <= 1 && !$h->{_parent}{_call_depth})
+	) {
+
+	    my($pe,$pw,$re,$he) = @{$h}{qw(PrintError PrintWarn RaiseError HandleError)};
+	    my $msg;
+
+	    if ($err && ($pe || $re || $he)	# error
+	    or (!$err && length($err) && $pw)	# warning
+	    ) {
+		my $last = ($DBI::last_method_except{$method_name})
+		    ? ($h->{'_last_method'}||$method_name) : $method_name;
+		my $errstr = $h->{errstr} || $DBI::errstr || $err || '';
+		my $msg = sprintf "%s %s %s: %s", $imp, $last,
+			($err eq "0") ? "warning" : "failed", $errstr;
+
+		if ($h->{'ShowErrorStatement'} and my $Statement = $h->{Statement}) {
+		    $msg .= ' for [``' . $Statement . "''";
+		    if (my $ParamValues = $h->FETCH('ParamValues')) {
+			my $pv_idx = 0;
+			$msg .= " with params: ";
+			while ( my($k,$v) = each %$ParamValues ) {
+			    $msg .= sprintf "%s%s=%s", ($pv_idx++==0) ? "" : ", ", $k, DBI::neat($v);
+			}
+		    }
+		    $msg .= "]";
+		}
+		if ($DBI::err eq "0") { # is 'warning' (not info)
+		    carp $msg if $pw;
+		}
+		else {
+		    my $do_croak = 1;
+		    if (my $subsub = $h->{'HandleError'}) {
+			$do_croak = 0 if &$subsub($msg,$h,$ret[0]);
+		    }
+		    if ($do_croak) {
+			printf $DBI::tfh "    $method_name has failed ($h->{PrintError},$h->{RaiseError})\n"
+				if ($DBI::dbi_debug & 0xF) >= 4;
+			carp  $msg if $pe;
+			die $msg if $h->{RaiseError};
 		    }
 		}
-		$msg .= "]";
-	    }
-	    $msg .= "\n";
-            my $do_croak = 1;
-            if (my $subsub = $h->{'HandleError'}) {
-		$do_croak = 0 if &$subsub($msg,$h,$ret[0]);
-            }
-	    if ($do_croak) {
-		printf $DBI::tfh "    $method_name has failed ($h->{PrintError},$h->{RaiseError})\n"
-			if $DBI::dbi_debug >= 4;
-  	        carp  $msg if $h->{PrintError};
-	        die $msg if $h->{RaiseError};
 	    }
 	}
-    } unless IMA_KEEP_ERR & $bitmask;
+    };
 
 
     my $method_code = q[
@@ -340,7 +382,7 @@ sub  _install_method {
     warn "$@\n$method_code\n" if $@;
     die "$@\n$method_code\n" if $@;
     *$method = $code_ref;
-    if (0 && $method =~ 'DESTROY') { # debuging tool
+    if (0 && $method =~ /set_err/) { # debuging tool
 	my $l=0; # show line-numbered code for method
 	warn "*$method = ".join("\n", map { ++$l.": $_" } split/\n/,$method_code);
     }
@@ -349,13 +391,16 @@ sub  _install_method {
 sub _setup_handle {
     my($h, $imp_class, $parent, $imp_data) = @_;
     my $h_inner = tied(%$h) || $h;
-    warn("\n_setup_handle(@_)") if $DBI::dbi_debug >= 4;
+    if (($DBI::dbi_debug & 0xF) >= 4) {
+	local $^W;
+	print $DBI::tfh "_setup_handle(@_)";
+    }
     $h_inner->{"imp_data"} = $imp_data;
     $h_inner->{"ImplementorClass"} = $imp_class;
     $h_inner->{"Kids"} = $h_inner->{"ActiveKids"} = 0;	# XXX not maintained
     if ($parent) {
 	foreach (qw(
-	    RaiseError PrintError HandleError
+	    RaiseError PrintError PrintWarn HandleError HandleSetErr
 	    Warn LongTruncOk ChopBlanks AutoCommit
 	    ShowErrorStatement FetchHashKeyName LongReadLen CompatMode
 	)) {
@@ -373,6 +418,7 @@ sub _setup_handle {
     }
     else {	# setting up a driver handle
         $h_inner->{Warn}		= 1;
+        $h_inner->{PrintWarn}		= $^W;
         $h_inner->{AutoCommit}		= 1;
         $h_inner->{TraceLevel}		= 0;
         $h_inner->{CompatMode}		= (1==0);
@@ -380,7 +426,8 @@ sub _setup_handle {
 	$h_inner->{LongReadLen}		||= 80;
     }
     $h_inner->{"_call_depth"} = 0;
-    $h_inner->{"Active"} = 1;
+    $h_inner->{ErrCount} = 0;
+    $h_inner->{Active} = 1;
 }
 sub constant {
     warn "constant @_"; return;
@@ -519,6 +566,7 @@ package
 sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;
     my $old_level = $DBI::dbi_debug;
+    DBI::_set_trace_file($file) if defined $file;
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	if ($DBI::dbi_debug) {
@@ -529,7 +577,6 @@ sub trace {	# XXX should set per-handle level, not global
 		unless exists $ENV{DBI_TRACE};
 	}
     }
-    _set_trace_file($file) if defined $file;
     return $old_level;
 }
 *debug = \&trace; *debug = \&trace; # twice to avoid typo warning
@@ -591,37 +638,67 @@ sub STORE {
     $h->{$key} = $is_flag_attribute{$key} ? !!$value : $value;
     return 1;
 }
-sub err {
-    my $h = shift;
-    return $h->{'err'} || $h->{'errstr'};
-}
-sub errstr {
-    my $h = shift;
-    my $errstr = $h->{'errstr'} || '';   # $h->{'err'}; caught in DBD-CSV
-    return $errstr;
-}
-sub state {
-    return shift->{state};
-}
+sub err    { return shift->{err}    }
+sub errstr { return shift->{errstr} }
+sub state  { return shift->{state}  }
 sub set_err {
     my ($h, $errnum,$msg,$state, $method, $rv) = @_;
-    $h = tied(%$h) || $h; # for code that calls $h->DBI::set_err(...)
-    $msg = $errnum unless defined $msg;
-    $h->{'_last_method'} = $method;
-    $h->{err}    = $DBI::err    = $errnum;
-    $h->{errstr} = $DBI::errstr = $msg;
-    $h->{state}  = $DBI::state  = (defined $state) ? ($state eq "00000" ? "" : $state) : ($errnum ? "S1000" : "");
+    $h = tied(%$h) || $h;
+
+    if (my $hss = $h->{HandleSetErr}) {
+	return if $hss->($h, $errnum, $msg, $state, $method);
+    }
+
+    if (!defined $errnum) {
+	$h->{err}    = $DBI::err    = undef;
+	$h->{errstr} = $DBI::errstr = undef;
+	$h->{state}  = $DBI::state  = '';
+        return;
+    }
+
+    if ($h->{errstr}) {
+	$h->{errstr} .= sprintf " [err was %s now %s]", $h->{err}, $errnum
+		if $h->{err} && $errnum;
+	$h->{errstr} .= sprintf " [state was %s now %s]", $h->{state}, $state
+		if $h->{state} and $h->{state} ne "S1000" && $state;
+	$h->{errstr} .= "\n$msg";
+	$DBI::errstr = $h->{errstr};
+    }
+    else {
+	$h->{errstr} = $DBI::errstr = $msg;
+    }
+
+    # assign if higher priority: err > "0" > "" > undef
+    my $err_changed;
+    if ($errnum			# new error: so assign
+	or !defined $h->{err}	# no existing warn/info: so assign
+           # new warn ("0" len 1) > info ("" len 0): so assign
+	or defined $errnum && length($errnum) > length($h->{err})
+    ) {
+        $h->{err} = $DBI::err = $errnum;
+	++$h->{ErrCount} if $errnum;
+	++$err_changed;
+    }
+
+    if ($err_changed) {
+	$state ||= "S1000" if $DBI::err;
+	$h->{state} = $DBI::state = ($state eq "00000") ? "" : $state
+	    if $state;
+    }
+
     if (my $p = $h->{Database}) { # just sth->dbh, not dbh->drh (see ::db::DESTROY)
-	$p->{err}    = $errnum;
-	$p->{errstr} = $msg;
+	$p->{err}    = $DBI::err;
+	$p->{errstr} = $DBI::errstr;
 	$p->{state}  = $DBI::state;
     }
+
+    $h->{'_last_method'} = $method;
     return $rv; # usually undef
 }
 sub trace_msg {
     my ($h, $msg, $minlevel)=@_;
     $minlevel = 1 unless $minlevel;
-    return unless $minlevel <= $DBI::dbi_debug;
+    return unless $minlevel <= ($DBI::dbi_debug & 0xF);
     print $DBI::tfh $msg;
     return 1;
 }
@@ -713,17 +790,6 @@ sub bind_col {
 	unless ref $value_ref eq 'SCALAR';
     my $fbav = $h->_get_fbav;
     $h->{'_bound_cols'}->[$col] = $value_ref;
-    return 1;
-}
-sub bind_columns {
-    my $h = shift;
-    shift if !defined $_[0] or ref $_[0] eq 'HASH'; # old style args
-    my $fbav = $h->_get_fbav;
-    DBI::croak("bind_columns called with wrong number of args")
-	if @_ != @$fbav;
-    foreach (0..@_-1) {
-        $h->bind_col($_, $_[$_],'from_bind_columns')
-    }
     return 1;
 }
 sub finish {

@@ -2,10 +2,10 @@ package DBI::DBD;
 
 use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.20 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.21 $ =~ /(\d+)\.(\d+)/o);
 
 
-# $Id: DBD.pm,v 11.20 2004/01/07 17:38:51 timbo Exp $
+# $Id: DBD.pm,v 11.21 2004/02/01 11:16:16 timbo Exp $
 #
 # Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -58,8 +58,8 @@ DBI::DBD - Perl DBI Database Driver Writer's Guide
 
 =head2 Version and volatility
 
-  $Revision: 11.20 $
-  $Date: 2004/01/07 17:38:51 $
+  $Revision: 11.21 $
+  $Date: 2004/02/01 11:16:16 $
 
 This document is I<still> a minimal draft which is in need of further work.
 
@@ -708,7 +708,7 @@ version 1.10 to precede version 1.9, so that using a raw CVS, RCS or
 SCCS version number is probably not appropriate (despite being very
 common). For RCS or CVS you can use this code:
 
-  $VERSION = sprintf "%d.%02d", '$Revision: 11.20 $ ' =~ /(\d+)\.(\d+)/;
+  $VERSION = sprintf "%d.%02d", '$Revision: 11.21 $ ' =~ /(\d+)\.(\d+)/;
 
 which pads out the fractional part with leading zeros so all is well
 (so long as you don't go past x.99)
@@ -977,9 +977,9 @@ With DBD::File for example, you might catch an error when setting the
 current directory to something not existent by using the
 (driver-specific) f_dir attribute.
 
-To report an error, you use the C<DBI::set_err> method:
+To report an error, you use the C<set_err> method:
 
-  $h->DBI::set_err($errcode, $errmsg);
+  $h->set_err($err, $errmsg, $state);
 
 This will ensure that the error is recorded correctly and that
 RaiseError and PrintError etc are handled correctly.
@@ -989,7 +989,7 @@ always use the method instance, aka your method's first argument.
 As set_err always returns undef your error handling code can
 usually be simplified to something like this:
 
-  return $h->DBI::set_err($errcode, $errmsg) if ...;
+  return $h->set_err($err, $errmsg, $state) if ...;
 
 =cut
 
@@ -1890,6 +1890,8 @@ Driver.h is very simple and the operational contents should look like this:
 
   #include "dbdimp.h"
 
+  #include "dbivport.h"   /* see below                    */
+
   #include <dbd_xsh.h>    /* installed by the DBI module  */
 
   #endif /* DRIVER_H_INCLUDED */
@@ -1904,6 +1906,24 @@ DBI (prior to DBI 1.06) as well as modern versions.
 The only standard, DBI-mandated functions that you need write are those
 specified in the dbd_xsh.h header.
 You might also add extra driver-specific functions in Driver.xs.
+
+The dbivport.h file should be I<copied> from the latest DBI release into
+your distribution each time you enhance your driver to use new features
+for which the DBI is offering backwards compatibility via dbivport.h.
+
+Its job is to allow you to enhance your code to work with the latest
+DBI API while still allowing your driver to be compiled and used
+with older versions of the DBI. For example, when the DBIh_SET_ERR_CHAR
+macro was added to DBI 1.41 in an emulation of it was added to dbivport.h.
+
+Copying dbivport.h into your driver distribution and #including it
+in Driver.h, as shown above, lets you enhance your driver to use
+the new DBIh_SET_ERR_CHAR macro even with versions of the DBI earlier
+than 1.41. This makes users happy and your life easier.
+
+Always read the notes in dbivport.h to check for any limitations
+in the emulation that you should be aware of.
+
 
 =head2 Implementation header dbdimp.h
 
@@ -2091,23 +2111,36 @@ This macro will declare and initialize a variable I<imp_xxh> with
 a pointer to your private handle pointer. You may cast this to
 to I<imp_drh_t>, I<imp_dbh_t> or I<imp_sth_t>.
 
-  SV *errstr = DBIc_ERRSTR(imp_xxh);
-  sv_setiv(DBIc_ERR(imp_xxh), (IV)rc);  /* set err early        */
-  sv_setpv(errstr, what);
+To record the error correctly, equivalent to the set_err() method,
+use one of the DBIh_SET_ERR_CHAR(...) or DBIh_SET_ERR_SV(...) macros,
+which were added in DBI 1.41:
 
-If your database supports SQLSTATE, you should also set the SQLSTATE value; for example,
-DBD::Informix includes the line:
+  DBIh_SET_ERR_SV(h, imp_xxh, err, errstr, state, method);
+  DBIh_SET_ERR_CHAR(h, imp_xxh, err_c, err_i, errstr, state, method);
 
-  sv_setpv(DBIc_STATE(imp_xxh), SQLSTATE);
+For DBIh_SET_ERR_SV the err, errstr, state, and method parameters are SV*.
+For DBIh_SET_ERR_CHAR the err_c, errstr, state, method are char*.
+The err_i parameter is an IV that's used instead of err_c is err_c is Null.
+The method parameter can be ignored.
 
-Note the use of the macros DBIc_ERRSTR and DBIc_ERR for accessing the
-handles error string and error code.
+The DBIh_SET_ERR_CHAR macro is usually the simplest to use when you
+just have an integer error code and an error message string:
+
+  DBIh_SET_ERR_CHAR(h, imp_xxh, Nullch, rc, what, Nullch, Nullch);
+
+As you can see, any parameters that aren't relevant to you can be Null.
+
+To make drivers compatible with DBI < 1.41 you should be using dbivport.h
+as described in L</Driver.h> above.
 
 The (obsolete) macros such as DBIh_EVENT2 should be removed from drivers.
+
 The names I<dbis> and I<DBIS>, which were used in previous versions of this document,
 should be replaced with the C<DBIc_STATE(imp_xxh)> macro.
+
 The name DBILOGFP, which was also used in previous  versions of this document, should be
 replaced by DBIc_LOGPIO(imp_xxh).
+
 Your code should not call the C C<E<lt>stdio.hE<gt>> I/O functions; you should either use
 C<PerlIO_printf>() as shown, or standard Perl functions such as C<warn>():
 
@@ -3425,9 +3458,10 @@ macros.
 The approved method for handling these is now the four macros:
 
   DBIc_is(imp, flag)
-  DBIc_has(imp, flag)    an alias for DBIc_is
+  DBIc_has(imp, flag)       an alias for DBIc_is
   DBIc_on(imp, flag)
   DBIc_off(imp, flag)
+  DBIc_set(imp, flag, on)   set if on is true, else clear
 
 Consequently, the DBIc_XXXXX family of macros is now mostly deprecated
 and new drivers should avoid using them, even though the older drivers
@@ -3566,11 +3600,33 @@ BEGIN {
     require DBI unless $is_dbi;
 }
 
-sub _cwd_check {
+my $done_inst_checks;
+
+sub _inst_checks {
+    return if $done_inst_checks++;
     my $cwd = cwd();
-    return unless $cwd =~ /$Config{path_sep}/;
-    warn "*** Warning: Path separator characters (`$Config{path_sep}') in the current directory path ($cwd) may cause problems\a\n";
-    sleep 2;
+    if ($cwd =~ /$Config{path_sep}/) {
+	warn "*** Warning: Path separator characters (`$Config{path_sep}') ",
+	    "in the current directory path ($cwd) may cause problems\a\n\n";
+        sleep 2;
+    }
+    if (   $^O eq 'MSWin32'
+	&& $Config{cc} eq 'cl'
+	&& !(exists $ENV{'LIB'} && exists $ENV{'INCLUDE'}))
+    {
+	print <<EOT;
+*** You're using Microsoft Visual C++ compiler but the LIB and INCLUDE environment
+    variables are not both set. If you have 'unresolved external symbol'
+    errors during linking, run the vcvars32.bat batch file to set up your
+    LIB and INCLUDE environment variables, and try again.
+    A copy of vcvars32.bat can typically be found in the following
+    directories under your Visual Studio install directory:
+        Visual C++ 6.0:     vc98\\bin
+        Visual Studio .NET: vc7\\bin
+
+EOT
+	sleep 2;
+    }
 }
 
 sub dbd_edit_mm_attribs {
@@ -3579,7 +3635,7 @@ sub dbd_edit_mm_attribs {
     my $dbd_attr = shift || {};
     croak "dbd_edit_mm_attribs( \%makemaker [, \%other ]): too many parameters"
 	if @_;
-    _cwd_check();
+    _inst_checks();
 
     # decide what needs doing
 
@@ -3613,6 +3669,7 @@ sub dbd_edit_mm_attribs {
 }
 
 sub dbd_dbi_dir {
+    _inst_checks();
     return '.' if $is_dbi;
     my $dbidir = $INC{'DBI.pm'} || die "DBI.pm not in %INC!";
     $dbidir =~ s:/DBI\.pm$::;
@@ -3620,7 +3677,7 @@ sub dbd_dbi_dir {
 }
 
 sub dbd_dbi_arch_dir {
-    _cwd_check();
+    _inst_checks();
     return '$(INST_ARCHAUTODIR)' if $is_dbi;
     my $dbidir = dbd_dbi_dir();
     my @try = map { "$_/auto/DBI" } @INC;
@@ -3633,7 +3690,7 @@ sub dbd_dbi_arch_dir {
 
 sub dbd_postamble {
     my $self = shift;
-    _cwd_check();
+    _inst_checks();
     my $dbidir = dbd_dbi_dir();
     my $xstdir = dbd_dbi_arch_dir();
     my $xstfile= '$(DBI_INSTARCH_DIR)/Driver.xst';
@@ -3672,6 +3729,10 @@ $(BASEEXT).xsi: $(DBI_DRIVER_XST) '.$xstf_h.'
 # ---
 ';
 }
+
+package DBDI; # just to reserve it via PAUSE for the future
+
+1;
 
 __END__
 

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.17 2003/11/13 13:04:38 timbo Exp $
+/* $Id: DBIXS.h,v 11.18 2004/02/01 11:16:16 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -111,7 +111,7 @@ typedef struct dbih_com_attr_st {
     SV *State;		/* Standard SQLSTATE, 5 char string	*/
     SV *Err;		/* Native engine error code		*/
     SV *Errstr;		/* Native engine error message		*/
-    SV *spare;
+    UV ErrCount;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
     SV *FetchHashKeyName;	/* for fetchrow_hashref		*/
     /* (NEW FIELDS?... DON'T FORGET TO UPDATE dbih_clearcom()!)	*/
@@ -198,11 +198,20 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
 #define DBIc_LAST_METHOD(imp)  	_imp2com(imp, std.last_method)
 
-#define DBIc_DEBUG(imp)		(_imp2com(imp, attr.TraceLevel))
-#define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))
+#define DBIc_TRACE_LEVEL_MASK	0x0000000F
+#define DBIc_TRACE_TOPIC_MASK	0x00FFFF00
+#define DBDc_TRACE_TOPIC_MASK	0xFF000000
+#define DBIc_TRACE_LEVEL(imp)	(DBIc_DBISTATE(imp)->debug &  DBIc_TRACE_LEVEL_MASK)
+#define DBIc_TRACE_FLAGS(imp)	(DBIc_DBISTATE(imp)->debug & ~DBIc_TRACE_LEVEL_MASK)
+#define DBIc_TRACE(imp, flags, flaglevel, level)	\
+	(  (flags && (DBIc_TRACE_FLAGS(imp) & flags) && (DBIc_TRACE_LEVEL(imp) >= flaglevel)) \
+	|| (level && DBIc_TRACE_LEVEL(imp) >= level) )
+#define DBIc_DEBUG(imp)		(_imp2com(imp, attr.TraceLevel)) /* deprecated */
+#define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))		 /* deprecated */
 #define DBIc_STATE(imp)		SvRV(_imp2com(imp, attr.State))
 #define DBIc_ERR(imp)		SvRV(_imp2com(imp, attr.Err))
 #define DBIc_ERRSTR(imp)	SvRV(_imp2com(imp, attr.Errstr))
+#define DBIc_ErrCount(imp)	_imp2com(imp, attr.ErrCount)
 #define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
 #define DBIc_LongReadLen_init	80	/* may change */
 #define DBIc_FetchHashKeyName(imp) (_imp2com(imp, attr.FetchHashKeyName))
@@ -232,19 +241,20 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_AutoCommit  0x000200	/* dbh only. used by drivers		*/
 #define DBIcf_LongTruncOk 0x000400	/* truncation to LongReadLen is okay	*/
 #define DBIcf_MultiThread 0x000800	/* allow multiple threads to enter	*/
-/*	spare		  0x001000						*/
+#define DBIcf_HandleSetErr 0x001000	/* has coderef HandleSetErr attribute	*/
 #define DBIcf_ShowErrorStatement  0x002000   /* include Statement in error	*/
 #define DBIcf_BegunWork   0x004000	/* between begin_work & commit/rollback */
 #define DBIcf_HandleError 0x008000	/* has coderef in HandleError attribute */
 #define DBIcf_Profile     0x010000	/* profile activity on this handle      */
 #define DBIcf_TaintIn     0x020000	/* check inputs for taintedness */
 #define DBIcf_TaintOut    0x040000	/* taint outgoing data */
-/* new flags may require clone() to be updated */
+#define DBIcf_Executed    0x080000	/* do/execute called since commit/rollb */
+#define DBIcf_PrintWarn   0x100000	/* warn() on warning (err="0")		*/
+/* NOTE: new flags may require clone() to be updated */
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
-  /* These are for dbh only:	*/						\
-  | DBIcf_AutoCommit | DBIcf_BegunWork	)
+  | DBIcf_AutoCommit | DBIcf_BegunWork | DBIcf_Executed )
 
 /* general purpose bit setting and testing macros			*/
 #define DBIbf_is( bitset,flag)		((bitset) &   (flag))
@@ -329,8 +339,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 /* --- Event Support (VERY LIABLE TO CHANGE) --- */
 
-/* #define DBIh_EVENTx(h,t,a1,a2) (DBIS->event((h), (t), (a1), (a2))) */
-#define DBIh_EVENTx(h,t,a1,a2)	/* deprecated */ &PL_sv_no
+#define DBIh_EVENTx(h,t,a1,a2)	/* deprecated XXX */ &PL_sv_no
 #define DBIh_EVENT0(h,t)	DBIh_EVENTx((h), (t), &PL_sv_undef, &PL_sv_undef)
 #define DBIh_EVENT1(h,t, a1)	DBIh_EVENTx((h), (t), (a1),         &PL_sv_undef)
 #define DBIh_EVENT2(h,t, a1,a2)	DBIh_EVENTx((h), (t), (a1),         (a2))
@@ -341,13 +350,18 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBEVENT_event	"DBEVENT"
 #define UNKNOWN_event	"UNKNOWN"
 
+#define DBIh_SET_ERR_SV(h,i, err, errstr, state, method) \
+	(DBIc_DBISTATE(i)->set_err_sv(h,i, err, errstr, state, method))
+#define DBIh_SET_ERR_CHAR(h,i, err_c, err_i, errstr, state, method) \
+	(DBIc_DBISTATE(i)->set_err_char(h,i, err_c, err_i, errstr, state, method))
+
 
 /* --- Handy Macros --- */
 
 #define DBIh_CLEAR_ERROR(imp_xxh) (void)( \
 	(void)SvOK_off(DBIc_ERR(imp_xxh)),    	\
 	(void)SvOK_off(DBIc_ERRSTR(imp_xxh)),	\
-	(SvPOK(DBIc_STATE(imp_xxh)) ? SvCUR(DBIc_STATE(imp_xxh))=0 : 0)	\
+	(void)SvOK_off(DBIc_STATE(imp_xxh))	\
     )
 
 
@@ -389,9 +403,11 @@ struct dbistate_st {
     PerlInterpreter * thr_owner;	/* thread that owns this dbistate	*/
 
     int         (*logmsg)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
-    int         (*set_err)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
+    int         (*set_err_sv)	_((SV *h, imp_xxh_t *imp_xxh, SV   *err, SV   *errstr, SV   *state, SV   *method));
+    int         (*set_err_char) _((SV *h, imp_xxh_t *imp_xxh, char *err, IV err_i, char *errstr, char *state, char *method));
+    int         (*bind_col)     _((SV *sth, SV *col, SV *ref, SV *attribs));
 
-    void *pad2[7];
+    void *pad2[5];
 };
 
 /* macros for backwards compatibility */
