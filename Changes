@@ -5,12 +5,16 @@ Current DBI Implementation Notes:
 
     *** THINGS MAY CHANGE *** See README file ***
 
-Changes in DBI 0.75,	27th Jan 1996
+Changes in DBI 0.76,	3rd Feb 1997
+
+	Fixed a compiler type warnings (pedantic IRIX again).
+
+Changes in DBI 0.75,	27th Jan 1997
 
 	Fix problem introduced by a change in Perl5.003_XX.
 	Updated README and DBI.pm docs.
 
-Changes in DBI 0.74,	14th Jan 1996
+Changes in DBI 0.74,	14th Jan 1997
 
 	Dispatch now sets dbi_debug to the level of the current handle
 	(this makes tracing/debugging individual handles much easier).

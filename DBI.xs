@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.61 1997/01/27 22:35:54 timbo Exp $
+/* $Id: DBI.xs,v 1.62 1997/02/03 17:17:15 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -955,7 +955,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 	}
 	else {
-	    outitems = perl_call_sv(isGV(imp_msv) ? GvCV(imp_msv) : imp_msv, gimme);
+	    outitems = perl_call_sv(isGV(imp_msv) ? (SV*)GvCV(imp_msv) : imp_msv, gimme);
 	}
 
 	if (debug >= 2) { /* XXX restore local vars so ST(n) works below	*/

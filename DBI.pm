@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.75';
+$VERSION = '0.76';
 
-my $Revision = substr(q$Revision: 1.61 $, 10);
+my $Revision = substr(q$Revision: 1.62 $, 10);
 
-# $Id: DBI.pm,v 1.61 1997/01/27 22:35:54 timbo Exp $
+# $Id: DBI.pm,v 1.62 1997/02/03 18:55:15 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
