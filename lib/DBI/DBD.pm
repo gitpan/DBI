@@ -3639,7 +3639,7 @@ my $done_inst_checks;
 sub _inst_checks {
     return if $done_inst_checks++;
     my $cwd = cwd();
-    if ($cwd =~ /$Config{path_sep}/) {
+    if ($cwd =~ /\Q$Config{path_sep}/) {
 	warn "*** Warning: Path separator characters (`$Config{path_sep}') ",
 	    "in the current directory path ($cwd) may cause problems\a\n\n";
         sleep 2;
@@ -3684,14 +3684,14 @@ sub dbd_edit_mm_attribs {
 	# so 'make' creates them and 'make clean' deletes them
 	my %test_variants = (
 	    pp => {	name => "DBI::PurePerl",
-			add => [ '$ENV{DBI_PUREPERL}=2;' ],
+			add => [ 'local $ENV{DBI_PUREPERL} = 2;' ],
 	    },
 	    mx => {	name => "DBD::Multiplex",
-			add => [ q{$ENV{DBI_AUTOPROXY}='dbi:Multiplex:';} ],
+			add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Multiplex:';} ],
 	    }
 	#   px => {	name => "DBD::Proxy",
 	#		need mechanism for starting/stopping the proxy server
-	#		add => [ q{$ENV{DBI_AUTOPROXY}='dbi:Proxy:XXX';} ],
+	#		add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Proxy:XXX';} ],
 	#   }
 	);
 	# currently many tests fail - DBD::Multiplex needs more work
@@ -3738,8 +3738,8 @@ sub dbd_dbi_arch_dir {
     _inst_checks();
     return '$(INST_ARCHAUTODIR)' if $is_dbi;
     my $dbidir = dbd_dbi_dir();
-    my @try = map { "$_/auto/DBI" } @INC;
-    my @xst = grep { -f "$_/Driver.xst" } @try;
+    my @try = map  {    vmsify( unixify($_) . "/auto/DBI/"  ) } @INC;
+    my @xst = grep { -f vmsify( unixify($_) . "/Driver.xst" ) } @try;
     Carp::croak("Unable to locate Driver.xst in @try") unless @xst;
     Carp::carp( "Multiple copies of Driver.xst found in: @xst") if @xst > 1;
     print "Using DBI $DBI::VERSION (for perl $] on $Config{archname}) installed in $xst[0]\n";
@@ -3753,7 +3753,8 @@ sub dbd_postamble {
     my $dbi_driver_xst= '$(DBI_INSTARCH_DIR)/Driver.xst';
     my $xstf_h = '$(DBI_INSTARCH_DIR)/Driver_xst.h';
     if ($^O eq 'VMS') {
-	$dbi_instarch_dir = vmsify($dbi_instarch_dir.'/') unless $is_dbi;
+	$dbi_instarch_dir = vmsify($dbi_instarch_dir.'/');
+	$dbi_instarch_dir =~ s:/$::; # for buggy old vmsify's?
 	$dbi_driver_xst= '$(DBI_INSTARCH_DIR)Driver.xst';
 	$xstf_h = '$(DBI_INSTARCH_DIR)Driver_xst.h';
     }

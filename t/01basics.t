@@ -3,6 +3,7 @@
 use strict;
 
 use Test::More tests => 110;
+use File::Spec;
 
 ## ----------------------------------------------------------------------------
 ## 01basic.t - test of some basic DBI functions 
@@ -149,10 +150,12 @@ is(neat_list([ 1 + 1, "2", undef, "foobarbaz"]), "2, '2', undef, 'foobarbaz'", '
 cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug's initial state is 0");
 
 SKIP: {
-    skip "cannot find : /dev/null", 2 unless (-e "/dev/null");	
-    DBI->trace(42,"/dev/null");
-    cmp_ok($DBI::dbi_debug, '==', 42, "... DBI::dbi_debug is 42");
-	DBI->trace(0, undef);
+    my $null = File::Spec->devnull();
+    skip "cannot find : $null", 2 unless ($^O eq "MSWin32" || -e $null);
+
+    DBI->trace(15,$null);
+    cmp_ok($DBI::dbi_debug, '==', 15, "... DBI::dbi_debug is 15");
+    DBI->trace(0, undef);
     cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug is 0");
 }
 

@@ -48,6 +48,8 @@ sub trace_to_file {
 
 	is( unlink( $trace_file ), 1, "Remove trace file: $trace_file" );
 	ok( !-e $trace_file, "Trace file actually gone" );
+
+	DBI->trace($orig_trace_level);	# no way to restore previous outfile XXX
 }
 
 trace_to_file();
@@ -254,15 +256,15 @@ ok($row_a[1] eq $col1) or print "$row_a[1] ne $col1\n";
 ok($row_a[2] eq $col2) or print "$row_a[2] ne $col2\n";
 #$csr_a->trace(0);
 
-# Check Taint attribute works. This requires this test to be run
-# manually with the -T flag: "perl -T -Mblib t/examp.t"
-sub is_tainted {
-    my $foo;
-    return ! eval { ($foo=join('',@_)), kill 0; 1; };
-}
-
 
 SKIP: {
+
+    # Check Taint attribute works. This requires this test to be run
+    # manually with the -T flag: "perl -T -Mblib t/examp.t"
+    sub is_tainted {
+	my $foo;
+	return ! eval { ($foo=join('',@_)), kill 0; 1; };
+    }
 
     skip " Taint attribute tests skipped\n", 19 unless(is_tainted($^X) && !$DBI::PurePerl);
 

@@ -521,7 +521,7 @@ sub hash {
     elsif ($type == 1) {	# Fowler/Noll/Vo hash
         # see http://www.isthe.com/chongo/tech/comp/fnv/
         require Math::BigInt;   # feel free to reimplement w/o BigInt!
-	my $version = $Math::BigInt::VERSION || 0;
+	(my $version = $Math::BigInt::VERSION || 0) =~ s/_.*//; # eg "1.70_01"
 	if ($version >= 1.56) {
 	    $hash = Math::BigInt->new(0x811c9dc5);
 	    for my $uchar (unpack ("C*", $key)) {
@@ -575,6 +575,13 @@ sub FETCH {
 
 package
 	DBD::_::common;
+
+sub swap_inner_handle {
+    my ($h1, $h2) = @_;
+    # can't make this work till we can get the outer handle from the inner one
+    # probably via a WeakRef
+    return $h1->set_err(1, "swap_inner_handle not currently supported by DBI::PurePerl");
+}
 
 sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;

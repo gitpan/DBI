@@ -36,6 +36,7 @@ use File::Spec;
 use strict;
 
 use Test::Harness;	# tests use it so check it's loadable early
+use Test::More 0.4;	# tests use it so check it's loadable early
 
 use DBI::DBD;
 
@@ -124,7 +125,7 @@ MSG
 my %opts = (
     NAME=> 'DBI',
     VERSION_FROM=> 'DBI.pm',
-    PREREQ_PM => { "Test::More" => 0.40 },
+    PREREQ_PM => { "Test::Simple" => 0.40 },
     EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl" ],
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
@@ -287,16 +288,23 @@ sub post_constants {
 DBI.c: Perl$(OBJ_EXT)
 
 # make Changes file available as installed pod docs "perldoc DBI::Changes"
+# make Roadmap.pod file available as installed pod docs "perldoc DBI::Roadmap"
 inst_libdbi = ' . File::Spec->catdir($self->{INST_LIB}, 'DBI') . '
 changes_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Changes.pm') . '
+roadmap_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Roadmap.pm') . '
 
-config :: $(changes_pm)
+config :: $(changes_pm) $(roadmap_pm)
 	$(NOECHO) $(NOOP)
 
 $(changes_pm): Changes
 	$(NOECHO) $(MKPATH) $(inst_libdbi)
 	$(NOECHO) $(RM_F) $(changes_pm)
 	$(CP) Changes $(changes_pm)
+
+$(roadmap_pm): Roadmap.pod
+	$(NOECHO) $(MKPATH) $(inst_libdbi)
+	$(NOECHO) $(RM_F) $(roadmap_pm)
+	$(CP) Roadmap.pod $(roadmap_pm)
 ';
 
     return $xst;

@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.43"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.44"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -118,7 +118,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.43.
+This is the DBI specification that corresponds to the DBI version 1.44.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -365,6 +365,7 @@ my $keeperr = { O=>0x0004 };
 	set_err		=> { U =>[3,6,'$err, $errmsg [, $state, $method, $rv]'], O=>0x0010 },
 	trace		=> { U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
 	trace_msg	=> { U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
+	swap_inner_handle => { U =>[2,3,'$h [, $allow_reparent ]'] },
     },
     dr => {		# Database Driver Interface
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
@@ -1278,6 +1279,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return 0x00000100 if $name eq 'SQL';
 	return;
     }
+
 }
 
 
@@ -1298,6 +1300,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my ($this) = DBI::_new_dbh($drh, {
 	    'Name' => $dsn,
 	});
+	# XXX debatable as there's no "server side" here
+	# (and now many uses would trigger warnings on DESTROY)
+	# $this->STORE(Active => 1);
 	$this;
     }
 
@@ -1511,7 +1516,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $sth = $cache->{$key};
 	if ($sth) {
 	    return $sth unless $sth->FETCH('Active');
-	    Carp::carp("prepare_cached($statement) statement handle $sth still active")
+	    Carp::carp("prepare_cached($statement) statement handle $sth still Active")
 		unless ($if_active ||= 0);
 	    $sth->finish if $if_active <= 1;
 	    return $sth  if $if_active <= 2;
@@ -1649,24 +1654,14 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
 	    if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
 
-	return $sth->set_err(1, "Can't use named placeholders for non-driver supported bind_param_array")
+	return $sth->set_err(1, "Can't use named placeholder '$p_id' for non-driver supported bind_param_array")
 	    unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
+
+	return $sth->set_err(1, "Placeholder '$p_id' is out of range")
+	    if $p_id <= 0; # can't easily/reliably test for too big
 
 	# get/create arrayref to hold params
 	my $hash_of_arrays = $sth->{ParamArrays} ||= { };
-
-	if (ref $value_array eq 'ARRAY') {
-	    # check that input has same length as existing
-	    # find first arrayref entry (if any)
-	    foreach (keys %$hash_of_arrays) {
-		my $v = $$hash_of_arrays{$_};
-		next unless ref $v eq 'ARRAY';
-		return $sth->set_err(1,
-			"Arrayref for parameter $p_id has ".@$value_array." elements"
-			." but parameter $_ has ".@$v)
-		    if @$value_array != @$v;
-	    }
-	}
 
 	# If the bind has attribs then we rely on the driver conforming to
 	# the DBI spec in that a single bind_param() call with those attribs
@@ -1763,17 +1758,18 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		if defined($NUM_OF_PARAMS) && $NUM_OF_PARAMS != $NUM_OF_PARAMS_given;
 
 	    # get the length of a bound array
-	    my $len = 1; # in case all are scalars
+	    my $maxlen = 0;
 	    my %hash_of_arrays = %{$sth->{ParamArrays}};
 	    foreach (keys(%hash_of_arrays)) {
 		my $ary = $hash_of_arrays{$_};
-		$len = @$ary if ref $ary eq 'ARRAY';
+		my $len = (ref $ary eq 'ARRAY') ? @$ary : 1;
+		$maxlen = $len if $len > $maxlen;
 	    }
 	    my @bind_ids = 1..keys(%hash_of_arrays);
 
 	    my $tuple_idx = 0;
 	    $fetch_tuple_sub = sub {
-		return if $tuple_idx >= $len;
+		return if $tuple_idx >= $maxlen;
 		my @tuple = map {
 		    my $a = $hash_of_arrays{$_};
 		    ref($a) ? $a->[$tuple_idx] : $a
@@ -1802,7 +1798,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		push @$tuple_status, [ $err, $errstr_cache{$err} ||= $sth->errstr, $sth->state ];
 	    }
 	}
-	return ($err_count) ? undef : scalar @$tuple_status;
+	return ($err_count) ? undef : scalar(@$tuple_status)||"0E0";
     }
 
 
@@ -2844,6 +2840,24 @@ $trace_flag_name.  Drivers are expected to override this method and
 check if $trace_flag_name is a driver specific trace flags and, if
 not, then call the DBIs default parse_trace_flag().
 
+=item C<swap_inner_handle>
+
+  $rc = $h1->swap_inner_handle( $h2 );
+  $rc = $h1->swap_inner_handle( $h2, $allow_reparent );
+
+Brain transplants for handles. You don't need to know about this
+unless you want to become a handle surgeon.
+
+A DBI handle is a reference to a tied hash. A tied hash has an
+I<inner> hash that actually holds the contents.  The swap_inner_handle()
+method swaps the inner hashes between two handles. The $h1 and $h2
+handles still point to the same tied hashes, but what those hashes
+are tied to has been swapped.  In effect $h1 I<becomes> $h2 and
+vice-versa. This is powerful stuff. Use with care.
+
+As a small safety measure, the two handles, $h1 and $h2, have to
+share the same parent unless $allow_reparent is true.
+
 =back
 
 
@@ -2858,7 +2872,7 @@ in the new statement handle do not affect the parent database handle
 and changes to the database handle do not affect existing statement
 handles, only future ones.
 
-Attempting to set or get the value of an unknown attribute is fatal,
+Attempting to set or get the value of an unknown attribute generates a warning,
 except for private driver specific attributes (which all have names
 starting with a lowercase letter).
 
@@ -3677,8 +3691,8 @@ be used with the DBI.
 
 Like L</prepare> except that the statement handle returned will be
 stored in a hash associated with the C<$dbh>. If another call is made to
-C<prepare_cached> with the same C<$statement> and C<%attr> values, then the
-corresponding cached C<$sth> will be returned without contacting the
+C<prepare_cached> with the same C<$statement> and C<%attr> parameter values,
+then the corresponding cached C<$sth> will be returned without contacting the
 database server.
 
 The C<$if_active> parameter lets you adjust the behaviour if an
@@ -4611,7 +4625,7 @@ This section describes attributes specific to database handles.
 Changes to these database handle attributes do not affect any other
 existing or future database handles.
 
-Attempting to set or get the value of an unknown attribute is fatal,
+Attempting to set or get the value of an unknown attribute generates a warning,
 except for private driver-specific attributes (which all have names
 starting with a lowercase letter).
 
@@ -4884,10 +4898,6 @@ placeholder into a list of values for a statement like "SELECT foo
 WHERE bar IN (?)".  A placeholder can only ever represent one value
 per execution.)
 
-Each array bound to the statement must have the same number of
-elements.  Some drivers may define a method attribute to relax this
-safety check.
-
 Scalar values, including C<undef>, may also be bound by
 C<bind_param_array>. In which case the same value will be used for each
 L</execute> call. Driver-specific implementations may behave
@@ -4903,7 +4913,7 @@ match the default DBI behaviour, but always consult your driver
 documentation as there may be driver specific issues to consider.
 
 Note that the default implementation currently only supports non-data
-returning statements (insert, update, but not select). Also,
+returning statements (INSERT, UPDATE, but not SELECT). Also,
 C<bind_param_array> and L</bind_param> cannot be mixed in the same
 statement execution, and C<bind_param_array> must be used with
 L</execute_array>; using C<bind_param_array> will have no effect
@@ -4963,9 +4973,16 @@ tuples executed, even if it's zero.  See the C<ArrayTupleStatus>
 attribute below for how to determine the execution status for each
 tuple.
 
-Bind values for the tuples to be executed may be supplied by an
-C<ArrayTupleFetch> attribute, or else in the C<@bind_values> argument,
-or else by prior calls to L</bind_param_array>.
+Bind values for the tuples to be executed may be supplied row-wise
+by an C<ArrayTupleFetch> attribute, or else column-wise in the
+C<@bind_values> argument, or else column-wise by prior calls to
+L</bind_param_array>.
+
+Where column-wise binding is used (via the C<@bind_values> argument
+or calls to bind_param_array()) the maximum number of elements in
+any one of the bound value arrays determines the number of tuples
+executed. Placeholders with fewer values in their parameter arrays
+are treated as if padded with undef (NULL) values.
 
 The C<ArrayTupleFetch> attribute can be used to specify a reference
 to a subroutine that will be called to provide the bind values for
@@ -5031,7 +5048,7 @@ For example:
       }
   }
 
-Support for data returning statements, i.e., select, is driver-specific
+Support for data returning statements such as SELECT is driver-specific
 and subject to change. At present, the default implementation
 provided by DBI only supports non-data returning statements.
 
@@ -5071,9 +5088,11 @@ The execute_for_fetch() method calls $fetch_tuple_sub, without any
 parameters, until it returns a false value. Each tuple returned is
 used to provide bind values for an $sth->execute(@$tuple) call.
 
-The number of tuples executed is returned I<only if> there were no errors.
 If there were any errors then C<undef> is returned and the @tuple_status
 array can be used to discover which tuples failed and with what errors.
+If there were no errors then execute_for_fetch() returns the number
+of tuples executed. Like execute() and execute_array() a zero is
+returned as "0E0" so execute_for_fetch() is only false on error.
 
 If \@tuple_status is passed then the execute_for_fetch method uses
 it to return status information. The tuple_status array holds one
@@ -5248,7 +5267,7 @@ all the rows in one go. Here's an example:
 
   my $rows = []; # cache for batches of rows
   while( my $row = ( shift(@$rows) || # get row from cache, or reload cache:
-                     shift(@{$rows=$sth->fetchall_arrayref(undef,10_000)||[]) )
+                     shift(@{$rows=$sth->fetchall_arrayref(undef,10_000)||[]}) )
   ) {
     ...
   }
@@ -5335,7 +5354,7 @@ database connection.  It has nothing to do with transactions. It's mostly an
 internal "housekeeping" method that is rarely needed.
 See also L</disconnect> and the L</Active> attribute.
 
-The C<finish> method should have been called C<cancel_select>.
+The C<finish> method should have been called C<discard_pending_rows>.
 
 
 =item C<rows>
@@ -5492,7 +5511,7 @@ of these attributes are read-only.
 Changes to these statement handle attributes do not affect any other
 existing or future statement handles.
 
-Attempting to set or get the value of an unknown attribute is I<fatal>,
+Attempting to set or get the value of an unknown attribute generates a warning,
 except for private driver specific attributes (which all have names
 starting with a lowercase letter).
 
