@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.6 2002/06/05 03:26:39 timbo Exp $
+/* $Id: DBIXS.h,v 11.7 2002/06/05 22:39:41 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -63,8 +63,9 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver
 #endif
 
 
-/* forward declaration of 'DBI Handle Common Data', see below		*/
+/* forward struct declarations						*/
 
+typedef struct dbistate_st dbistate_t;
 /* implementor needs to define actual struct { dbih_??c_t com; ... }*/
 typedef struct imp_drh_st imp_drh_t;	/* driver			*/
 typedef struct imp_dbh_st imp_dbh_t;	/* database			*/
@@ -99,7 +100,7 @@ typedef struct dbih_com_std_st {
     I32  kids;		/* count of db's for dr's, st's for db's etc	*/
     I32  active_kids;	/* kids which are currently DBIc_ACTIVE		*/
     U32  thr_user;	/* thread id currently using the handle		*/
-    void *spare;
+    dbistate_t *dbistate;
 } dbih_com_std_t;
 
 typedef struct dbih_com_attr_st {
@@ -190,6 +191,8 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_THR_USER_NONE  	(0xFFFF)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
+#define DBIc_DBISTATE(imp)  	_imp2com(imp, std.dbistate)
+#define DBIc_LOGPIO(imp)  	DBIc_DBISTATE(imp)->logfp
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
 #define DBIc_LAST_METHOD(imp)  	_imp2com(imp, std.last_method)
@@ -347,7 +350,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 /* --- DBI State Structure --- */
 
-typedef struct {
+struct dbistate_st {
 
 #define DBISTATE_VERSION  94	/* Must change whenever dbistate_t does	*/
 
@@ -385,7 +388,7 @@ typedef struct {
     int         (*logmsg)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
     int         (*set_err)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
     void *pad[7];
-} dbistate_t;
+};
 
 /* macros for backwards compatibility */
 #define set_attr(h, k, v)	set_attr_k(h, k, 0, v)

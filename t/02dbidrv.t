@@ -1,38 +1,84 @@
 #!perl -w
 
 use DBI;
+use Test;
+use strict;
+
+BEGIN {
+	plan tests => 22;
+}
 
 $|=1;
 $^W=1;
-
-print "1..$tests\n";
+my $drh;
 
 {   package DBD::Test;
+    use strict;
 
     $drh = undef;	# holds driver handle once initialised
 
     sub driver{
 	return $drh if $drh;
-	print "ok 1\n";		# just getting here is enough!
+	main::ok(1);		# just getting here is enough!
 	my($class, $attr) = @_;
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.4 $',
+		'Version' => '$Revision: 11.5 $',
 	    },
 	    77	# 'implementors data'
 	    );
-	print "ok 2\n";		# just getting here is enough!
+	main::ok($drh);
 	$drh;
     }
 }
 
 {   package DBD::Test::dr;
-    $imp_data_size = 0;
-    $imp_data_size = 0;	# avoid typo warning
+    use strict;
+    $DBD::Test::dr::imp_data_size = 0;
+    $DBD::Test::dr::imp_data_size = 0;	# avoid typo warning
 
     sub disconnect_all { undef }
     sub DESTROY { undef }
+
+    sub data_sources {	# just used to run tests 'inside' a driver
+	my $h = shift;
+	print "DBD::_::dr internals\n";
+	main::ok($h);
+	main::ok(!tied $h);
+    }
+}
+
+{   package DBD::Test::db;
+    use strict;
+    $DBD::Test::db::imp_data_size = 0;
+    $DBD::Test::db::imp_data_size = 0;	# avoid typo warning
+
+    sub DESTROY { undef }
+
+    sub do {	# just used to run tests 'inside' a driver
+	my $h = shift;
+	print "DBD::_::db internals\n";
+
+	main::ok($h);
+	main::ok(!tied $h);
+
+	#$h->trace(9);
+
+	print "Driver for inner handles needs to be the Drivers inner handle\n";
+	my $drh_i = $h->{Driver};
+	main::ok($drh_i);
+	main::ok(ref $drh_i);
+	main::ok(!tied %$drh_i);
+
+	print "Driver for outer handles needs to be the Drivers outer handle\n";
+	my $drh_o = $h->FETCH('Driver');
+	main::ok($drh_o);
+	main::ok(ref $drh_o);
+	main::ok(tied %$drh_o) unless $DBI::PurePerl && main::ok(1);
+
+	#$h->trace(0);
+    }
 }
 
 $INC{'DBD/Test.pm'} = 'dummy';	# fool require in install_driver()
@@ -40,32 +86,35 @@ $INC{'DBD/Test.pm'} = 'dummy';	# fool require in install_driver()
 # Note that install_driver should *not* normally be called directly.
 # This test does so only because it's a test of install_driver!
 $drh = DBI->install_driver('Test');
-($drh) ? print "ok 3\n" : print "not ok 3\n";
+ok($drh);
 
-(DBI::_get_imp_data($drh) == 77) ? print "ok 4\n" : print "not ok 4\n";
+ok(DBI::_get_imp_data($drh), 77);
 
-foreach (5..9) { print "ok $_\n"; }
+$drh->data_sources;	# trigger driver internal tests above
+
+my $dbh = $drh->connect;
+
+$dbh->do('dummy');		# trigger more driver internal tests above
 
 $drh->set_err("99", "foo");
-($DBI::err == 99)        ? print "ok 10\n" : print "not ok 10\n";
-($DBI::errstr eq "foo")  ? print "ok 11\n" : print "not ok 11\n";
+ok($DBI::err, 99);
+ok($DBI::errstr, "foo");
 
 $drh->set_err(0, "00000");
-($DBI::state eq "")      ? print "ok 12\n" : print "not ok 12\n";
+ok($DBI::state, "");
 
 $drh->set_err(1, "test error");
-($DBI::state eq "S1000") ? print "ok 13\n" : print "not ok 13 # $DBI::state\n";
+ok($DBI::state, "S1000");
 
 $drh->set_err(1, "test error", "IM999");
-($DBI::state eq "IM999") ? print "ok 14\n" : print "not ok 14 # $DBI::state\n";
+ok($DBI::state, "IM999");
 
 eval { $DBI::rows = 1 };
-($@ =~ m/Can't modify/)  ? print "ok 15\n" : print "not ok 15\n";
+ok($@ =~ m/Can't modify/);
 
-($drh->{FetchHashKeyName} eq 'NAME')  ? print "ok 16\n" : print "not ok 16\n";
+ok($drh->{FetchHashKeyName}, 'NAME');
 $drh->{FetchHashKeyName} = 'NAME_lc';
-($drh->{FetchHashKeyName} eq 'NAME_lc')  ? print "ok 17\n" : print "not ok 17\n";
+ok($drh->{FetchHashKeyName}, 'NAME_lc');
 
 
-BEGIN { $tests = 17 }
 exit 0;

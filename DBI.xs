@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.9 2002/06/05 03:26:39 timbo Exp $
+/* $Id: DBI.xs,v 11.10 2002/06/05 22:39:41 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -444,8 +444,8 @@ dbi_hash(char *key, long type)
 	}
 	return hash;
     }
-    else
-	croak("bad hash type %d", type);
+    croak("bad hash type %d", type);
+    return 0; /* NOT REACHED */
 }
 
 
@@ -754,6 +754,7 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
     imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
     memzero((char*)imp, imp_size);
 
+    DBIc_DBISTATE(imp)  = DBIS;
     DBIc_IMP_STASH(imp) = imp_stash;
 
     if (!parent_h) {		/* only a driver (drh) has no parent	*/
@@ -867,8 +868,12 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 
 	switch (DBIc_TYPE(imp)) {
 	case DBIt_DB:
+	    /* cache _inner_ handle, but also see quick_FETCH() */
+	    hv_store((HV*)SvRV(h), "Driver", 6, newRV(SvRV(parent)), 0);
 	    break;
 	case DBIt_ST:
+	    /* cache _inner_ handle, but also see quick_FETCH() */
+	    hv_store((HV*)SvRV(h), "Database", 8, newRV(SvRV(parent)), 0);
 	    /* copy (alias) Statement from the sth up into the dbh	*/
 	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
 	    if (tmp_svp)
@@ -1652,11 +1657,7 @@ quick_FETCH(hrv, keysv, imp_msv)
     if ( (type=SvTYPE(SvRV(sv))) == SVt_RV
 	&& SvTYPE(SvRV(SvRV(sv))) == SVt_PVCV)
 	return SvRV(sv); /* return deref if ref to CODE ref */
-return sv; /* special handling of CV's now deprecated */
-    if (type != SVt_PVCV)
-	return sv;	 /* return non-code refs */
-    *imp_msv = (SV*)SvRV(sv); /* tell dispatch() to execute this code instead */
-    return NULL;
+    return sv;
 }
 
 
@@ -1838,8 +1839,8 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, char *statement, SV *method, double t1, d
 	SV **psv = hv_fetch((HV*)SvRV(h), "Statement", 9, 0);
 	statement = (psv && SvOK(*psv)) ? SvPV(*psv, lna) : "";
     }
-    if (DBIS->debug >= 4)
-	PerlIO_printf(DBILOGFP, "dbi_profile %s %f %d %d q{%s}\n",
+    if (DBIc_DBISTATE(imp_xxh)->debug >= 4)
+	PerlIO_printf(DBIc_LOGPIO(imp_xxh), "dbi_profile %s %f %d %d q{%s}\n",
 		neatsvpv((SvTYPE(method)==SVt_PVCV) ? (SV*)CvGV(method) : method, 0),
 		ti, call_depth, parent_call_depth, statement);
 
@@ -2180,10 +2181,22 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     if (!keep_error)
 	DBIh_CLEAR_ERROR(imp_xxh);
 
-    /* Now check if we can provide a shortcut implementation here. */
-    /* At the moment we only offer a quick fetch mechanism.        */
+    /* Shortcut for fetching attributes to bypass method call overheads */
     if (*meth_name=='F' && strEQ(meth_name,"FETCH")) {
+
 	qsv = quick_FETCH(h, ST(1), &imp_msv);
+
+	/* disable FETCH from cache for special attributes */
+	if (qsv && SvROK(qsv) && SvTYPE(SvRV(qsv))==SVt_PVHV) {
+	    STRLEN kl;
+	    char *key = SvPV(ST(1), kl);
+	    if (*key=='D' &&
+		(  (kl==6 && DBIc_TYPE(imp_xxh)==DBIt_DB && strEQ(key,"Driver"))
+		|| (kl==8 && DBIc_TYPE(imp_xxh)==DBIt_ST && strEQ(key,"Database")) )
+	    ) {
+		qsv = Nullsv;
+	    }
+	}
     }
 
     if (qsv) { /* skip real method call if we already have a 'quick' value */
@@ -3393,7 +3406,6 @@ fetchrow_hashref(sth, keyattrib=Nullch)
     SV *	sth
     char *	keyattrib
     PREINIT:
-    dPERINTERP;
     SV *rowavr;
     D_imp_sth(sth);
     CODE:
@@ -3582,7 +3594,6 @@ set_err(h, errval, errstr=&sv_no, state=&sv_undef, method=&sv_undef, result=Null
     SV *	result
     CODE:
     {
-    dPERINTERP;
     D_imp_xxh(h);
     STRLEN lna;
     SV **sem_svp;

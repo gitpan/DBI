@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.9 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.10 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -309,14 +309,14 @@ sub constant {
 }
 sub trace {
     my ($h, $level, $file) = @_;
-    my $old_level = $level;
+    my $old_level = $DBI::dbi_debug;
     _set_trace_file($file);
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
                 . "dispatch trace level set to $level\n" if $level;
         if ($level==0 and fileno($DBI::tfh)) {
-	    return _set_trace_file("");
+	    _set_trace_file("");
         }
     }
     return $old_level;
@@ -435,7 +435,7 @@ package DBD::_::common;		# ============ DBD::_::common
 
 sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;
-    my $old_level = $level;
+    my $old_level = $DBI::dbi_debug;
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	printf $DBI::tfh

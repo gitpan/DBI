@@ -1,6 +1,8 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Sort out DBIcDBISTATE() and DBIS mess
+
 Sponge behave_like - generalize?
 
 Update DBI::DBD with overview (at least) recommend Driver.xst strongly.

@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.12 2002/06/05 03:26:39 timbo Exp $
+# $Id: DBI.pm,v 11.13 2002/06/05 22:39:41 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.24; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.25; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -108,8 +108,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.24
-(C<$Date: 2002/06/05 03:26:39 $>).
+This is the DBI specification that corresponds to the DBI version 1.25
+(C<$Date: 2002/06/05 22:39:41 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
@@ -136,7 +136,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.12 $, 10);
+my $Revision = substr(q$Revision: 11.13 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -2773,6 +2773,10 @@ also be tainted in future versions. That change may well break your
 applications unless you take great care now. If you use DBI Taint mode,
 please report your experience and any suggestions for changes.
 
+=item C<Profile> (inherited)
+
+Enable collection and reporting of method call timing statistics.
+See the L<DBI::Profile> module documentation for I<much> more detail.
 
 =item C<private_your_module_name_*>
 

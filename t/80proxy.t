@@ -82,8 +82,9 @@ if (@ARGV) {
 
     # If desperate uncomment this and add '-d' after $^X below:
     # local $ENV{PERLDB_OPTS} = "AutoTrace NonStop=1 LineInfo=dbiproxy.dbg";
+
     my $dbi_trace_level = DBI->trace(0);
-    ($handle, $port) = Net::Daemon::Test->Child($numTests,
+    my @child_args = (
 	#'truss', '-o', 'dbiproxy.truss',
 	$^X, '-Iblib/lib', '-Iblib/arch', 
 	'dbiproxy', '--test', # --test must be first command line arg
@@ -94,6 +95,8 @@ if (@ARGV) {
 	'--debug',
 	'--timeout=60'
     );
+    warn " starting test dbiproxy process: @child_args\n" if $dbi_trace_level;
+    ($handle, $port) = Net::Daemon::Test->Child($numTests, @child_args);
 }
 
 my @opts = ('peeraddr' => '127.0.0.1', 'peerport' => $port, 'debug' => 1);
