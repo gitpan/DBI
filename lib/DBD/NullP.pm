@@ -4,8 +4,9 @@
     require DBI;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
+    $VERSION = substr(q$Revision: 10.2 $, 9,-1);
 
-#   $Id: NullP.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+#   $Id: NullP.pm,v 10.2 1999/05/13 01:44:25 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -21,7 +22,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'NullP',
-	    'Version' => '$Revision: 10.1 $',
+	    'Version' => $VERSION,
 	    'Attribution' => 'DBD Example Null Perl stub by Tim Bunce',
 	    }, [ qw'example implementors private data']);
 	$drh;

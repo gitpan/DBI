@@ -4,8 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
+    $VERSION = substr(q$Revision: 10.6 $, 9,-1) -1;
 
-#   $Id: ExampleP.pm,v 10.3 1999/01/06 13:07:22 timbo Exp $
+#   $Id: ExampleP.pm,v 10.6 1999/05/13 01:44:25 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -34,13 +35,12 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 10.3 $',
+	    'Version' => $VERSION,
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
     }
 
-    1;
 }
 
 
@@ -48,20 +48,11 @@
     $imp_data_size = 0;
     use strict;
 
-    sub my_handler {
-	my($self, $type, @args) = @_;
-	return 0 unless $type eq 'ERROR';
-	${$self->{Err}}    = $args[0];
-	${$self->{Errstr}} = $args[1];
-	1;	# handled
-    }
-
     sub connect { # normally overridden, but a handy default
         my($drh, $dbname, $user, $auth)= @_;
         my($this) = DBI::_new_dbh($drh, {
 	    'Name' => $dbname,
 	    'User' => $user,
-	    'Handlers' => [ \&my_handler ],	# deprecated, don't do this
 	    });
 		$this->STORE(Active => 1);
         $this;
@@ -87,10 +78,8 @@
 
 	my($fields, $param)
 		= $statement =~ m/^select\s+(.*?)\s+from\s+(\S*)/i;
-	unless (defined $fields and defined $param) {
-	    $dbh->event("ERROR", 1, "Syntax error in select statement");
-	    return undef;
-	}
+	return $dbh->DBI::set_err(1, "Syntax error in select statement")
+		unless defined $fields and defined $param;
 
 	my @fields = ($fields eq '*')
 			? keys %DBD::ExampleP::statnames
@@ -99,10 +88,8 @@
 	my @bad = map {
 	    defined $DBD::ExampleP::statnames{$_} ? () : $_
 	} @fields;
-	if (@bad) {
-	    $dbh->event("ERROR", 1, "Unknown field names: @bad");
-	    return undef;
-	}
+	return $dbh->DBI::set_err(1, "Unknown field names: @bad")
+		if @bad;
 
 	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'     => $statement,
@@ -118,13 +105,55 @@
 	$outer;
     }
 
+    sub table_info {
+	my $dbh = shift;
+
+	# Return a list of all subdirectories
+	my $dh = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+	my $haveFileSpec = eval { require File::Spec };
+	my $dir = $haveFileSpec ? File::Spec->curdir() : ".";
+	my @list;
+	{
+	    no strict 'refs';
+	    opendir($dh, $dir)
+		or return $dbh->DBI::set_err(int($!),
+					"Failed to open directory $dir: $!");
+	    while (defined(my $file = readdir($dh))) {
+		next unless -d $file;
+		my($dev, $ino, $mode, $nlink, $uid) = stat(_);
+		my $pwnam = undef; # eval { scalar(getpwnam($uid)) } || $uid;
+		push(@list, [ $dir, $pwnam, $file, 'TABLE']);
+	    }
+	    close($dh);
+	}
+	# We would like to simply do a DBI->connect() here. However,
+	# this is wrong if we are in a subclass like DBI::ProxyServer.
+	$dbh->{'dbd_sponge_dbh'} ||= DBI->connect("DBI:Sponge:")
+	    or return $dbh->DBI::set_err($DBI::err,
+				    "Failed to connect to DBI::Sponge: "
+				    . $DBI::errstr);
+
+	my $attr =
+	    {'rows' => \@list,
+	     'NUM_OF_FIELDS' => 4,
+	     'NAME' => ['TABLE_QUALIFIER', 'TABLE_OWNER', 'TABLE_NAME',
+			'TABLE_TYPE'],
+	     'TYPE' => [DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR(),
+			DBI::SQL_VARCHAR(), DBI::SQL_VARCHAR()],
+	     'NULLABLE' => [1, 1, 1, 1]
+	    };
+	my $sdbh = $dbh->{'dbd_sponge_dbh'};
+	my $sth = $sdbh->prepare("SHOW TABLES FROM $dir", $attr)
+	    or return $dbh->DBI::set_err($sdbh->err(), $sdbh->errstr());
+	$sth;
+    }
 
     sub type_info_all {
 	my ($dbh) = @_;
 	my $ti = [
 	    {	TYPE_NAME	=> 0,
 		DATA_TYPE	=> 1,
-		PRECISION	=> 2,
+		COLUMN_SIZE	=> 2,
 		LITERAL_PREFIX	=> 3,
 		LITERAL_SUFFIX	=> 4,
 		CREATE_PARAMS	=> 5,
@@ -132,14 +161,14 @@
 		CASE_SENSITIVE	=> 7,
 		SEARCHABLE	=> 8,
 		UNSIGNED_ATTRIBUTE=> 9,
-		MONEY		=> 10,
-		AUTO_INCREMENT	=> 11,
+		FIXED_PREC_SCALE=> 10,
+		AUTO_UNIQUE_VALUE => 11,
 		LOCAL_TYPE_NAME	=> 12,
 		MINIMUM_SCALE	=> 13,
 		MAXIMUM_SCALE	=> 14,
 	    },
-	    [ 'VARCHAR', DBI::SQL_VARCHAR, undef, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
-	    [ 'INTEGER', DBI::SQL_INTEGER, undef, "","",   undef, 0, 0, 1, 0, 0,0,undef,0,0 ],
+	    [ 'VARCHAR', DBI::SQL_VARCHAR, 1024, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
+	    [ 'INTEGER', DBI::SQL_INTEGER,   10, "","",   undef, 0, 0, 1, 0, 0,0,undef,0,0 ],
 	];
 	return $ti;
     }
@@ -155,7 +184,7 @@
 	# In reality this would interrogate the database engine to
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
-	return 1 if $attrib eq 'AutoCommit';
+	return 1                         if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
 	return $dbh->SUPER::FETCH($attrib);
     }
@@ -166,7 +195,7 @@
 	# else pass up to DBI to handle
 	if ($attrib eq 'AutoCommit') {
 	    return 1 if $value;	# is already set
-	    croak("Can't disable AutoCommit");
+	    Carp::croak("Can't disable AutoCommit");
 	}
 	return $dbh->SUPER::STORE($attrib, $value);
     }
@@ -174,6 +203,19 @@
 	my $dbh = shift;
 	$dbh->disconnect if $dbh->FETCH('Active');
 	undef
+    }
+
+    # This is an example to demonstrate the use of driver-specific
+    # methods via $dbh->func().
+    #
+    # Use it as follows:
+    #
+    #   my @tables = $dbh->func($re, 'examplep_tables');
+    #
+    # Returns all the tables that match the regular expression $re.
+    sub examplep_tables {
+	my $dbh = shift; my $re = shift;
+	grep { $_ =~ /$re/ } $dbh->tables();
     }
 }
 
@@ -186,7 +228,7 @@
 	my($sth, $param, $value, $attribs) = @_;
 	$sth->{'dbd_param'}->[$param] = $value;
     }
-	
+
     sub execute {
 	my($sth, @dir) = @_;
 	my $dir;
@@ -195,28 +237,66 @@
 	} else {
 	    $dir = $sth->{'dbd_param'}->[1];
 	    unless (defined $dir) {
-		$sth->event("ERROR", 2, "No bind parameter supplied");
+		$sth->DBI::set_err(2, "No bind parameter supplied");
 		return undef;
 	    }
 	}
 	$sth->finish;
 	$sth->{dbd_datahandle} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
-	opendir($sth->{dbd_datahandle}, $dir)
-		or ($sth->event("ERROR", 2, "opendir($dir): $!"), return undef);
-	$sth->{dbd_dir} = $dir;
+	#
+	# If the users asks for directory "long_list_4532", then we fake a
+	# directory with files "file4351", "file4350", ..., "file0".
+	#
+	if ($dir =~ /^long_list_\d+$/) {
+	    $sth->{dbd_datahandle} = $dir;
+	} else {
+	    opendir($sth->{dbd_datahandle}, $dir)
+		or return $sth->DBI::set_err(2, "opendir($dir): $!");
+	    $sth->{dbd_dir} = $dir;
+	}
 	1;
     }
 
     sub fetch {
 	my $sth = shift;
-	my $f = readdir($sth->{dbd_datahandle});
-	unless($f){
-	    $sth->finish;     # no more data so finish
-	    return;
-	}
+	my $dh = $sth->{dbd_datahandle};
+
 	my %s; # fancy a slice of a hash?
-	# put in all the data fields
-	@s{@DBD::ExampleP::statnames} = (stat("$sth->{'dbd_dir'}/$f"), $f);
+	if ($dh =~ /^long_list_(\d+)$/) {
+	    my $num = $1;
+	    unless ($num) {
+		$sth->finish();
+		return;
+	    }
+	    $sth->{dbd_datahandle} = "long_list_" . --$num;
+	    my $time = time;
+	    @s{@DBD::ExampleP::statnames} =
+		( 2051,      # dev
+		  1000+$num, # ino
+		  0644,      # mode
+		  2,         # nlink
+		  $>,        # uid
+		  $),        # gid
+		  0,         # rdev
+		  1024,      # size
+	          $time,     # atime
+	          $time,     # mtime
+	          $time,     # ctime
+		  512,       # blksize
+		  2,         # blocks
+		  "file$num" # name
+		)
+	} else {
+	    my $f = readdir($dh);
+	    unless($f){
+		$sth->finish;     # no more data so finish
+		return;
+	    }
+	    # put in all the data fields
+	    @s{@DBD::ExampleP::statnames} =
+		(stat("$sth->{'dbd_dir'}/$f"), $f);
+	}
+
 	# return just what fields the query asks for
 	my @new = @s{ @{$sth->{NAME}} };
 

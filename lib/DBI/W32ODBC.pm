@@ -1,9 +1,10 @@
 package
   DBI;	# hide this non-DBI package from simple indexers
 
-# $Id: W32ODBC.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
+# $Id: W32ODBC.pm,v 10.3 1999/05/06 17:29:14 timbo Exp $
 #
-# Copyright (c) 1997, Tim Bunce
+# Copyright (c) 1997,1999 Tim Bunce
+# With many thanks to Patrick Hollins for polishing.
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Artistic License, as specified in the Perl README file.
@@ -19,45 +20,27 @@ DBI::W32ODBC - An experimental DBI emulation layer for Win32::ODBC
   # apart from the line above everything is just the same as with
   # the real DBI when using a basic driver with few features.
 
-  $dbh = DBI->connect(...);
-
-  $rc  = $dbh->do($statement);
-
-  $sth = $dbh->prepare($statement);
-
-  $rc = $sth->execute;
-
-  @row_ary = $sth->fetchrow;
-  $row_ref = $sth->fetch;
-
-  $rc = $sth->finish;
-
-  $rv = $sth->rows;
-
-  $rc = $dbh->disconnect;
-
-  $sql = $dbh->quote($string);
-
-  $rv  = $h->err;
-  $str = $h->errstr;
-
 =head1 DESCRIPTION
 
-THIS IS A VERY EXPERIMENTAL PURE PERL DBI EMULATION LAYER FOR Win32::ODBC
+This is an experimental pure perl DBI emulation layer for Win32::ODBC
 
-It was developed for use with an Access database and the quote() method
-is very likely to need reworking.
-
-If you can improve this code I'd be interested in hearing out it. If
+If you can improve this code I'd be interested in hearing about it. If
 you are having trouble using it please respect the fact that it's very
-experimental.
+experimental. Ideally fix it yourself and send me the details.
+
+=head2 Some Things Not Yet Implemented
+
+	Most attributes including PrintError & RaiseError.
+	type_info and table_info
+
+Volunteers welcome!
 
 =cut
 
 ${'DBI::VERSION'}	# hide version from PAUSE indexer
    = "0.01";
 
-my $Revision = substr(q$Revision: 10.1 $, 10);
+my $Revision = substr(q$Revision: 10.3 $, 10);
 
 sub DBI::W32ODBC::import { }	# must trick here since we're called DBI/W32ODBC.pm
 
@@ -89,8 +72,11 @@ sub connect {
 
 sub quote {
     my ($h, $string) = @_;
-    # don't know if this is correct but seems to work for Access
-    $string =~ s/'/''/g;
+    return "NULL" if !defined $string;
+    $string =~ s/'/''/g;	# standard
+    # This hack seems to be required for Access but probably breaks for
+	# other databases when using \r and \n. It would be better if we could
+	# use ODBC options to detect that we're actually using Access.
     $string =~ s/\r/' & chr\$(13) & '/g;
     $string =~ s/\n/' & chr\$(10) & '/g;
     "'$string'";
@@ -98,10 +84,12 @@ sub quote {
 
 sub do {
     my($h, $statement, $attribs, @params) = @_;
-    Carp::carp "\$h->do() attribs unused\n" if $attribs;
-    $h = $h->prepare($statement) or return undef;
-    $h->execute(@params) or return undef;
-    my $rows = $h->rows;
+    Carp::carp "\$h->do() attribs unused" if $attribs;
+    my $new_h = $h->prepare($statement) or return undef;    ##
+    pop @{ $h->{'___sths'} };                               ## certian death assured
+    $new_h->execute(@params) or return undef;               ##
+    my $rows = $new_h->rows;                                ##
+    $new_h->finish;                                         ## bang bang
     ($rows == 0) ? "0E0" : $rows;
 }
 
@@ -109,10 +97,16 @@ sub do {
 
 sub prepare {
     my ($h, $sql) = @_;
-    $h->{'__prepare'} = $sql;
-	$h->{NAME} = [];
-	$h->{NUM_OF_FIELDS} = -1;
-    return $h;
+	## opens a new connection with every prepare to allow
+	## multiple, concurrent queries
+	my $new_h = new Win32::ODBC $h->{DSN};	##
+	return undef if not $new_h;             ## bail if no connection
+	bless $new_h;					        ## shouldn't be sub-classed...
+    $new_h->{'__prepare'} = $sql;			##
+	$new_h->{NAME} = [];				    ##
+	$new_h->{NUM_OF_FIELDS} = -1;			##
+	push @{ $h->{'___sths'} } ,$new_h;		## save sth in parent for mass destruction
+    return $new_h;					        ##
 }
 
 sub execute {
@@ -125,38 +119,53 @@ sub execute {
     $h;	# return dbh as pseudo sth
 }
 
-sub fetchrow {
-    my $h = shift;
-    return () unless $h->FetchRow();
-    my $fields_r = $h->{NAME};
-    $h->Data(@$fields_r);
+
+sub fetchrow_hashref {					## provide DBI compatibility
+	my $h = shift;
+	my $NAME = shift || "NAME";
+	my $row = $h->fetchrow_arrayref or return undef;
+	my %hash;
+	@hash{ @{ $h->{$NAME} } } = @$row;
+	return \%hash;
 }
 
+sub fetchrow {
+    my $h = shift;
+    return unless $h->FetchRow();
+    my $fields_r = $h->{NAME};
+    return $h->Data(@$fields_r);
+}
 sub fetch {
     my @row = shift->fetchrow;
     return undef unless @row;
     return \@row;
 }
+*fetchrow_arrayref = \&fetch;			## provide DBI compatibility
+*fetchrow_array    = \&fetchrow;		## provide DBI compatibility
 
 sub rows {
     shift->RowCount;
 }
 
 sub finish {
-    # shift->Close;
+    shift->Close;						## uncommented this line
 }
 
 # ---
 
 sub commit {
-	undef;
+	shift->Transact(ODBC::SQL_COMMIT);
 }
 sub rollback {
-	undef;
+	shift->Transact(ODBC::SQL_ROLLBACK);
 }
 
 sub disconnect {
-    shift->Close
+	my ($h) = shift; 					## this will kill all the statement handles
+	foreach (@{$h->{'___sths'}}) {		## created for a specific connection
+		$_->Close if $_->{DSN};			##
+	}							        ##
+    $h->Close;  						##
 }
 
 sub err {

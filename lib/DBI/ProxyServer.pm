@@ -1,7 +1,7 @@
 # -*- perl -*-
 #
 #   DBI::ProxyServer - a proxy server for DBI drivers
-# 
+#
 #   Copyright (c) 1997  Jochen Wiedmann
 #
 #   The DBD::Proxy module is free software; you can redistribute it and/or
@@ -13,11 +13,11 @@
 #           Am Eisteich 9
 #           72555 Metzingen
 #           Germany
-# 
+#
 #           Email: joe@ispsoft.de
 #           Phone: +49 7123 14881
-# 
-# 
+#
+#
 
 require 5.004;
 use strict;
@@ -38,12 +38,8 @@ package DBI::ProxyServer;
 
 use vars qw($VERSION @ISA);
 
-$VERSION = "0.2001";
+$VERSION = "0.2003";
 @ISA = qw(RPC::PlServer DBI);
-
-
-$ENV{'PATH'} = '/bin:/usr/bin:/sbin:/usr/sbin';   # See 'perldoc perlsec'
-delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 
 
 # Most of the options below are set to default values, we note them here
@@ -61,7 +57,7 @@ my %DEFAULT_SERVER_OPTIONS;
 	    }
 	  ];
     $o->{'configfile'} = '/etc/dbiproxy.conf' if -f '/etc/dbiproxy.conf';
-    $o->{'debug'}      = 1;
+    $o->{'debug'}      = 0;
     $o->{'facility'}   = 'daemon';
     $o->{'group'}      = undef;
     $o->{'localaddr'}  = undef;		# Bind to any local IP number
@@ -78,8 +74,10 @@ my %DEFAULT_SERVER_OPTIONS;
 	    'prepare' => 1,
 	    'STORE' => 1,
 	    'FETCH' => 1,
+	    'func' => 1,
 	    'quote' => 1,
-	    'func' => 1
+	    'type_info_all' => 1,
+            'table_info' => 1
 	    },
 	'DBI::ProxyServer::st' => {
 	    'execute' => 1,
@@ -196,9 +194,15 @@ sub CallMethod {
     # $dbh. However, we'd have a reference loop in that case and
     # I would be concerned about garbage collection. :-(
     $dbh->{'private_server'} = $server;
+    $server->Debug("CallMethod: => " . join(",", @_));
     my @result = eval { $server->SUPER::CallMethod(@_) };
     undef $dbh->{'private_server'};
-    die $@ if $@;
+    if (my $msg = $@) {
+	$server->Error($msg);
+	die $msg;
+    } else {
+	$server->Debug("CallMethod: <= " . join(",", @result));
+    }
     @result;
 }
 
@@ -238,11 +242,11 @@ sub prepare {
 		if (!($statement = $client->{'sql'}->{$st})) {
 		    die "Unknown SQL query: $st";
 		}
-			    } else {
+	    } else {
 		die "Cannot parse restricted SQL statement: $statement";
-			    }
-			}
-		    }
+	    }
+	}
+    }
 
     # The difference between the usual prepare and ours is that we implement
     # a combined prepare/execute. The DBD::Proxy driver doesn't call us for
@@ -252,7 +256,27 @@ sub prepare {
     my @result = $sth->execute($params);
     my $handle = $server->StoreHandle($sth);
     ($handle, $sth->{'NUM_OF_FIELDS'}, $sth->{'NUM_OF_PARAMS'},
-     @result);
+     $sth->{'NAME'}, $sth->{'TYPE'}, @result);
+}
+
+sub table_info {
+    my $dbh = shift;
+    my $sth = $dbh->SUPER::table_info();
+    my $numFields = $sth->{'NUM_OF_FIELDS'};
+    my $names = $sth->{'NAME'};
+    my $types = $sth->{'TYPE'};
+
+    # We wouldn't need to send all the rows at this point, instead we could
+    # make use of $rsth->fetch() on the client as usual.
+    # The problem is that some drivers (namely DBD::ExampleP, DBD::mysql and
+    # DBD::mSQL) are returning foreign sth's here, thus an instance of
+    # DBI::st and not DBI::ProxyServer::st. We could fix this by permitting
+    # the client to execute method DBI::st, but I don't like this.
+    my @rows;
+    while (my $row = $sth->fetchrow_arrayref()) {
+	push(@rows, [@$row]);
+    }
+    ($numFields, $names, $types, @rows);
 }
 
 

@@ -3,7 +3,7 @@
 #
 #   DBD::Proxy - DBI Proxy driver
 #
-# 
+#
 #   Copyright (c) 1997,1998  Jochen Wiedmann
 #
 #   The DBD::Proxy module is free software; you can redistribute it and/or
@@ -15,10 +15,10 @@
 #           Am Eisteich 9
 #           72555 Metzingen
 #           Germany
-# 
+#
 #           Email: joe@ispsoft.de
 #           Phone: +49 7123 14881
-# 
+#
 
 use strict;
 
@@ -34,7 +34,7 @@ package DBD::Proxy;
 use vars qw($VERSION $err $errstr $drh);
 
 
-$VERSION = "0.2001";
+$VERSION = "0.2003";
 
 $err = 0;		# holds error code   for DBI::err
 $errstr = "";		# holds error string for DBI::errstr
@@ -178,20 +178,36 @@ use vars qw(%ATTR $AUTOLOAD);
 sub AUTOLOAD {
     my $method = $AUTOLOAD;
     print "Autoloading method: $method\n";
-    $method =~ s/(.*):://;
+    $method =~ s/(.*::(.*)):://;
     my $class = $1;
-    my $method_code = q{
-        package ~class~;
-        sub ~method~ {
-            my $dbh = shift;
-	    my @result = eval { $dbh->{'proxy_dbh'}->$method(@_) };
-            return DBI::set_err($dbh, 1, $@) if $@;
+    my $type = $2;
+    my %expand =
+	( 'method' => $method,
+	  'class' => $class,
+	  'type' => $type,
+	  'h' => "DBI::_::$type"
+	);
+    my $method_code = UNIVERSAL::can($expand{'h'}, $method) ?
+	q/package ~class~;
+          sub ~method~ {
+            my $h = shift;
+	    my @result = eval { $h->{'proxy_~type~h'}->~method~(@_) };
+            return DBI::set_err($h, 1, $@) if $@;
             wantarray ? @result : $result[0];
-        }
-};
-    no strict 'refs';
-    $method_code =~ s/\~(\w+)\~/${$1}/eg;
+          }
+	 / :
+        q/package ~class~;
+	  sub ~method~ {
+	    my $h = shift;
+	    my @result = eval { $h->{'proxy_~type~h'}->func(@_, '~method~') };
+	    return DBI::set_err($h, 1, $@) if $@;
+	    wantarray ? @result : $result[0];
+          }
+         /;
+    $method_code =~ s/\~(\w+)\~/$expand{$1}/eg;
+    print "$method_code\n";
     eval $method_code;
+    die $@ if $@;
     goto &$AUTOLOAD;
 }
 
@@ -268,7 +284,7 @@ sub quote {
     # (no $data_type) we could learn and cache the behaviour.
     # Or we could probe the driver with a few test cases.
     # Or we could add a way to ask the DBI::ProxyServer
-    # if $dbh->can('quote') == &DBI::_::db::quote.
+    # if $dbh->can('quote') == \&DBI::_::db::quote.
     # Tim
     #
     # Sounds all *very* smart to me. I'd rather suggest to
@@ -279,6 +295,27 @@ sub quote {
     # Jochen
 
     my $result = eval { $dbh->{'proxy_dbh'}->quote(@_) };
+    return DBI::set_err($dbh, 1, $@) if $@;
+    return $result;
+}
+
+sub table_info {
+    my $dbh = shift;
+    my $rdbh = $dbh->{'proxy_dbh'};
+    my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
+    my $sth = DBI::_new_sth($dbh, {
+        'Statement' => "SHOW TABLES",
+	'proxy_params' => [],
+	'proxy_data' => \@rows,
+	'proxy_attr_cache' => { 'NAME' => $names, 'TYPE' => $types }
+    });
+    $sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
+    return $sth;
+}
+
+sub type_info_all {
+    my $dbh = shift;
+    my $result = eval { $dbh->{'proxy_dbh'}->type_info_all(@_) };
     return DBI::set_err($dbh, 1, $@) if $@;
     return $result;
 }
@@ -320,12 +357,12 @@ sub execute ($@) {
     my $client = $dbh->{'proxy_client'};
     my $rsth = $sth->{proxy_sth};
 
-    my ($numFields, $numParams, $numRows, @outParams);
+    my ($numFields, $numParams, $numRows, $names, $types, @outParams);
 
     if (!$rsth) {
 	my $rdbh = $dbh->{'proxy_dbh'};
 
-	($rsth, $numFields, $numParams, $numRows, @outParams) =
+	($rsth, $numFields, $numParams, $names, $types, $numRows, @outParams) =
 	    eval { $rdbh->prepare($sth->{'Statement'},
 				  $sth->{'proxy_attr'}, $params) };
 	return DBI::set_err($sth, 1, $@) if $@;
@@ -342,13 +379,16 @@ sub execute ($@) {
 	my $attrCache = $sth->{'proxy_attr_cache'};
 	$numFields = $attrCache->{'NUM_OF_FIELDS'};
 	$numParams = $attrCache->{'NUM_OF_PARAMS'};
+	$names = $attrCache->{'NAME'};
+	$types = $attrCache->{'TYPE'};
 	($numRows, @outParams) = eval { $rsth->execute($params) };
 	return DBI::set_err($sth, 1, $@) if $@;
     }
     $sth->{'proxy_rows'} = $numRows;
     $sth->{'proxy_attr_cache'} = {
 	    'NUM_OF_FIELDS' => $numFields,
-	    'NUM_OF_PARAMS' => $numParams
+	    'NUM_OF_PARAMS' => $numParams,
+	    'NAME'          => $names
     };
     $sth->SUPER::STORE('Active' => 1) if $numFields; # is SELECT
 
@@ -365,30 +405,29 @@ sub execute ($@) {
 }
 
 sub fetch ($) {
-    my($sth) = shift;
+    my $sth = shift;
 
-    my($data) = $sth->{'proxy_data'};
+    my $data = $sth->{'proxy_data'};
 
-    if(!$data) {
+    if(!$data  ||  !@$data) {
 	return undef unless $sth->SUPER::FETCH('Active');
 
 	my $rsth = $sth->{'proxy_sth'};
 	if (!$rsth) {
 	    die "Attempt to fetch row without execute";
 	}
-	my $num_rows = $sth->SUPER::FETCH('RowCacheSize') || 20;
+	my $num_rows = $sth->FETCH('RowCacheSize') || 20;
 	my @rows = eval { $rsth->fetch($num_rows) };
 	return DBI::set_err($sth, 1, $@) if $@;
-
+	unless (@rows == $num_rows) {
+	    undef $sth->{'proxy_data'};
+	    # server side has already called finish
+	    $sth->SUPER::STORE(Active => 0);
+	}
+	return undef unless @rows;
 	$sth->{'proxy_data'} = $data = [@rows];
     }
     my $row = shift @$data;
-    unless ($row) {
-	undef $sth->{'proxy_data'};
-	# server side has already called finish
-	$sth->SUPER::STORE(Active => 0);
-	return undef;
-    }
     return $sth->_set_fbav($row);
 }
 *fetchrow_arrayref = \&fetch;
@@ -452,7 +491,8 @@ sub FETCH ($$) {
 	return $sth->{'Database'}->{$attr};
     }
 
-    if ($type eq 'cache_only'  &&  exists($sth->{'proxy_attr_cache'}->{$attr})) {
+    if ($type eq 'cache_only'  &&
+	exists($sth->{'proxy_attr_cache'}->{$attr})) {
 	return $sth->{'proxy_attr_cache'}->{$attr};
     }
 
@@ -478,6 +518,7 @@ sub bind_param ($$$@) {
 sub DESTROY {
     # Just to avoid autoloading DESTROY ...
 }
+
 
 1;
 

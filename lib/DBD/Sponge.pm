@@ -5,8 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
+    $VERSION = substr(q$Revision: 10.4 $, 9,-1);
 
-#   $Id: Sponge.pm,v 10.3 1999/01/01 20:56:53 timbo Exp $
+#   $Id: Sponge.pm,v 10.4 1999/05/13 01:44:25 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -22,7 +23,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 10.3 $',
+	    'Version' => $VERSION,
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 10.5 1999/01/04 15:35:40 timbo Exp $
+# $Id: DBD.pm,v 10.7 1999/05/06 17:29:14 timbo Exp $
 #
 # Copyright (c) 1997,1998 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 10.5 $
-	$Date: 1999/01/04 15:35:40 $
+	$Revision: 10.7 $
+	$Date: 1999/05/06 17:29:14 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -353,6 +353,11 @@ To report an error, you use the C<DBI::set_err> function/method:
 This will ensure that the error is recorded correctly and that
 RaiseError and PrintError etc are handled correctly.  Typically you'll
 always use the method instance, aka your method's first argument.
+
+As set_err always returns undef your error handling code can
+usually be simplified to something like this:
+
+  return $h->DBI::set_err($errcode, $errmsg) if ...;
 
 
 =item Other driver handle methods
@@ -1420,8 +1425,6 @@ In the relevant places do:
 
 =head1 OTHER MISCELLANEOUS INFORMATION
 
-Many details still T.B.S.
-
 =head2 The imp_xyz_t types
 
 Any handle has a corresponding C structure filled with private data.
@@ -1636,7 +1639,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = substr(q$Revision: 10.5 $, 10);
+$VERSION = substr(q$Revision: 10.7 $, 10);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
@@ -1683,7 +1686,7 @@ sub dbd_postamble {
     my $xstfile= '$(DBI_INSTARCH_DIR)/Driver.xst';
     if ($^O eq 'VMS') {
 	$dbidir = vmsify($dbidir.'/');
-	$xstdir = vmsify($xstdir.'/');
+	$xstdir = vmsify($xstdir.'/') unless $is_dbi;
 	$xstfile= '$(DBI_INSTARCH_DIR)Driver.xst';
     }
 

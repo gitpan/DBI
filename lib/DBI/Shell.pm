@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.4 $, 10)+0;
+$VERSION = substr(q$Revision: 10.6 $, 10)+0;
 
 my $warning = <<'EOM';
 
@@ -628,7 +628,7 @@ sub sth_go {
     my $rv;
     if ($execute || !$sth->{Active}) {
 	my @params;
-	my $params = $sth->{NUM_OF_PARAMS};
+	my $params = $sth->{NUM_OF_PARAMS} || 0;
 	print "Statement has $params parameters:\n" if $params;
 	foreach(1..$params) {
 	    my $val = $sh->readline("Parameter $_ value: ");
@@ -740,6 +740,7 @@ sub do_connect {
 	    AutoCommit => $sh->{init_autocommit},
 	    PrintError => 0,
 	    RaiseError => 1,
+	    LongTruncOk => 1,	# XXX
     });
     $sh->{dbh}->trace($sh->{init_trace}) if $sh->{init_trace};
 }

@@ -1,61 +1,3 @@
------BEGIN PGP SIGNED MESSAGE-----
-
-This is a MacPerl build of DBI.  You need a recent MacPerl
-(such as MacPerl 5.2.0r4, the latest as of this build) and either
-the PPC MacPerl or the CFM68K MacPerl (because dynamic loading
-is not available in the non-CFM 68K MacPerl).
-
-Just put the files in the blib directory in the right places.
-If the shared libraries in MacPPC and MacCFM68K are still in
-.bin format, then you need to demacbinarize them.
-
-You might also need to run autosplit:
-
-    #!perl -w
-    use AutoSplit;
-    $dir = "$ENV{MACPERL}site_perl";
-    foreach (qw(DBD:ADO DBD:ExampleP DBD:NullP DBD:Proxy DBD:Sponge
-        DBI:DBD DBI:FAQ DBI:Format DBI:ProxyServer
-        DBI:Shell DBI:W32ODBC DBI)) {
-        autosplit("$dir:$_.pm","$dir:auto",0,1,1);
-    }
-
-I don't know what DBDs work.  Try them out.  Let me know.  Try
-DBI::ProxyServer.
-
-If you have the File::Spec module, the available_drivers
-function will now work on Macs.
-
-Also recommended are Paul Schinder's Fixed Library Routines,
-available from his web site:
-
-    http://pobox.com/~schinder/MacPerl.html
-
-This stuff is always available on CPAN and on pudge.net.
-
-    http://pudge.net/macperl/
-    http://www.perl.com/CPAN/authors/id/CNANDOR/
-
-Changes: I added XS_VERSION to DBIXS.h, because it wasn't being
-found.  I removed the "exit 0" from Makefile.PL, because it
-would quit when installing from Mac port of CPAN.pm.
-
-- -- 
-Chris Nandor          mailto:pudge@pobox.com         http://pudge.net/
-%PGPKey = ('B76E72AD', [1024, '0824090B CE73CA10  1FF77F13 8180B6B6'])
-
------BEGIN PGP SIGNATURE-----
-Version: PGPfreeware 5.0 for non-commercial use <http://www.pgp.com>
-Charset: noconv
-
-iQCVAwUBNqJPXihcZja3bnKtAQGwiwP/flRsrzAL/kUFLlGOckIq8hljKDB5GGFd
-tGMYRERKuSvaBnulQdUytS03ZbL7RkYzbNBmPmZcIPhMQTPPalPK3k6uHY2acI1a
-haVQrL4BZOJiU2tTdXQ4vkfofIGIDy1sWnH2DeLPGKywD+lH2bmCbmVK1D6OTxXZ
-3mRkoAXkPkQ=
-=CKmk
------END PGP SIGNATURE-----
-
-
 DBI - The Perl Database Interface by Tim Bunce.
 
 Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England.
@@ -99,7 +41,7 @@ use the web you can subscribe by sending a message to
 dbi-users-request@fugue.com, it may take a few days to be processed).
 
 Much useful information and online archives of the mailing lists can be
-found at http://www.arcana.co.uk/technologia/DBI
+found at http://www.symbolstone.org/technology/perl/DBI
 
 See also http://www.perl.com/CPAN/
 

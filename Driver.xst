@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 10.7 1999/01/07 01:12:16 timbo Exp $
+#  $Id: Driver.xst,v 10.10 1999/05/09 01:14:04 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -98,9 +98,9 @@ disconnect(dbh)
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
 	STRLEN lna;
 	char *plural = (DBIc_ACTIVE_KIDS(imp_dbh)==1) ? "" : "s";
-	warn("%s->disconnect invalidates %d active statement%s. %s",
+	warn("%s->disconnect invalidates %d active statement%s %s",
 	    SvPV(dbh,lna), (int)DBIc_ACTIVE_KIDS(imp_dbh), plural,
-	    "Either destroy statement handles or call finish on them before disconnecting.");
+	    "(either destroy statement handles or call finish on them before disconnecting)");
     }
     ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
     DBIc_ACTIVE_off(imp_dbh);	/* ensure it's off, regardless */
@@ -140,7 +140,7 @@ DESTROY(dbh)
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
 	STRLEN lna;
-	if (DBIc_WARN(imp_dbh) && !dirty && dbis->debug >= 2)
+	if (DBIc_WARN(imp_dbh) && !dirty && DBIS->debug >= 2)
 	     fprintf(DBILOGFP,
 			"Database handle %s DESTROY ignored - never set up\n",
 				SvPV(dbh,lna));
@@ -155,8 +155,6 @@ DESTROY(dbh)
             DBIc_ACTIVE_off(imp_dbh);
         }
 	if (DBIc_ACTIVE(imp_dbh)) {
-	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3))
-		 warn("Database handle destroyed without explicit disconnect");
 	    /* The application has not explicitly disconnected. That's bad.	*/
 	    /* To ensure integrity we *must* issue a rollback. This will be	*/
 	    /* harmless	if the application has issued a commit. If it hasn't	*/
@@ -165,8 +163,10 @@ DESTROY(dbh)
 	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
 	    /* the server will automatically commit! Bham! Corrupt database!	*/ 
 	    if (!DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
-		if (dbis->debug >= 2)
-		    fprintf(DBILOGFP, "    implicit rollback and disconnect on destroy\n");
+		if (DBIc_WARN(imp_dbh) && (!dirty || DBIS->debug >= 3))
+		     warn("Database handle destroyed without explicit disconnect");
+		if (DBIS->debug >= 2)
+		    fprintf(DBILOGFP, "    IMPLICIT ROLLBACK ON DESTROY!\n");
 		dbd_db_rollback(dbh, imp_dbh);			/* ROLLBACK! */
 	    }
 	    dbd_db_disconnect(dbh, imp_dbh);
@@ -424,7 +424,7 @@ DESTROY(sth)
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_sth)) {	/* was never fully set up	*/
 	STRLEN lna;
-	if (DBIc_WARN(imp_sth) && !dirty && dbis->debug >= 2)
+	if (DBIc_WARN(imp_sth) && !dirty && DBIS->debug >= 2)
 	     fprintf(DBILOGFP,
 		"Statement handle %s DESTROY ignored - never set up",
 		    SvPV(sth,lna));

@@ -24,6 +24,7 @@ lib/DBI/Format.pm		Class for formatting rows of data
 lib/DBI/ProxyServer.pm	The proxy drivers server
 lib/DBI/Shell.pm	The DBI interactive shell
 lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
+lib/Win32/DBIODBC.pm	An experimental Win32::ODBC emulation layer for DBI
 t/basics.t	Test script for very basic DBI functionality
 t/dbidrv.t	Test script for loading drivers and using DBI vars
 t/examp.t	Test script for the DBI using the ExampleP driver

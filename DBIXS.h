@@ -1,19 +1,27 @@
-/* $Id: DBIXS.h,v 10.5 1999/01/07 01:12:16 timbo Exp $
+/* $Id: DBIXS.h,v 10.8 1999/05/09 01:14:04 timbo Exp $
  *
- * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
+ * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
  * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
 
 /* DBI Interface Definitions for DBD Modules */
 
+#ifndef DBIXS_VERSION				/* prevent multiple inclusion */
 
-/* first pull in the standard Perl header files for extensions */
+#ifndef DBIS
+#define DBIS	dbis	/* default name for dbistate_t variable	*/
+#endif
+
+/* first pull in the standard Perl header files for extensions	*/
 #define PERL_POLLUTE
-#define XS_VERSION "1.06"
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
+
+#ifdef debug		/* causes problems with DBIS->debug	*/
+#undef debug
+#endif
 
 /* Perl backwards compatibility definitions */
 #ifndef boolSV	/* added in perl5.004		*/
@@ -50,8 +58,8 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver
 
 #if defined(USE_THREADS) && !defined(DBI_NO_THREADS)
 #define DBI_USE_THREADS
-#define DBI_LOCK	MUTEX_LOCK(dbis->mutex)
-#define DBI_UNLOCK	MUTEX_UNLOCK(dbis->mutex)
+#define DBI_LOCK	MUTEX_LOCK(DBIS->mutex)
+#define DBI_UNLOCK	MUTEX_UNLOCK(DBIS->mutex)
 #define dbi_mutex perl_mutex
 #define dbi_cond  perl_cond
 #else
@@ -87,7 +95,7 @@ typedef struct dbih_com_std_st {
     U32  flags;
     int  call_depth;	/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
-    SV   *my_h_obj;	/* copy of own SvRV(inner handle) (NO r.c.inc)	*/
+    SV   *my_h;		/* copy of outer handle HV (not refcounted)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
     dbi_cond  *thr_cond;/* condition for thread access (see dispatch)	*/
@@ -180,12 +188,12 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_FLAGS(imp)		_imp2com(imp, std.flags)
 #define DBIc_TYPE(imp)		_imp2com(imp, std.type)
 #define DBIc_CALL_DEPTH(imp)	_imp2com(imp, std.call_depth)
-#define DBIc_MY_H_OBJ(imp)  	_imp2com(imp, std.my_h_obj)
+#define DBIc_MY_H(imp)  	_imp2com(imp, std.my_h)
 #define DBIc_PARENT_H(imp)  	_imp2com(imp, std.parent_h)
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
 #define DBIc_THR_COND(imp)  	_imp2com(imp, std.thr_cond)
 #define DBIc_THR_USER(imp)  	_imp2com(imp, std.thr_user)
-#define DBIc_THR_USER_NONE  	U32_MAX
+#define DBIc_THR_USER_NONE  	(~(unsigned long)0)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
@@ -225,6 +233,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_AutoCommit  0x0200	/* dbh only. used by drivers		*/
 #define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
 #define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
+#define DBIcf_Taint       0x1000	/* taint fetched data			*/
 
 #define DBIcf_INHERITMASK			/* what NOT to pass on to children */	\
 	(U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
@@ -374,9 +383,6 @@ typedef struct {
 #define set_attr(h, k, v)	set_attr_k(h, k, 0, v)
 #define get_attr(h, k)		get_attr_k(h, k, 0)
 
-#ifndef DBIS
-#define DBIS              dbis /* default name for dbistate_t variable	*/
-#endif
 #define DBISTATE_DECLARE  static dbistate_t *DBIS
 #define DBISTATE_PERLNAME "DBI::_dbistate"
 #define DBISTATE_ADDRSV   (perl_get_sv(DBISTATE_PERLNAME, 0x05))
@@ -422,4 +428,5 @@ typedef struct {
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvIV(*svp)
 
+#endif /* DBIXS_VERSION */
 /* end of DBIXS.h */

@@ -1,9 +1,37 @@
+Changes in DBI 1.08,	12th May 1999
+
+  Much improved DBD::ADO driver thanks to Phlip Plumlee and others.
+  Connect now allows you to specify attribute settings within the DSN
+    E.g., "dbi:Driver(RaiseError=>1,Taint=>1,AutoCommit=>0):dbname"
+  The $h->{Taint} attribute now also enables taint checking of
+    arguments to almost all DBI methods.
+  Improved trace output in various ways.
+  Fixed bug where $sth->{NAME_xx} was undef in some situations.
+  Fixed code for MULTIPLICITY/PERL_OBJECT thanks to Alex Smishlajev.
+  Fixed and documented DBI->connect_cached.
+  Workaround for Cygwin32 build problem with help from Jong-Pork Park.
+  bind_columns no longer needs undef or hash ref as first parameter.
+
+Changes in DBI 1.07,	6th May 1999
+
+  Trace output now shows contents of array refs returned by DBI.
+  Changed names of some result columns from type_info, type_info_all,
+    tables and table_info to match ODBC 3.5 / ISO/IEC standards.
+  Many fixes for DBD::Proxy and ProxyServer.
+  Fixed error reporting in install_driver.
+  Major enhancement to DBI::W32ODBC from Patrick Hollins.
+  Added $h->{Taint} to taint fetched data if tainting (perl -T).
+  Added code for MULTIPLICITY/PERL_OBJECT contributed by ActiveState.
+  Added $sth->more_results (undocumented for now).
+
 Changes in DBI 1.06,	6th January 1999
 
   Fixed Win32 Makefile.PL problem in 1.04 and 1.05.
   Significant DBD::Proxy enhancements and fixes
-  including support for bind_param_inout (Jochen and I)
+    including support for bind_param_inout (Jochen and I)
   Added experimental DBI->connect_cached method.
+  Added $sth->{NAME_uc} and $sth->{NAME_lc} attributes.
+  Enhanced fetchrow_hashref to take an attribute name arg.
 
 Changes in DBI 1.05,	4th January 1999
 
@@ -531,59 +559,9 @@ Changes in DBI 0.59	15 Aug 1995
   Performance improvements and memory leaks fixed.
   Added a new NullP (empty) driver and a -m flag
   to test.pl to help check for memory leaks.
-  Major changes to DBI/DBD interface include:
-
-  1. All imp_xxh_t structs must now have a dbih_ccc_t struct
-     as the first element in the structure.
-
-  2. The previous initialisation scheme of
-
-  	# create and init private data structure
-  	$imp_data = _private_func(...);
-  	# create handle and reference private data structure
-  	$xxh = DBD::_new_xxh({...}, $imp_data);
-
-     is now
-
-  	# publish size of overall structure required
-  	$imp_data_size = ...;	# sizeof(imp_xxh_t)
-  	# create 'blank' handle of required size
-  	$xxh = DBD::_new_xxh({...});
-  	# init private data into space in handle
-  	_private_func($xxh, ...);
-
-     _private_func moves 'down' to the next level of handle class.
-     E.g. a previous
-  	$imp_data = ...::dr::_login(...)
-     becomes
-  	...::db::_login($dbh,...)
-
-  3. The local variable initialisation scheme of
-
-  	foo(sth)
-  	{
-  	    D_dbihcom(sth);
-  	    D_imp_sth;
-
-     is now
-
-  	foo(sth)
-  	{
-  	    D_imp_sth(sth);
-     also:    D_imp_dbh_from_sth;
-     and:     D_imp_drh_from_dbh;
-     if needed.
-
   Study DBD::Oracle version 0.21 for more details.
   (Comparing parts of v0.21 with v0.20 may be useful.)
 
-  Known Problems:
-
-  1. A Perl5.001m binary built with -DDEBUGGING seems to
-     cause (@row = $sth->fetchrow) to be called in a scalar
-     context. Works fine using a non -DDEBUGGING perl.
-     This might be a local problem. Please report to findings.
-    
 
 Changes in DBI 0.58	21 June 1995
 

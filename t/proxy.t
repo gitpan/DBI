@@ -9,6 +9,8 @@ require Config;
 require VMS::Filespec if $^O eq 'VMS';
 require Cwd;
 
+my $haveFileSpec = eval { require File::Spec };
+
 
 $| = 1;
 # $\ = "\n"; # XXX Triggers bug, check this later (JW, 1998-12-28)
@@ -29,7 +31,7 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
 
 
 {
-    my $numTest;
+    my $numTest = 0;
     sub Test($;$) {
 	my $result = shift; my $str = shift || '';
 	printf("%sok %d%s\n", ($result ? "" : "not "), ++$numTest, $str);
@@ -39,7 +41,7 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
 
 
 my($handle, $port);
-my $numTests = 67;
+my $numTests = 129;
 if (@ARGV) {
     $port = $ARGV[0];
 } else {
@@ -213,5 +215,129 @@ if (open(DUMP_RESULTS, ">$dump_file")) {
         Test(1, " # Skip");
 }
 unlink $dump_file;
+
+
+print "Trying type_info_all.\n";
+my $array = $dbh->type_info_all();
+Test($array  and  ref($array) eq 'ARRAY')
+    or printf("Expected ARRAY, got %s, error %s\n", DBI::neat($array),
+	      $dbh->errstr());
+Test($array->[0]  and  ref($array->[0]) eq 'HASH');
+my $ok = 1;
+for (my $i = 1;  $i < @{$array};  $i++) {
+    print "$array->[$i]\n";
+    $ok = 0  unless ($array->[$i]  and  ref($array->[$i]) eq 'ARRAY');
+    print "$ok\n";
+}
+Test($ok);
+
+# Test the table_info method
+# First generate a list of all subdirectories
+$dir = $haveFileSpec ? File::Spec->curdir() : ".";
+Test(opendir(DIR, $dir));
+my(%dirs, %unexpected, %missing);
+while (defined(my $file = readdir(DIR))) {
+    $dirs{$file} = 1 if -d $file;
+}
+close(DIR);
+my $sth = $dbh->table_info();
+Test($sth) or print "table_info failed: ", $dbh->errstr(), "\n";
+%missing = %dirs;
+%unexpected = ();
+while (my $ref = $sth->fetchrow_hashref()) {
+    print "table_info: Found table $ref->{'TABLE_NAME'}\n";
+    if (exists($missing{$ref->{'TABLE_NAME'}})) {
+	delete $missing{$ref->{'TABLE_NAME'}};
+    } else {
+	$unexpected{$ref->{'TABLE_NAME'}} = 1;
+    }
+}
+Test(!$sth->errstr())
+    or print "Fetching table_info rows failed: ", $sth->errstr(), "\n";
+Test(keys %unexpected == 0)
+    or print "Unexpected directories: ", join(",", keys %unexpected), "\n";
+Test(keys %missing == 0)
+    or print "Missing directories: ", join(",", keys %missing), "\n";
+
+# Test the tables method
+%missing = %dirs;
+%unexpected = ();
+print "Expecting directories ", join(",", keys %dirs), "\n";
+foreach my $table ($dbh->tables()) {
+    print "tables: Found table $table\n";
+    if (exists($missing{$table})) {
+	delete $missing{$table};
+    } else {
+	$unexpected{$table} = 1;
+    }
+}
+Test(!$sth->errstr())
+    or print "Fetching table_info rows failed: ", $sth->errstr(), "\n";
+Test(keys %unexpected == 0)
+    or print "Unexpected directories: ", join(",", keys %unexpected), "\n";
+Test(keys %missing == 0)
+    or print "Missing directories: ", join(",", keys %missing), "\n";
+
+
+# Test large recordsets
+for (my $i = 0;  $i < 300;  $i += 30) {
+    Test($csr_a = $dbh->prepare("SELECT * FROM long_list_$i"));
+    Test($csr_a->execute());
+    my $ok = 1;
+    my $j = $i;
+    my $ref;
+    while (--$j >= 0) {
+	if (!($ref = $csr_a->fetchrow_hashref())
+	    ||  $ref->{'name'} ne "file$j") {
+	    $ok = 0;
+	    last;
+	}
+    }
+    $ok = 0 if $csr_a->fetchrow_hashref();
+    Test($ok);
+}
+
+
+# Test the RowCacheSize attribute
+Test($csr_a = $dbh->prepare("SELECT * FROM ?"));
+Test($dbh->{'RowCacheSize'} == 20);
+Test($csr_a->{'RowCacheSize'} == 20);
+Test($csr_a->execute('long_list_50'));
+Test($csr_a->fetchrow_arrayref());
+Test($csr_a->{'proxy_data'}  and  @{$csr_a->{'proxy_data'}} == 19);
+Test($csr_a->finish());
+
+Test($dbh->{'RowCacheSize'} = 30);
+Test($dbh->{'RowCacheSize'} == 30);
+Test($csr_a->{'RowCacheSize'} == 30);
+Test($csr_a->execute('long_list_50'));
+Test($csr_a->fetchrow_arrayref());
+Test($csr_a->{'proxy_data'}  and  @{$csr_a->{'proxy_data'}} == 29)
+    or print("Expected 29 records in cache, got " . @{$csr_a->{'proxy_data'}} .
+	     "\n");
+Test($csr_a->finish());
+
+
+Test($csr_a->{'RowCacheSize'} = 10);
+Test($dbh->{'RowCacheSize'} == 30);
+Test($csr_a->{'RowCacheSize'} == 10);
+Test($csr_a->execute('long_list_50'));
+Test($csr_a->fetchrow_arrayref());
+Test($csr_a->{'proxy_data'}  and  @{$csr_a->{'proxy_data'}} == 9)
+    or print("Expected 9 records in cache, got " . @{$csr_a->{'proxy_data'}} .
+	     "\n");
+Test($csr_a->finish());
+
+
+# Test $dbh->func()
+#  print "Testing \$dbh->func().\n";
+#  my %tables = map { $_ =~ /lib/ ? ($_, 1) : () } $dbh->tables();
+#  $ok = 1;
+#  foreach my $t ($dbh->func('lib', 'examplep_tables')) {
+#      defined(delete $tables{$t}) or print "Unexpected table: $t\n";
+#  }
+#  Test(%tables == 0);
+
+
 
 END { $handle->Terminate() if $handle; undef $handle };

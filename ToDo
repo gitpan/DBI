@@ -1,10 +1,59 @@
+
+*** Assorted to-do items and random thoughts *** in no particuar order ***
+
+Primary Key metadata
+
+Change bind_column to save the info for get_fbav to use when
+first called. Thus making bind before execute reliable.
+
+Add a handle flag to say that the driver has a hash that maps error
+codes into SQLSTATE values. The error event mechanism could check for
+the flag and lookup the SQLSTATE value for the error from the hash.
+
+ODBC attribute defining if transactions are supported
+
+> I had to override
+> tables from DBD::_::db because it doesn't handle the quoting
+> conventions used by Informix databases.  Basically, table owners
+> are case sensitive in some databases, and therefore need to be
+> enclosed in double quotes (delimited identifier).
+: Needs attribute to say that a) double-quotes can be used
+: and b) that names are case sensitive.
+
+$dbh-level __WARN__ and __DIE__. Initially just provide DBIXS hooks
+for DBD's to use (and pass h and imp_xxh to). Thus $dbh can redirect
+errors etc from all children in one go.
+
+Allow first arg to bind_columns to be not supplied.
+
+Informix inspired changes.
+
+Detect it in eval block for when PrintError and RaiseError are both set.
+
+selectcol_arrayref
+
+Add hook to DBI::DBD to write a myconfig.txt file into the
+source directory containing key driver and config info.
+
+dbi:Driver(AutoCommit=0;PrintError=1):dsn	- overrides \%attribs hash
+
+attribute for 'last inserted id'
+
 test suite
+
+$sth->{Database} and $dbh->{Driver} should hold the
+outer handle not the inner one.
+
+$sth->more_results, now and $sth->become($sth2) later
+
+dbish - state AutoCommit status clearly at connect time.
+(Or try to set AutoCommit off.)
 
 Add thread CV locks (not method locks)
 to &DBI::connect and &DBI::connect_cached
 in xs dbi_init code.
 
-Complete and test connect_cached
+Complete and test connect_cached, inc proxy.
 
 fetch_scroll handling via get_fbav.
 Also add:
@@ -23,6 +72,7 @@ Consider making all SQL_ known to the DBI. Want to check for
 valid spelling. Also would like C<exists $h->{Attrib}> to
 work. Maybe auto load a module that defines a private hash
 that just serves to list known attributes.
+Or DBI->SQL_FOO and/or DBI::SQL_FOO.
 
 t/shell uninit var at 5.00502/Term/Cap.pm line 284.
 
@@ -31,8 +81,6 @@ check out http://tegan.deltanet.com/~phlip/DBUIframe.html
 FAQ check 80 col max
 
 Shell!
-
-Document NAME_lc etc
 
 If trace log_where() says DBI.pm then use caller(1)?
 
@@ -67,7 +115,7 @@ generic dbd_preparse (for both C and perl)
 SQL Parser
   CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
 
-Fix shared error codes between handles!
+Fix shared error codes between (dbh) handles
 
 Add problem reporting info to DBI.pm
 

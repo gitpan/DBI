@@ -9,6 +9,11 @@ use strict;
 
 require DBI::ProxyServer;
 
+# XXX these should probably be moved into DBI::ProxyServer
+delete $ENV{IFS};
+delete $ENV{CDPATH};
+delete $ENV{ENV};
+delete $ENV{BASH_ENV};
 
 if ($ARGV[0] eq '--test') {
     require RPC::PlServer::Test;
