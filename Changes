@@ -5,6 +5,12 @@ Current DBI Implementation Notes:
 
     THINGS MAY CHANGE. See the README file and DBI pod text.
 
+Changes in DBI 0.79,	7th Apr 1997
+
+	Minor release. Tidied up pod text and added some more descriptions
+	(especially disconnect). Minor changes to DBI.xs to remove compiler
+	warnings.
+
 Changes in DBI 0.78,	28th Mar 1997
 
 	Greatly extended the pod documentation in DBI.pm, including the under

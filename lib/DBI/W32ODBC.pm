@@ -1,6 +1,6 @@
 package DBI;
 
-# $Id: W32ODBC.pm,v 1.1 1997/03/28 15:31:22 timbo Exp $
+# $Id: W32ODBC.pm,v 1.2 1997/04/07 20:24:40 timbo Exp $
 #
 # Copyright (c) 1997, Tim Bunce
 #
@@ -40,7 +40,7 @@ DBI::W32ODBC - An experimental DBI emulation layer for Win32::ODBC
   $rv  = $h->err;
   $str = $h->errstr;
 
-=head1 WARNINGS
+=head1 DESCRIPTION
 
 THIS IS A VERY EXPERIMENTAL PURE PERL DBI EMULATION LAYER FOR Win32::ODBC
 
@@ -54,7 +54,7 @@ experimental.
 =cut
 
 $VERSION = $VERSION = '0.01';
-my $Revision = substr(q$Revision: 1.1 $, 10);
+my $Revision = substr(q$Revision: 1.2 $, 10);
 
 sub DBI::W32ODBC::import { }		# must trick here since we're called DBI/W32ODBC.pm
 

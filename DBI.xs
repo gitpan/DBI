@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.64 1997/03/28 15:31:22 timbo Exp $
+/* $Id: DBI.xs,v 1.65 1997/04/07 20:24:40 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -12,7 +12,11 @@
 
 static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 
+#ifndef _WIN32
 extern int perl_destruct_level;
+#else
+static int perl_destruct_level;
+#endif
 
 #define DBI_MAGIC '~'
 
@@ -23,6 +27,7 @@ extern int perl_destruct_level;
 
 #ifndef PerlIO_setlinebuf
 #ifdef HAS_SETLINEBUF
+void setlinebuf _((FILE *iop));		/* often not declared in stdio.h */
 #define PerlIO_setlinebuf(f)        setlinebuf(f)
 #else
 #define PerlIO_setlinebuf(f)        setvbuf(f, Nullch, _IOLBF, 0)
@@ -345,7 +350,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     dbih_imp_rv = newRV(dbih_imp_sv);	/* just needed for sv_bless */
     sv_bless(dbih_imp_rv, imp_mem_stash);
     sv_free(dbih_imp_rv);
-    imp = (imp_xxh_t*)SvPVX(dbih_imp_sv);
+    imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
     memzero((char*)imp, imp_size);
 
     DBIc_MY_H(imp)      = h;	/* take copy of pointer, not new ref	*/
@@ -556,24 +561,24 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     D_imp_sth(sth);
     dbih_stc_t *stc = (dbih_stc_t*)imp_sth;
     AV *av;
-    int idx;
+    int idx = SvIV(col);
 
     attribs = attribs;	/* avoid 'unused variable' warning	*/
 
-    if (!SvROK(ref))
-	croak("Not a reference for bind_col(%s, %s, %s,...)",
+    if (!SvROK(ref) || SvTYPE(SvRV(ref)) >= SVt_PVBM)
+	croak("Can't bind_col(%s, %s, %s,...) without a scalar reference",
 		neatsvpv(sth,0), neatsvpv(col,0), neatsvpv(ref,0));
-
-    if ( (av = stc->fields_av) == Nullav)
-	av = dbih_setup_fbav(stc);
-
-    idx = SvIV(col);
-    if (idx < 1 || idx > DBIc_NUM_FIELDS(imp_sth))
-	croak("bind_col: column %s is not a valid column", SvPV(col,na));
 
     if (dbis->debug >= 2)
 	fprintf(DBILOGFP,"    dbih_sth_bind_col %s(%d) => %s\n",
 		neatsvpv(col,0), idx, neatsvpv(ref,0));
+
+    if ( (av = stc->fields_av) == Nullav)
+	av = dbih_setup_fbav(stc);
+
+    if (idx < 1 || idx > DBIc_NUM_FIELDS(imp_sth))
+	croak("bind_col: column %s is not a valid column (1..%d)",
+			SvPV(col,na), DBIc_NUM_FIELDS(imp_sth));
 
     /* use supplied scalar as storage for this column */
     av_store(av, idx-1, SvREFCNT_inc(SvRV(ref)) );
@@ -1378,7 +1383,7 @@ fetchrow(sth)
 
 	/* We now check for bind_col() having been called but fetch	*/
 	/* not returning the fields_av array. Probably because the	*/
-	/* driver is implemented in perl. This logic may change later.	*/
+	/* driver is implemented in perl. XXX This logic may change later.	*/
 	bound_av = DBIc_FIELDS_AV(imp_sth); /* bind_col() called ?	*/
 	if (bound_av && av != bound_av) {
 	    /* let dbih_get_fbav know what's going on	*/

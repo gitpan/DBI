@@ -1,5 +1,7 @@
 require 5.003;
 
+$DBI::VERSION = '0.79';
+
 =head1 NAME
 
 DBI - Database independent interface for Perl (DRAFT ONLY)
@@ -37,7 +39,7 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.65 $ dated 3rd March 1997.
+This documentation is a new draft $Revision: 1.66 $ dated $Date: 1997/04/07 20:24:40 $
 
 It is expected to evolve and expand quite quickly (relative to previous
 drafts :-) so it is important to check that you have the latest copy.
@@ -49,11 +51,9 @@ drafts :-) so it is important to check that you have the latest copy.
 {
 package DBI;
 
-$VERSION = '0.78';
+my $Revision = substr(q$Revision: 1.66 $, 10);
 
-my $Revision = substr(q$Revision: 1.65 $, 10);
-
-# $Id: DBI.pm,v 1.65 1997/03/28 15:31:22 timbo Exp $
+# $Id: DBI.pm,v 1.66 1997/04/07 20:24:40 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -68,7 +68,7 @@ use Exporter ();
 
 # Make some utility functions available if asked for
 @EXPORT_OK = qw(neat neat_list dump_results);
-@EXPORT    = qw();	# Export _nothing_ by default
+@EXPORT    = qw();	# Exports _nothing_ by default
 
 use strict;
 
@@ -624,8 +624,8 @@ layer of 'glue' between an application and one or more Database Drivers.
 It is the drivers which do the real work. The DBI provides a standard
 interface and framework for the drivers to operate within.
 
-I<This document is a work-in-progress. Although it is incomplete it
-should be useful in getting started with the DBI.>
+This document is a I<work-in-progress>. Although it is incomplete it
+should be useful in getting started with the DBI.
 
 
 =head2 Architecture of a DBI Application
@@ -686,24 +686,83 @@ not a simple scalar):
   \%   reference to a hash:   $h->{attr}->{a}  or  %a = %{$h->{attr}}
 
 
+=head2 General Interface Rules & Caveats
+
+The DBI does not have a concept of a `current session'. Every session
+has a handle object (e.g., a $dbh) returned from the connect method and
+that handle object is used to invoke database related methods.
+
+Most data is returned to the perl script as perl strings (null values
+are returned as undef).  This allows arbitrary precision numeric data
+to be handled without loss of accuracy.  Be aware that perl may not
+preserve the same accuracy when the string is used as a number.
+
+Dates and times are returned as character strings in the native format
+of the corresponding Engine.  Time Zone effects are Engine/Driver
+dependent.
+
+Perl supports binary data in perl strings and the DBI will pass binary
+data to and from the Driver without change. It is up to the Driver
+implementors to decide how they wish to handle such binary data.
+
+Multiple SQL statements may not be combined in a single statement
+handle, e.g., a single $sth.
+
+Non-sequential record reads are not supported in this version of the
+DBI. E.g., records can only be fetched in the order that the database
+returned them and once fetched they are forgotten.
+
+Positioned updates and deletes are not directly supported by the DBI.
+See the description of the CursorName attribute for an alternative.
+
+Individual Driver implementors are free to provide any private
+functions and/or handle attributes that they feel are useful.  Private
+functions can be invoked using the DBI C<call> method. Private
+attributes are accessed just like standard attributes.
+
+
+=head2 Naming Conventions
+
+The DBI package and all packages below it (DBI::*) are are reserved for
+use by the DBI. Package names begining with DBD:: are reserved for use
+by DBI database drivers.  All environment variables used by the DBperl
+Switch or Adaptors begin with 'DBI_'.
+
+The letter case used for attribute names is significant and plays an
+important part in the portability of DBI scripts.  The case of the
+attribute name is used to signify who defined the meaning of that name
+and its values.
+
+  Case of name  Has a meaning defined by
+  ------------  ------------------------
+  UPPER_CASE    Standards, e.g.,  X/Open, SQL92 etc (portable)
+  MixedCase     DBI API (portable), underscores are not used.
+  lower_case    Driver or Engine specific (non-portable)
+
+It is of the utmost importance that Driver developers only use
+lowercase attribute names when defining private attributes.
+
+
 =head2 Data Query Methods
 
-DBI allows the application to `prepare' a statement for later execution.
+The DBI allows an application to `prepare' a statement for later execution.
 A prepared statement is identified by a statement handle object, e.g., $sth.
 
-Typical method call sequence (for a select statement):
+Typical method call sequence for a select statement:
 
-  prepare,
-    execute, fetch, fetch, ... finish,
-    execute, fetch, fetch, ... finish,
-    execute, fetch, fetch, ... finish.
+  connect,
+    prepare,
+      execute, fetch, fetch, ... finish,
+      execute, fetch, fetch, ... finish,
+      execute, fetch, fetch, ... finish.
 
-Typical method call sequence (for a non-select statement):
+Typical method call sequence for a non-select statement:
 
-  prepare,
-    execute,
-    execute,
-    execute.
+  connect,
+    prepare,
+      execute,
+      execute,
+      execute.
 
 
 =head1 THE DBI CLASS
@@ -714,6 +773,7 @@ Typical method call sequence (for a non-select statement):
 
 =item B<connect>
 
+  $dbh = DBI->connect($database, $username, $password, $driver);
   $dbh = DBI->connect($database, $username, $password, $driver, \%attr);
 
 Establishes a database connection (session) to the requested database.
@@ -742,13 +802,14 @@ fields in any way and supply whatever defaults are appropriate for
 the engine being accessed.
 
 Portable applications should not assume that a single driver will be
-able to support multiple simultaneous sessions and should check the
-value of C<$dbh->{AutoCommit}>.
+able to support multiple simultaneous sessions and also should check
+the value of C<$dbh->{AutoCommit}>.
 
-Each session ($dbh) is independent from the transactions in other
-sessions. This is useful where you need to hold cursors open across
-transactions, e.g., use one session for your long lifespan cursors
-(typically read-only) and another for your short update transactions.
+Where possible each session ($dbh) is independent from the transactions
+in other sessions. This is useful where you need to hold cursors open
+across transactions, e.g., use one session for your long lifespan
+cursors (typically read-only) and another for your short update
+transactions.
 
 
 =item B<available_drivers>
@@ -771,7 +832,7 @@ Return a list of all available drivers
 Return a string containing a neat (and tidy) representation of the
 supplied value. Strings will be quoted and undefined (NULL) values
 will be shown as C<undef>. Unprintable characters will be replaced by
-dot (C<.>) and the string will be truncated and terminated wil C<...>
+dot (.) and the string will be truncated and terminated with '...'
 if longer than $maxlen (0 or undef defaults to 400 characters).
 
 =item B<neat_list>
@@ -906,7 +967,8 @@ statement will typically just store the statement in the returned
 handle and process it when $sth->execute is called. Such drivers are
 likely to be unable to give much useful information about the
 statement, such as $sth->{NUM_OF_FIELDS}, until after $sth->execute
-has been called.
+has been called. Prepare I<never> executes the statement, even if it
+is not a select statement.
 
 =item B<do>
 
@@ -924,7 +986,8 @@ repeatedly.
 
  $rc  = $dbh->commit;
 
-Commit (make permanent) the most recent series of database changes.
+Commit (make permanent) the most recent series of database changes
+if the database supports transactions.
 
 
 =item B<rollback>
@@ -932,24 +995,39 @@ Commit (make permanent) the most recent series of database changes.
  $rc  = $dbh->rollback;
 
 Roll-back (undo) the most recent series of uncommited database
-changes.
+changes if the database supports transactions.
 
 
 =item B<disconnect>
 
  $rc  = $dbh->disconnect;
 
+Disconnects the database from the database handle. Typically only used
+before exiting the program. The handle is of little use after disconnecting.
+
+The transaction behaviour is of disconnect is undefined. Applications
+should explicitly call commit or rollback before calling disconnect.
+
+The database is automatically disconnected (by the DESTROY method) if
+still connected when there are no longer any references to the handle.
+The DESTROY method for each driver should explicitly call rollback to
+undo any uncommited changes. This is I<vital> behaviour to ensure that
+incomplete transactions don't get commited simply because Perl calls
+DESTROY on every object before exiting.
 
 =item B<quote>
 
  $sql = $dbh->quote($string);
 
-Quote a string literal for use in an SQL statement by adding the
-required type of outer quotation marks and I<escaping> any special
-characters (such as quotation marks) contained within the string.
+Quote a string literal for use in an SQL statement by I<escaping> any
+special characters (such as quotation marks) contained within the
+string and adding the required type of outer quotation marks.
 
- $sql = sprintf "select foo from bar where baz = %s", $dbh->quote("Don't\n");
+ $sql = sprintf "select foo from bar where baz = %s",
+                $dbh->quote("Don't\n");
 
+For Oracle quote would return C<'Don''t'> and for Ingres it would return
+C<'Don'+X'27+'t'> (including the outer quotation marks).
 
 =back
 
@@ -987,8 +1065,18 @@ AutoCommit mode.
 
  $rc  = $sth->execute;
 
-Executes the prepared statement. 
-returns undef, 0E0, 1, 2, ...
+Perform whatever processing is necessary to execute the prepared
+statement.  An undef is returned if an error occurs.
+
+For a non-select statement execute returns the number of rows affected
+(if available).  Zero rows is returned as "0E0" which Perl will treat
+as 0 but will regard as true.
+
+For select statements execute simply 'starts' the query within the
+Engine. Use one of the fetch methods to retreive the data. Note that
+the execute method does I<not> return the number of rows that will be
+returned by the query (because for most Engines it can't tell in
+advance).
 
 =item B<fetch>
 
@@ -1013,8 +1101,9 @@ fetchrow returns an empty list.  Null values are returned as undef.
 Indicates that no more data will be fetched from this statement before
 it is either prepared again via C<prepare> or destroyed.  It is helpful
 to call this method where appropriate in order to allow the server to
-free off any internal resources currently being held. It does not
-affect the transaction status of the session in any way.
+free off any internal resources (such as read locks) currently being
+held. It does not affect the transaction status of the session in any
+way.
 
 =item B<rows>
 
@@ -1079,7 +1168,8 @@ croak if the number of references does not match the number of fields.
 
  $sth->{NUM_OF_FIELDS}  ($)
 
-Number of fields (columns) the prepared statement will return.
+Number of fields (columns) the prepared statement will return. Non-select
+statements will have NUM_OF_FIELDS == 0.
 
 
 =item B<NUM_OF_PARAMS>
@@ -1140,8 +1230,9 @@ This section has not yet been formalised.
   my $rc = $sth->execute
       or die "Can't execute statement: $DBI::errstr";
 
-  print "Query will return $sth->{NUM_FIELDS} fields\n\n";
+  print "Query will return $sth->{NUM_FIELDS} fields.\n\n";
 
+  print "$sth->{NAME}->[0]: $sth->{NAME}->[1]\n";
   while (($name, $phone) = $sth->fetchrow()) {
       print "$name: $phone\n";
   }
@@ -1221,7 +1312,18 @@ Other related links:
 =head1 AUTHORS
 
 DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop and
-others.  Perl by Larry Wall and the <perl5-porters@perl.org>.
+others.  Perl by Larry Wall and the perl5-porters.
+
+=head1 ACKNOWLEDGEMENTS
+
+I would like to acknowledge the valuable contributions of the many
+people I have worked with on the DBI project, especially in the early
+years (1992-1994): Kevin Stock, Buzz Moschetti, Kurt Andersen, Ted
+Lemon, William Hails, Garth Kennedy, Michael Peppler, Neil S. Briscoe,
+David J. Hughes, Jeff Stander, Forrest D Whitcher, Larry Wall, Jeff
+Fried, Roy Johnson, Paul Hudson, Georg Rehfeld, Steve Sizemore, Ron
+Pool, Jon Meek, Tom Christiansen, Steve Baumgarten, Randal Schwartz,
+and a whole lot more.
 
 =head1 COPYRIGHT
 
@@ -1236,7 +1338,8 @@ no charges are involved, reasonable attempt is made to use the most
 current version, and all credits and copyright notices are retained.
 Requests for other distribution rights, including incorporation in
 commercial products, such as books, magazine articles, or CD-ROMs
-should be made to Tim.Bunce@ig.co.uk.
+should be made to Tim.Bunce@ig.co.uk (please I<don't> use this mail
+address for other DBI related mail - use the dbi-users mailing list).
 
 =head1 SUPPORT / WARRANTY
 
@@ -1252,15 +1355,23 @@ http://www.perl.co.uk/tpc for more details.
 	blob_read
 	error handling
 	portability
+	data dictionary methods
+	test harness support methods
 	etc
 
 =head1 FREQUENTLY ASKED QUESTIONS
 
 =head2 Why doesn't my CGI script work right?
 
-Read http://www.perl.com/perl/faq/idiots-guide.html and other perl/CGI
-information at http://www.perl.com. Please do I<not> post CGI related
-questions to the dbi-users mailing list (or to me).
+Read the information in the references below.  Please do I<not> post
+CGI related questions to the dbi-users mailing list (or to me).
+
+ http://www.perl.com/perl/faq/idiots-guide.html
+ http://www3.pair.com/webthing/docs/cgi/faqs/cgifaq.shtml
+ http://www.perl.com/perl/faq/perl-cgi-faq.html
+ http://www-genome.wi.mit.edu/WWW/faqs/www-security-faq.html
+ http://www.boutell.com/faq/
+ http://www.perl.com/perl/faq/
 
 =head2 How can I maintain a WWW connection to a database?
 
@@ -1275,8 +1386,8 @@ developers came to expect it to be). The first thing to do is check to
 see if you have the latest version of your driver. Driver authors will
 be releasing new versions which use the new location. If you have the
 latest then ask for a new release. You can edit the Makefile.PL file
-yourself. Change the part which reads "-I.../DBI" so it reads
-"-I.../auto/DBI" (where ... is a string of non-space characters).
+yourself. Change the part which reads C<"-I.../DBI"> so it reads
+C<"-I.../auto/DBI"> (where ... is a string of non-space characters).
 
 =head2 What about ODBC?
 

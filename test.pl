@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.17 1997/03/28 15:31:22 timbo Exp $
+# $Id: test.pl,v 1.18 1997/04/07 20:24:40 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,12 +11,13 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.17 $}."\n";
+	print q{DBI test application $Revision: 1.18 $}."\n";
 	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
 }
 
 use DBI;
 
+use Config;
 use Getopt::Long;
 use strict;
 
@@ -106,17 +107,20 @@ sub run_test{
     print "Driver name: $cursor_a->{'Database'}->{'Driver'}->{'Name'}\n";
     print "\n";
 
-    $cursor_a->execute('/usr');
-    $cursor_b->bind_param(1, '/usr/spool');
+	my($dir1, $dir2) = ($Config{archlib}, $Config{bin});
+    $cursor_a->execute( $dir1 );
+    $cursor_b->bind_param(1, $dir2);
     $cursor_b->execute();
 
     print "Fetching data from both cursors.\n";
     print "Expect several rows of data:\n";
     my(@row_a, @row_b);
+	my $rows = 0;
     while((@row_a = $cursor_a->fetchrow)
        && (@row_b = $cursor_b->fetchrow)){
 	    die "fetchrow scalar context problem" if @row_a==1 or @row_b==1;
 	    print "@row_a, @row_b\n";
+		last if ++$rows >= 5;
     }
 
     print "\nAutomatic method parameter usage check.\n";

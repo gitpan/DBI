@@ -20,7 +20,8 @@ emulation interface.
 
 The DBI.pm file now contains the DBI specification and other documentation
 (including Frequently Asked Questions and references to other resources).
-Please read it.
+PLEASE READ IT. It'll save you asking questions on the mailing list
+which you will be told are already answered in the documentation.
 
 Also see the 'New Directions' message at the end of this file re ODBC.
 

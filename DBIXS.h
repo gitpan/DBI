@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.31 1997/03/28 15:31:22 timbo Exp $
+/* $Id: DBIXS.h,v 1.32 1997/04/07 20:24:40 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -222,8 +222,8 @@ typedef struct {		/* -- STATEMENT --			*/
 #define UNKNOWN_event	"UNKNOWN"
 
 #define DBIh_CLEAR_ERROR(imp_xxh) (void)( \
-	    SvOK_off(DBIc_ERR(imp_xxh)),    	\
-	    SvOK_off(DBIc_ERRSTR(imp_xxh)),	\
+	    (void)SvOK_off(DBIc_ERR(imp_xxh)),    	\
+	    (void)SvOK_off(DBIc_ERRSTR(imp_xxh)),	\
 	    (SvPOK(DBIc_STATE(imp_xxh)) ? SvCUR(DBIc_STATE(imp_xxh))=0 : 0)	\
 	)
 
