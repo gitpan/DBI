@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.19 1997/05/06 22:23:17 timbo Exp $
+# $Id: test.pl,v 1.20 1997/05/07 15:55:58 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -12,11 +12,9 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.19 $}."\n";
+	print q{DBI test application $Revision: 1.20 $}."\n";
 	$| = 1;
 }
-
-use blib;
 
 use DBI;
 

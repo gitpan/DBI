@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.80';
+$DBI::VERSION = '0.81';
 
 =head1 NAME
 
@@ -42,7 +42,7 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.68 $ dated $Date: 1997/05/07 13:17:23 $
+This documentation is a new draft $Revision: 1.69 $ dated $Date: 1997/05/07 15:55:58 $
 
 It is expected to evolve and expand quite quickly (relative to previous
 drafts :-) so it is important to check that you have the latest copy.
@@ -54,9 +54,9 @@ drafts :-) so it is important to check that you have the latest copy.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.68 $, 10);
+my $Revision = substr(q$Revision: 1.69 $, 10);
 
-# $Id: DBI.pm,v 1.68 1997/05/07 13:17:23 timbo Exp $
+# $Id: DBI.pm,v 1.69 1997/05/07 15:55:58 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -196,7 +196,7 @@ foreach $class (keys %DBI_IF){
 END {
     print STDERR "    DBI::END\n" if $DBI::dbi_debug >= 2;
     # Let drivers know why we are calling disconnect_all:
-    $DBI::PERL_ENDING = 1;	# Perl is END'ing
+    $DBI::PERL_ENDING = $DBI::PERL_ENDING = 1;	# avoid typo warning
     DBI->disconnect_all();
     print STDERR "    DBI::END complete\n" if $DBI::dbi_debug >= 2;
 }
