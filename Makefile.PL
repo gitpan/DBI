@@ -1,5 +1,5 @@
 #!/usr/local/bin/perl -w
-# $Id: Makefile.PL,v 1.51 1996/03/05 01:31:09 timbo Exp $
+# $Id: Makefile.PL,v 1.52 1996/05/07 20:20:35 timbo Exp $
 
 require 5.002;
 
@@ -73,7 +73,7 @@ directories you MUST delete old DBI files and directories from your
     }
 
     # get DBIXS.h installed for access by DBD's
-    $self->{PM}->{'DBIXS.h'} = '$(INSTALLSITEARCH)/DBI/DBIXS.h';
+    $self->{PM}->{'DBIXS.h'} = '$(INST_ARCHLIBDIR)/DBI/DBIXS.h';
     '';
 }
 

@@ -9,10 +9,19 @@ Current DBI Implementation Notes:
     *** MANY THINGS MAY CHANGE *** See README file ***
 
 
+Changes in DBI 0.69
+
+	Fixed small memory leak.
+	Clarified the behaviour of DBI->connect.
+	$dbh->do now returns '0E0' instead of 'OK'.
+	Fixed "Can't read $DBI::errstr, lost last handle" problem.
+
+
 Changes in DBI 0.68,	2 Mar 1996
 
 	Changes to suit perl5.002 and site_lib directories.
-	Detects old versions ahead on new in @INC.
+	Detects old versions ahead of new in @INC.
+
 
 Changes in DBI 0.67,	15 Feb 1996
 

@@ -3,11 +3,11 @@ require 5.002;	# 5.002beta2 or later
 {
 package DBI;
 
-$VERSION = '0.68';
+$VERSION = '0.69';
 
-my $Revision = substr(q$Revision: 1.52 $, 10);
+my $Revision = substr(q$Revision: 1.54 $, 10);
 
-# $Id: DBI.pm,v 1.52 1996/03/05 00:50:37 timbo Exp $
+# $Id: DBI.pm,v 1.54 1996/05/07 21:06:02 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -73,8 +73,8 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 my %DBI_IF = (	# Define the DBI Interface:
 
     dr => {		# Database Driver Interface
-	'connect'  =>	{ U =>[1,6,'[$db [,$user [,$passwd [, $driver [,\%attr]]]]]'] },
-	disconnect_all=>{ U =>[1,1] },
+	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'] },
+	'disconnect_all'=>{ U =>[1,1] },
 	data_sources => { U =>[1,1] },
 	@Common_IF,
 	@TieHash_IF,
@@ -136,8 +136,9 @@ sub connect {
     my $class = shift;
     my($database, $user, $passwd, $driver, $attr) = @_;
 
-    $database ||= $ENV{DBI_DBNAME};
-    $driver   ||= $ENV{DBI_DRIVER};
+    $database ||= $ENV{DBI_DBNAME} || '';
+    $driver   ||= $ENV{DBI_DRIVER} || '';
+    $attr ||= '';
 
     warn "DBI->connect($database, $user, $passwd, $driver, $attr)\n"
 	    if $DBI::dbi_debug;
@@ -149,6 +150,9 @@ sub connect {
 
     confess "DBI->connect() currently needs a driver" unless $driver;
 
+    # Note that the same $attr hash ref is passed to both
+    # install_driver and connect. Sad but true.
+
     my $drh = $DBI::installed_drh{$driver};
     unless (defined $drh){
 	$drh = DBI->install_driver($driver, $attr)
@@ -156,7 +160,7 @@ sub connect {
     }
     warn "DBI->connect using $driver driver $drh\n" if $DBI::dbi_debug;
 
-    my $dbh = $drh->connect($database, $user, $passwd);
+    my $dbh = $drh->connect($database, $user, $passwd, $attr);
     warn "DBI->connect = $dbh\n" if $DBI::dbi_debug;
 
     $dbh;
@@ -475,7 +479,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	my $sth = $dbh->prepare($statement) or return undef;
 	$sth->execute or return undef;
 	my $rows = $sth->rows;
-	($rows == 0) ? "OK" : $rows;
+	($rows == 0) ? "0E0" : $rows;
     }
 
     sub commit	{
@@ -572,10 +576,19 @@ $drh = DBI->internal; # return $drh for internal Switch 'driver'
 $drh = DBI->install_driver($driver_name [, \%attributes ] );
 $rv  = DBI->install_method($class_method, $filename [, \%attribs]);
 
-$DBI::db_error   same as DBI->internal->{LastDbh}->{Error}
-$DBI::db_errstr  same as DBI->internal->{LastDbh}->{ErrorStr}
-$DBI::db_rows    same as DBI->internal->{LastSth}->{ROW_COUNT}
+$DBI::err     same as DBI->internal->{LastDbh}->{Error}
+$DBI::errstr  same as DBI->internal->{LastDbh}->{ErrorStr}
+$DBI::state   ISO SQL/92 style SQLSTATE value
+$DBI::rows    same as DBI->internal->{LastSth}->{ROW_COUNT}
 
+DBI->connect calls DBI->install_driver if the driver has not been
+installed yet. It then returns the result of $drh->connect.
+It is important to note that DBI->install_driver always returns
+a valid driver handle or it *dies* with an error message which
+includes the string 'install_driver' and the underlying problem.
+So, DBI->connect will die on an install_driver failure and will
+only return undef on a connect failure, for which $DBI::errstr
+will hold the error.
 
 ---------------------------------------------------------------
 DRIVER OBJECTS (not normally used by an application)

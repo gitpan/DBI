@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.51 1996/03/05 00:50:37 timbo Exp $
+/* $Id: DBI.xs,v 1.53 1996/05/07 20:20:00 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -53,6 +53,7 @@ typedef struct dbi_ima_st {
 #define IMA_KEEP_ERR		0x0004	/* don't reset err & errstr	*/
 
 #define DBI_LAST_HANDLE		dbi_last_h /* special fake inner handle	*/
+#define DBI_LAST_HANDLE_PARENT	(DBIc_PARENT_H(DBIh_COM(DBI_LAST_HANDLE)))
 #define DBI_IS_LAST_HANDLE(h)	(SvRVx(DBI_LAST_HANDLE) == SvRV(h))
 #define DBI_SET_LAST_HANDLE(h)	(SvRVx(DBI_LAST_HANDLE) =  SvRV(h))
 #define DBI_UNSET_LAST_HANDLE	(SvRVx(DBI_LAST_HANDLE) =  &sv_undef)
@@ -157,8 +158,7 @@ mkvname(stash, item, uplevel)	/* construct a variable name	*/
     char *item;
     int uplevel;
 {
-  /*  SV *sv = sv_newmortal(); XXX swap back to fix small leak */
-    SV *sv = newSV(0);
+    SV *sv = sv_newmortal();
     sv_setpv(sv, HvNAME(stash));
     if(uplevel) {
 	while(SvCUR(sv) && *SvEND(sv)!=':')
@@ -836,8 +836,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     /* record this inner handle for use by DBI::var::FETCH	*/
     if (is_destroy) {	/* we use devious means here...	*/
-	if (DBI_IS_LAST_HANDLE(h))
-	    DBI_UNSET_LAST_HANDLE;	/* if destroying _this_ handle */
+	if (DBI_IS_LAST_HANDLE(h)) {	/* if destroying _this_ handle */
+	    SV *lhp = DBI_LAST_HANDLE_PARENT;
+	    (SvROK(lhp)) ? DBI_SET_LAST_HANDLE(lhp) : DBI_UNSET_LAST_HANDLE;
+	}
 	/* otherwise don't alter it */
     }
     else DBI_SET_LAST_HANDLE(h);
