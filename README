@@ -1,0 +1,105 @@
+DBI - The Perl5 Database Interface by Tim Bunce.
+
+Copyright (c) 1995, Tim Bunce
+
+You may distribute under the terms of either the GNU General Public
+License or the Artistic License, as specified in the Perl README file.
+
+
+WARNING: THIS IS ALPHA SOFTWARE. IT IS POSSIBLY UNRELIABLE!
+
+
+This DBI interface is not yet fully specified. The current development
+work is focused on writing drivers, such as DBD::Oracle, which also
+implement emulations of old perl4 database interfaces, e.g., oraperl.
+This strategy enables the DBI and drivers to serve a useful purpose
+whilst allowing the real interface to evolve with experience behind the
+emulation interface.
+
+
+If you wish to use this sofware please join the perldb mailing list.
+Send a request to join to:
+
+	perldb-interest-request@fugue.com
+
+For background information, old (sadly out of date) specs and the
+(very large) mailing list archive take a look in:
+
+	ftp://ftp.demon.co.uk/pub/perl/db/
+
+
+BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
+
+    Build, test and install Perl 5 (at least version 5.001m).
+    It is very important to test it and install it!
+
+BUILDING
+
+    If Perl5 is installed do:
+
+	perl Makefile.PL
+
+    If Perl5 is NOT installed do:
+
+    perl Makefile.PL PERL_SRC=/path/to/perl/source/dir
+
+    Then do:
+
+    make
+    make test
+    make test TEST_VERBOSE=1   (if any of the t/* tests fail)
+
+    make install (if the tests look okay)
+
+Do NOT hand edit the generated Makefile unless you are completely sure
+you understand the implications! Always try to make changes via the
+Makefile.PL command line and/or editing the Makefile.PL.
+ 
+You should never need to make any changes. If you do *please* let me
+know so that I can try to make it automatic in a later release.
+ 
+
+IF YOU HAVE PROBLEMS:
+
+Please post details to perldb-interest@fugue.com and CC them to me at
+Tim.Bunce@ig.co.uk.  Please include:
+
+1. A complete log of a complete build, e.g.:
+
+    perl Makefile.PL           (do a make realclean first)
+    make
+    make test
+    make test TEST_VERBOSE=1   (if any tests fail)
+
+2. The output of:
+    perl -e 'use Config; print Config::myconfig()'
+   together with the version number of GCC (should be 2.5.8 or later)
+
+3. If you get a core dump, try to include a stack trace from it.
+   If the stack trace mentions XS_DynaLoader_dl_load_file then rerun
+   make test after setting the environment variable PERL_DL_DEBUG to 2.
+
+4. Please DON'T post problems to comp.lang.perl.misc or perl5-porters.
+
+5. If you are not currently subscribed to the mailing list please
+   also send a subscription request to perldb-interest-request@fugue.com.
+
+
+Regards,
+Tim Bunce.
+
+=======================================================================
+
+Drivers planned or being developed:
+
+Oracle		- Tim Bunce <Tim.Bunce@ig.co.uk>
+Ingres		- Tim Bunce <Tim.Bunce@ig.co.uk>
+mSQL		- Alligator Descartes <descarte@mcqueen.com>
+Informix	- Alligator Descartes <descarte@mcqueen.com> 
+Interbase	- Bill Karwin <bkarwin@interbase.borland.com>
+DB2  		- Mike <mhm@austin.ibm.com>
+
+Please communicate about these via the perldb-interest mailing list.
+Thanks.
+
+Tim.
