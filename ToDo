@@ -1,6 +1,13 @@
 
 *** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
 
+$dbh->get_inner_handle / set_inner_handle
+		use to make $dbh->connect return same handle
+Hook to call code ref on each fetch, pass fbav ref
+datarow_array(), datarow_arrayref(), datarow_hashref()
+remove sth from prepare_cached cache.
+$sth/$dbh->last_insert_id
+
 Ability to remove an sth from the prepare_cached cache.
 	$sth->uncache;
 

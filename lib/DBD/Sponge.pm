@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.7 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.8 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.7 2003/02/28 17:50:06 timbo Exp $
+#   $Id: Sponge.pm,v 11.8 2003/05/10 23:30:28 timbo Exp $
 #
 #   Copyright (c) 1994-2003 Tim Bunce Ireland
 #
@@ -169,6 +169,9 @@
 		if @$row != $NUM_OF_PARAMS;
 	    { local $^W; $sth->trace_msg("inserting (@$row)\n"); }
 	    push @{ $sth->{rows} }, $row;
+	}
+	else {	# mark select sth as Active
+	    $sth->STORE(Active => 1);
 	}
 	# else do nothing for select as data is already in $sth->{rows}
 	return 1;

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.12 2003/02/26 17:56:01 timbo Exp $
+/* $Id: DBIXS.h,v 11.14 2003/05/13 13:52:05 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -21,6 +21,10 @@
 
 #ifdef debug		/* causes problems with DBIS->debug	*/
 #undef debug
+#endif
+
+#ifdef std             /* causes problems with STLport <tscheresky@micron.com> */
+#undef std
 #endif
 
 /* Perl backwards compatibility definitions */
@@ -68,6 +72,7 @@ typedef struct imp_dbh_st imp_dbh_t;	/* database			*/
 typedef struct imp_sth_st imp_sth_t;	/* statement			*/
 typedef struct imp_fdh_st imp_fdh_t;	/* field descriptor		*/
 typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
+#define DBI_imp_data_ imp_xxh_t		/* friendly for take_imp_data	*/
 
 
 
@@ -298,7 +303,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 
 #ifdef IN_DBI_XS		/* get Handle Common Data Structure	*/
-#define DBIh_COM(h)         	(dbih_getcom(h))
+#define DBIh_COM(h)         	(dbih_getcom2(h, 0))
 #else
 #define DBIh_COM(h)         	(DBIS->getcom(h))
 #define neatsvpv(sv,len)       	(DBIS->neat_svpv(sv,len))

@@ -6,9 +6,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.9 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.10 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.9 2003/02/28 17:50:06 timbo Exp $
+#   $Id: ExampleP.pm,v 11.10 2003/05/10 23:30:28 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -64,7 +64,7 @@
 	    'User' => $user,
 	    examplep_get_info => {},
 	    });
-		$this->STORE(Active => 1);
+	$this->STORE(Active => 1);
         $this;
     }
 
@@ -227,6 +227,7 @@
 	    # know that the driver has 'handled' the AutoCommit attribute
 	    $value = ($value) ? -901 : -900;
 	}
+	return $dbh->{$attrib} = $value if $attrib =~ /^examplep_/;
 	return $dbh->SUPER::STORE($attrib, $value);
     }
 

@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.93 $ ' =~ /(\d+)\.(\d+)/;
+$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.95 $ ' =~ /(\d+)\.(\d+)/;
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -146,6 +146,7 @@ my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
 	RowCacheSize
 	Statement
 	TraceLevel
+	Username
 	Version
 ));
 
@@ -188,13 +189,15 @@ sub  _install_method {
 
     push @pre_call_frag, q{
 	return $h->{$_[0]} if exists $h->{$_[0]};
-    } if $method_name eq 'FETCH' && !exists $ENV{DBI_TRACE};
+    } if $method_name eq 'FETCH' && !exists $ENV{DBI_TRACE}; # XXX ?
 
     push @pre_call_frag, "return;"
 	if IMA_STUB & $bitmask;
 
     push @pre_call_frag, q{
-	$method_name = $imp . '::' . pop @_;
+#warn "func";
+	#$method_name = $imp . '::' . pop @_;
+	$method_name = pop @_;
     } if IMA_FUNC_REDIRECT & $bitmask;
 
     push @pre_call_frag, q{
@@ -231,7 +234,7 @@ sub  _install_method {
         if ($DBI::dbi_debug >= 2) {
 	    local $^W;
 	    my $args = join " ", map { DBI::neat($_) } ($h, @_);
-	    printf $DBI::tfh "    > $method_name in $imp ($args)\n";
+	    printf $DBI::tfh "    > $method_name in $imp ($args) [$@]\n";
 	}
     } if exists $ENV{DBI_TRACE};	# note use of 'exists'
 
@@ -297,8 +300,17 @@ sub  _install_method {
         my $h = shift;
 	my $h_inner = tied(%$h);
 	$h = $h_inner if $h_inner;
-	# XXX this eval isn't good because it overwrites $@
-        my $imp = eval { $h->{"ImplementorClass"} } or return; # probably global destruction
+
+        my $imp;
+	if ($method_name eq 'DESTROY') {
+	    # during global destruction, $h->{...} can trigger "Can't call FETCH on an undef value"
+	    # implying that tied() above lied to us, so we need to use eval
+	    local $@;	 # protect $@
+	    $imp = eval { $h->{"ImplementorClass"} } or return; # probably global destruction
+	}
+	else {
+	    $imp = $h->{"ImplementorClass"} or return; # probably global destruction
+	}
 
 	] . join("\n", '', @pre_call_frag, '') . q[
 
@@ -311,7 +323,10 @@ sub  _install_method {
 	    (wantarray) ? (@ret = &$sub($h,@_)) : (@ret = scalar &$sub($h,@_));
 	}
 	else {
-	    croak "Can't find DBI method $method_name for $h"
+	    # XXX could try explicit fallback to $imp->can('AUTOLOAD') etc
+	    # which would then let Multiplex pass PurePerl tests, but some
+	    # hook into install_method may be better.
+	    croak "Can't find DBI method $method_name for $h (via $imp)"
 		if ] . ((IMA_NOT_FOUND_OKAY & $bitmask) ? 0 : 1) . q[;
 	}
 
@@ -334,7 +349,7 @@ sub  _install_method {
 sub _setup_handle {
     my($h, $imp_class, $parent, $imp_data) = @_;
     my $h_inner = tied(%$h) || $h;
-    warn "\n_setup_handle(@_)" if $DBI::dbi_debug >= 4;
+    warn("\n_setup_handle(@_)") if $DBI::dbi_debug >= 4;
     $h_inner->{"imp_data"} = $imp_data;
     $h_inner->{"ImplementorClass"} = $imp_class;
     $h_inner->{"Kids"} = $h_inner->{"ActiveKids"} = 0;	# XXX not maintained
@@ -377,7 +392,7 @@ sub trace {
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
-                . "dispatch trace level set to $level\n" if $level;
+                . "dispatch trace level set to $DBI::dbi_debug\n" if $DBI::dbi_debug;
         if ($level==0 and fileno($DBI::tfh)) {
 	    _set_trace_file("");
         }
@@ -401,7 +416,14 @@ sub _set_trace_file {
 }
 sub _get_imp_data {  shift->{"imp_data"}; }
 sub _svdump       { }
-sub dump_handle   { my $h = shift; warn join "\n", %$h; }
+sub dump_handle   {
+    my ($h,$msg,$level) = @_;
+    $msg||="dump_handle $h";
+    print $DBI::tfh "$msg:\n";
+    for my $attrib (sort keys %$h) {
+	print $DBI::tfh "\t$attrib => ".DBI::neat($h->{$attrib})."\n";
+    }
+}
 
 sub _handles {
     my $h = shift;
@@ -499,9 +521,13 @@ sub trace {	# XXX should set per-handle level, not global
     my $old_level = $DBI::dbi_debug;
     if (defined $level) {
 	$DBI::dbi_debug = $level;
-	printf $DBI::tfh
-            "    %s trace level set to %d in DBI $DBI::VERSION (PurePerl)\n",
-	    $h, $level if $level;
+	if ($DBI::dbi_debug) {
+	    printf $DBI::tfh
+		"    %s trace level set to %d in DBI $DBI::VERSION (PurePerl)\n",
+		$h, $DBI::dbi_debug;
+	    print $DBI::tfh "    Full trace not available because DBI_TRACE is not in environment\n"
+		unless exists $ENV{DBI_TRACE};
+	}
     }
     _set_trace_file($file) if defined $file;
     return $old_level;
@@ -555,7 +581,7 @@ sub STORE {
 		if $value;
     }
     elsif ($key eq 'TraceLevel') {
-	$DBI::dbi_debug = $value;
+	$h->trace($value);
 	return 1;
     }
     elsif (!$is_valid_attribute{$key} && $key =~ /^[A-Z]/ && !exists $h->{$key}) {
@@ -594,14 +620,16 @@ sub set_err {
 }
 sub trace_msg {
     my ($h, $msg, $minlevel)=@_;
-    $minlevel = 1 unless defined $minlevel;
-    my $curlevel = $DBI::dbi_debug; # XXX if $DBI::dbi_debug > $curlevel;
-    return if $curlevel < $minlevel;
+    $minlevel = 1 unless $minlevel;
+    return unless $minlevel <= $DBI::dbi_debug;
     print $DBI::tfh $msg;
     return 1;
 }
 sub private_data {
     warn "private_data @_";
+}
+sub take_imp_data {
+    undef;
 }
 sub rows {
     return -1; # always returns -1 here, see DBD::_::st::rows below

@@ -46,7 +46,7 @@ and any other lists or forums you may use, I strongly
 recommend that you read "How To Ask Questions The Smart Way"
 by Eric Raymond:
  
-  http://www.tuxedo.org/~esr/faqs/smart-questions.html
+  http://www.catb.org/~esr/faqs/smart-questions.html
 
 Much useful information and online archives of the mailing lists can be
 found at http://dbi.perl.org/
@@ -74,8 +74,8 @@ IF YOU HAVE PROBLEMS:
 First, carefully read the notes at the bottom of this file.
 
 If you can't fix it your self please post details to dbi-users@perl.org.
-You can CC them to me at Tim.Bunce@ig.co.uk BUT please DON'T send them
-just to me (I'm likely to ignore it).  Please include:
+Please do _not_ send them just to me (I'm likely to ignore it).
+Please include:
 
 1. A complete log of a complete build, e.g.:
 

@@ -99,6 +99,16 @@ my $dbh = MyDBI->connect("dbi:Sponge:foo","","", {
 });
 ok(0, ref $dbh, 'MyDBI::db');
 ok(0, $dbh->{CompatMode}, 1);
+undef $dbh;
+
+$dbh = DBI->connect("dbi:Sponge:foo","","", {
+	PrintError => 0,
+	RaiseError => 1,
+	RootClass => "MyDBI",
+	CompatMode => 1, # just for clone test
+});
+ok(0, ref $dbh, 'MyDBI::db');
+ok(0, $dbh->{CompatMode}, 1);
 
 #$dbh->trace(5);
 my $sth = $dbh->prepare("foo",
@@ -161,4 +171,16 @@ ok(0, !$tmp, 1);
 ok(0, $dbh->err, 42);
 ok(0, $dbh->errstr, "not enough parameters");
 
-BEGIN { $tests = 28 }
+
+$dbh = eval { DBI->connect("dbi:Sponge:foo","","", {
+	RootClass => 'nonesuch1', PrintError => 0, RaiseError => 0, });
+};
+ok(0, substr($@,0,25), "Can't locate nonesuch1.pm");
+
+$dbh = eval { nonesuch2->connect("dbi:Sponge:foo","","", {
+	PrintError => 0, RaiseError => 0, });
+};
+ok(0, substr($@,0,36), q{Can't locate object method "connect"});
+
+
+BEGIN { $tests = 32 }

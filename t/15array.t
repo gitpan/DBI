@@ -3,7 +3,7 @@
 use strict;
 use Test;
 
-BEGIN { plan tests => 24 }
+BEGIN { plan tests => 34 }
 
 use Data::Dumper;
 $Data::Dumper::Indent = 0;
@@ -68,6 +68,47 @@ ok( $dumped, "[[1,42,undef,'a'],[2,42,undef,'b'],[3,42,undef,'c']]");
 $dumped = Dumper($tuple_status);
 ok( $dumped, "[1,1,1]");
 
+
+# --- ArrayTupleFetch code-ref tests ---
+
+my $index = 0;
+my $fetchrow = sub { # generate 5 rows of two integer values
+    return if $index >= 2;
+    $index +=1;
+    # $index is quoted to avoid perl version differences
+    return [ "$index", 'a','b','c' ];
+};
+@$rows = ();
+ok( $sth->execute_array({
+	ArrayTupleFetch  => $fetchrow,
+	ArrayTupleStatus => $tuple_status,
+}) );
+ok( @$rows, 2 );
+ok( @$tuple_status, 2 );
+$dumped = Dumper($rows);
+ok( $dumped, "[['1','a','b','c'],['2','a','b','c']]");
+$dumped = Dumper($tuple_status);
+ok( $dumped, "[1,1]");
+
+# --- ArrayTupleFetch sth tests ---
+
+my $fetch_sth = $dbh->prepare("foo", {
+        rows => [ map { [ $_,'x','y','z' ] } 7..9 ],
+        NUM_OF_FIELDS =>4
+        #NAME => 
+});
+$fetch_sth->execute();
+@$rows = ();
+ok( $sth->execute_array({
+	ArrayTupleFetch  => $fetch_sth,
+	ArrayTupleStatus => $tuple_status,
+}) );
+ok( @$rows, 3 );
+ok( @$tuple_status, 3 );
+$dumped = Dumper($rows);
+ok( $dumped, "[[7,'x','y','z'],[8,'x','y','z'],[9,'x','y','z']]");
+$dumped = Dumper($tuple_status);
+ok( $dumped, "[1,1,1]");
 
 # --- error detection tests ---
 

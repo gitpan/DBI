@@ -1,4 +1,4 @@
-#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.7 2002/12/01 22:34:29 timbo Exp $
+#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.9 2003/05/14 11:08:17 timbo Exp $
 # -*- perl -*-
 #
 #   DBI::ProxyServer - a proxy server for DBI drivers
@@ -26,7 +26,7 @@ require 5.004;
 use strict;
 
 use RPC::PlServer 0.2001;
-require DBI;
+# require DBI; # deferred till AcceptVersion() to aid threading
 require Config;
 
 
@@ -90,7 +90,8 @@ my %DEFAULT_SERVER_OPTIONS;
 	    'func' => 1,
 	    'quote' => 1,
 	    'type_info_all' => 1,
-            'table_info' => 1
+	    'table_info' => 1,
+	    'disconnect' => 1,
 	    },
 	'DBI::ProxyServer::st' => {
 	    'execute' => 1,
@@ -165,6 +166,8 @@ sub AcceptApplication {
 
 sub AcceptVersion {
     my $self = shift; my $version = shift;
+    require DBI;
+    DBI::ProxyServer->init_rootclass();
     $DBI::VERSION >= $version;
 }
 
@@ -242,8 +245,6 @@ sub main {
 #   those that need additional handling.
 #
 ############################################################################
-
-DBI::ProxyServer->init_rootclass();
 
 package DBI::ProxyServer::dr;
 
@@ -595,6 +596,275 @@ or
 which in fact are "SELECT * FROM foo" or "INSERT INTO foo VALUES (?, ?, ?)".
 
 
+=head1 Proxyserver Configuration file (bigger example)
+
+This section tells you how to restrict a DBI-Proxy: Not every user from
+every workstation shall be able to execute every query.
+
+There is a perl program "dbiproxy" which runs on a machine which is able
+to connect to all the databases we wish to reach. All Perl-DBD-drivers must
+be installed on this machine. You can also reach databases for which drivers 
+are not available on the machine where you run the programm querying the 
+database, e.g. ask MS-Access-database from Linux.
+
+Create a configuration file "proxy_oracle.cfg" at the dbproxy-server:
+
+    {
+	# This shall run in a shell or a DOS-window 
+	# facility => 'daemon',
+	pidfile => 'dbiproxy.pid',
+	logfile => 1,
+	debug => 0,
+	mode => 'single',
+	localport => '12400',
+
+	# Access control, the first match in this list wins!
+	# So the order is important
+	clients => [
+		# hint to organize:
+		# the most specialized rules for single machines/users are 1st
+		# then the denying rules
+		# the the rules about whole networks
+		
+		# rule: internal_webserver
+		# desc: to get statistical information
+		{
+			# this IP-address only is meant
+			mask => '^10\.95\.81\.243$',
+			# accept (not defer) connections like this
+			accept => 1,
+			# only users from this list 
+			# are allowed to log on
+			users => [ 'informationdesk' ],
+			# only this statistical query is allowed
+			# to get results for a web-query
+			sql => {
+				alive => 'select count(*) from dual',
+				statistic_area => 'select count(*) from e01admin.e01e203 where geb_bezei like ?',
+			}
+		},
+		
+		# rule: internal_bad_guy_1
+		{
+			mask => '^10\.95\.81\.1$',
+			accept => 0,
+		},
+
+		# rule: employee_workplace
+		# desc: get detailled informations
+		{
+			# any IP-address is meant here
+			mask => '^10\.95\.81\.(\d+)$',
+			# accept (not defer) connections like this
+			accept => 1,
+			# only users from this list 
+			# are allowed to log on
+			users => [ 'informationdesk', 'lippmann' ],
+			# all these queries are allowed:
+			sql => {
+				search_city => 'select ort_nr, plz, ort from e01admin.e01e200 where plz like ?',
+				search_area => 'select gebiettyp, geb_bezei from e01admin.e01e203 where geb_bezei like ? or geb_bezei like ?',
+			}
+		},
+
+		# rule: internal_bad_guy_2 
+		# This does NOT work, because rule "employee_workplace" hits
+		# with its ip-address-mask of the whole network
+		{
+			# don't accept connection from this ip-address
+			mask => '^10\.95\.81\.5$',
+			accept => 0,
+		}
+	]
+    }
+
+Start the proxyserver like this:
+
+	rem well-set Oracle_home needed for Oracle
+	set ORACLE_HOME=d:\oracle\ora81
+	dbiproxy --configfile proxy_oracle.cfg
+
+
+=head2 Testing the connection from a remote machine
+
+Call a programm "dbish" from your commandline. I take the machine from rule "internal_webserver"
+
+	dbish "dbi:Proxy:hostname=oracle.zdf;port=12400;dsn=dbi:Oracle:e01" informationdesk xxx
+
+There will be a shell-prompt:
+
+	informationdesk@dbi...> alive
+
+	Current statement buffer (enter '/'...):
+	alive
+
+	informationdesk@dbi...> /
+	COUNT(*)
+	'1'
+	[1 rows of 1 fields returned]
+
+
+=head2 Testing the connection with a perl-script
+
+Create a perl-script like this:
+
+	# file: oratest.pl
+	# call me like this: perl oratest.pl user password
+
+	use strict;
+	use DBI;
+
+	my $user = shift || die "Usage: $0 user password";
+	my $pass = shift || die "Usage: $0 user password";
+	my $config = {
+		dsn_at_proxy => "dbi:Oracle:e01",
+		proxy => "hostname=oechsle.zdf;port=12400",
+	};
+	my $dsn = sprintf "dbi:Proxy:%s;dsn=%s",
+		$config->{proxy},
+		$config->{dsn_at_proxy};
+
+	my $dbh = DBI->connect( $dsn, $user, $pass )
+		|| die "connect did not work: $DBI::errstr";
+
+	my $sql = "search_city";
+	printf "%s\n%s\n%s\n", "="x40, $sql, "="x40;
+	my $cur = $dbh->prepare($sql);
+	$cur->bind_param(1,'905%');
+	&show_result ($cur);
+
+	my $sql = "search_area";
+	printf "%s\n%s\n%s\n", "="x40, $sql, "="x40;
+	my $cur = $dbh->prepare($sql);
+	$cur->bind_param(1,'Pfarr%');
+	$cur->bind_param(2,'Bronnamberg%');
+	&show_result ($cur);
+
+	my $sql = "statistic_area";
+	printf "%s\n%s\n%s\n", "="x40, $sql, "="x40;
+	my $cur = $dbh->prepare($sql);
+	$cur->bind_param(1,'Pfarr%');
+	&show_result ($cur);
+
+	$dbh->disconnect;
+	exit;
+
+
+	sub show_result {
+		my $cur = shift;
+		unless ($cur->execute()) {
+			print "Could not execute\n"; 
+			return; 
+		}
+
+		my $rownum = 0;
+		while (my @row = $cur->fetchrow_array()) {
+			printf "Row is: %s\n", join(", ",@row);
+			if ($rownum++ > 5) {
+				print "... and so on\n";
+				last;
+			}	
+		}
+		$cur->finish;
+	}
+
+The result
+
+	C:\>perl oratest.pl informationdesk xxx
+	========================================
+	search_city
+	========================================
+	Row is: 3322, 9050, Chemnitz
+	Row is: 3678, 9051, Chemnitz
+	Row is: 10447, 9051, Chemnitz
+	Row is: 12128, 9051, Chemnitz
+	Row is: 10954, 90513, Zirndorf
+	Row is: 5808, 90513, Zirndorf
+	Row is: 5715, 90513, Zirndorf
+	... and so on
+	========================================
+	search_area
+	========================================
+	Row is: 101, Bronnamberg
+	Row is: 400, Pfarramt Zirndorf
+	Row is: 400, Pfarramt Rosstal
+	Row is: 400, Pfarramt Oberasbach
+	Row is: 401, Pfarramt Zirndorf
+	Row is: 401, Pfarramt Rosstal
+	========================================
+	statistic_area
+	========================================
+	DBD::Proxy::st execute failed: Server returned error: Failed to execute method CallMethod: Unknown SQL query: statistic_area at E:/Perl/site/lib/DBI/ProxyServer.pm line 258.
+	Could not execute
+
+
+=head2 How the configuration works
+
+The most important section to control access to your dbi-proxy is "client=>"
+in the file "proxy_oracle.cfg":
+
+Controlling which person at which machine is allowed to access
+
+=over 4
+
+=item * "mask" is a perl regular expression against the plain ip-address of the machine which wishes to connect _or_ the reverse-lookup from a nameserver.
+
+=item * "accept" tells the dbiproxy-server wether ip-adresse like in "mask" are allowed to connect or not (0/1)
+
+=item * "users" is a reference to a list of usernames which must be matched, this is NOT a regular expression.
+
+=back
+
+Controlling which SQL-statements are allowed
+
+You can put every SQL-statement you like in simply ommiting "sql => ...", but the more important thing is to restrict the connection so that only allowed queries are possible.
+
+If you include an sql-section in your config-file like this:
+
+	sql => {
+		alive => 'select count(*) from dual',
+		statistic_area => 'select count(*) from e01admin.e01e203 where geb_bezei like ?',
+	}
+
+The user is allowed to put two queries against the dbi-proxy. The queries are _not_ "select count(*)...", the queries are "alive" and "statistic_area"! These keywords are replaced by the real query. So you can run a query for "alive":
+
+	my $sql = "alive";
+	my $cur = $dbh->prepare($sql);
+	...
+
+The flexibility is that you can put parameters in the where-part of the query so the query are not static. Simply replace a value in the where-part of the query through a question mark and bind it as a parameter to the query. 
+
+	my $sql = "statistic_area";
+	my $cur = $dbh->prepare($sql);
+	$cur->bind_param(1,'905%');
+	# A second parameter would be called like this:
+	# $cur->bind_param(2,'98%');
+
+The result is this query:
+
+	select count(*) from e01admin.e01e203 
+	where geb_bezei like '905%'
+
+Don't try to put parameters into the sql-query like this:
+
+	# Does not work like you think.
+	# Only the first word of the query is parsed,
+	# so it's changed to "statistic_area", the rest is omitted.
+	# You _have_ to work with $cur->bind_param.
+	my $sql = "statistic_area 905%";
+	my $cur = $dbh->prepare($sql);
+	...
+
+
+=head2 Problems
+
+=over 4
+
+=item * I don't know how to restrict users to special databases.
+
+=item * I don't know how to pass query-parameters via dbish
+
+=back
 
 
 =head1 AUTHOR

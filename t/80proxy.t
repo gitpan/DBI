@@ -28,7 +28,7 @@ eval {
     require Net::Daemon::Test;
 };
 if ($@) {
-    if ($@ =~ /^Can't locate (.*?) at /) {
+    if ($@ =~ /^Can't locate (\S+)/) {
 	print "1..0 # Skipped: modules required for proxy are probably not installed (e.g., $1)\n";
 	exit 0;
     }
@@ -165,7 +165,7 @@ print "Trying a real select.\n";
 my $csr_a = $dbh->prepare("select mode,size,name from ?");
 Test(ref $csr_a);
 Test($csr_a->execute($dir))
-    or print "Execute failes: ", $csr_a->errstr(), "\n";
+    or print "Execute failed: ", $csr_a->errstr(), "\n";
 
 print "Repeating the select with second handle.\n";
 my $csr_b = $dbh->prepare("select mode,size,name from ?");
@@ -222,7 +222,7 @@ Test($csr_a->finish);
 Test(1);
 
 print "Forcing destructor.\n";
-$csr_a = undef;	# force destructin of this cursor now
+$csr_a = undef;	# force destruction of this cursor now
 Test(1);
 
 print "Trying fetchall_arrayref.\n";
@@ -395,6 +395,7 @@ Test($csr_a->{'proxy_data'}  and  @{$csr_a->{'proxy_data'}} == 9)
 	     "\n");
 Test($csr_a->finish());
 
+$dbh->disconnect;
 
 # Test $dbh->func()
 #  print "Testing \$dbh->func().\n";

@@ -1,6 +1,6 @@
 package DBI::DBD::Metadata;
 
-# $Id: Metadata.pm,v 1.2 2003/03/07 22:00:17 timbo Exp $
+# $Id: Metadata.pm,v 1.3 2003/05/10 23:30:28 timbo Exp $
 #
 # Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann,
 # Steffen Goeldner and Tim Bunce
@@ -21,7 +21,7 @@ use DBI::Const::GetInfoType qw(%GetInfoType);
 use strict;
 
 my
-$VERSION = sprintf("%d.%02d", q$Revision: 1.2 $ =~ /(\d+)\.(\d+)/);
+$VERSION = sprintf("%d.%02d", q$Revision: 1.3 $ =~ /(\d+)\.(\d+)/);
 
 =head1 NAME
 
@@ -138,7 +138,7 @@ use DBD::${driver};
 
 my \$sql_driver = '${driver}';
 my \$sql_ver_fmt = '%02d.%02d.%04d';   # ODBC version string: ##.##.#####
-my \$sql_driver_ver = sprintf \$sql_ver_fmt, split (/\./, \$DBD::${driver}::VERSION);
+my \$sql_driver_ver = sprintf \$sql_ver_fmt, split (/\\./, \$DBD::${driver}::VERSION);
 PERL
 
 my $kw_map = 0;

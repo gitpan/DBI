@@ -2,10 +2,10 @@ package DBI::DBD;
 
 use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.14 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.16 $ =~ /(\d+)\.(\d+)/o);
 
 
-# $Id: DBD.pm,v 11.14 2003/03/07 22:00:17 timbo Exp $
+# $Id: DBD.pm,v 11.16 2003/05/14 11:08:17 timbo Exp $
 #
 # Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -58,8 +58,8 @@ DBI::DBD - Perl DBI Database Driver Writer's Guide
 
 =head2 Version and volatility
 
-  $Revision: 11.14 $
-  $Date: 2003/03/07 22:00:17 $
+  $Revision: 11.16 $
+  $Date: 2003/05/14 11:08:17 $
 
 This document is I<still> a minimal draft which is in need of further work.
 
@@ -708,7 +708,7 @@ version 1.10 to precede version 1.9, so that using a raw CVS, RCS or
 SCCS version number is probably not appropriate (despite being very
 common). For RCS or CVS you can use this code:
 
-  $VERSION = sprintf "%d.%02d", '$Revision: 11.14 $ ' =~ /(\d+)\.(\d+)/;
+  $VERSION = sprintf "%d.%02d", '$Revision: 11.16 $ ' =~ /(\d+)\.(\d+)/;
 
 which pads out the fractional part with leading zeros so all is well
 (so long as you don't go past x.99)
@@ -3381,10 +3381,10 @@ to cast I<imp_xxx> to C<imp_dbh_t*>, if DBIc_TYPE(imp_xxx) == DBIt_DB.
 (You can also call sv_derived_from(h, "DBI::db"), but that's much
 slower.)
 
-=item D_imp_sth_from_dbh
+=item D_imp_dbh_from_sth
 
 Given a imp_sth, declare a variable I<imp_dbh> and initialize it with a
-pointer to the parent database handles implementors structure.
+pointer to the parent database handle's implementors structure.
 
 =back
 
@@ -3647,7 +3647,10 @@ $(BASEEXT).xsi: $(DBI_DRIVER_XST) '.$xstf_h.'
 
 # these two keep make -j4 working
 $(DBI_DRIVER_XST) :: pm_to_blib
+	$(NOECHO) $(NOOP)
+
 '.$xstf_h.' :: pm_to_blib
+	$(NOECHO) $(NOOP)
 
 # ---
 ';

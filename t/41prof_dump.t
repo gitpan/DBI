@@ -38,6 +38,7 @@ while ( my $hash = $sth->fetchrow_hashref ) {}
 
 # force output
 undef $sth;
+$dbh->disconnect;
 undef $dbh;
 
 # wrote the profile to disk?

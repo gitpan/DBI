@@ -1,28 +1,20 @@
 #!../perl -w
 
+use Test;
+
+BEGIN { plan tests => 6 }
+
 $|=1;
 $^W=1;
-
-print "1..$tests\n";
-
-sub ok ($$;$) {
-    my($n, $got, $want) = @_;
-    ++$t;
-    die "sequence error, expected $n but actually $t"
-	if $n and $n != $t;
-    return print "ok $t\n" if @_<3 && $got;
-    return print "ok $t\n" if $got eq $want;
-    warn "Test $n: wanted '$want', got '$got'\n";
-    print "not ok $t\n";
-}
 
 use DBI qw(:sql_types);
 
 use DBI::DBD::Metadata; # just to check for syntax errors etc
 
-$dbh = DBI->connect("dbi:ExampleP:.","","", { FetchHashKeyName => 'NAME_lc' });
-die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
-ok(0, $dbh);
+$dbh = DBI->connect("dbi:ExampleP:.","","", { FetchHashKeyName => 'NAME_lc' })
+	or die "Unable to connect to ExampleP driver: $DBI::errstr";
+
+ok($dbh);
 #$dbh->trace(3);
 
 #use Data::Dumper;
@@ -31,12 +23,11 @@ ok(0, $dbh);
 #print Dumper($dbh->type_info(DBI::SQL_INTEGER));
 
 my @ti = $dbh->type_info;
-ok(0, @ti>0);
-ok(0, $dbh->type_info(SQL_INTEGER)->{DATA_TYPE}, SQL_INTEGER);
-ok(0, $dbh->type_info(SQL_INTEGER)->{TYPE_NAME}, 'INTEGER');
+ok(@ti>0);
 
-ok(0, $dbh->type_info(SQL_VARCHAR)->{DATA_TYPE}, SQL_VARCHAR);
-ok(0, $dbh->type_info(SQL_VARCHAR)->{TYPE_NAME}, 'VARCHAR');
+ok($dbh->type_info(SQL_INTEGER)->{DATA_TYPE}, SQL_INTEGER);
+ok($dbh->type_info(SQL_INTEGER)->{TYPE_NAME}, 'INTEGER');
 
+ok($dbh->type_info(SQL_VARCHAR)->{DATA_TYPE}, SQL_VARCHAR);
+ok($dbh->type_info(SQL_VARCHAR)->{TYPE_NAME}, 'VARCHAR');
 
-BEGIN { $tests = 6 }

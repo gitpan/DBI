@@ -38,6 +38,7 @@ foreach (1,2,3) {
   }
   $sth->{Profile}->flush_to_disk();
 }
+$dbh->disconnect;
 undef $dbh;
 
 

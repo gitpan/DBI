@@ -24,7 +24,7 @@ BEGIN {
 }
 
 use Test;
-BEGIN { plan tests => 56; }
+BEGIN { plan tests => 57; }
 
 use Data::Dumper;
 $Data::Dumper::Indent = 1;
@@ -39,6 +39,7 @@ END { 1 while unlink $LOG_FILE; }
 my $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
 ok($dbh);
 ok(!$dbh->{Profile} && !$ENV{DBI_PROFILE});
+$dbh->disconnect;
 undef $dbh;
 
 # can turn it on after the fact using a path number
@@ -47,6 +48,7 @@ $dbh->{Profile} = "4";
 ok(ref $dbh->{Profile}, "DBI::Profile");
 ok(ref $dbh->{Profile}{Data}, 'HASH');
 ok(ref $dbh->{Profile}{Path}, 'ARRAY');
+$dbh->disconnect;
 undef $dbh;
 
 # using a package name
@@ -182,12 +184,9 @@ ok(@{$data->{foo}{$sql}{prepare}{bar}} == 7);
 #
 ##########################################################################
 
-if (0) {
-    use Time::HiRes qw(gettimeofday);
-    my $t1 = gettimeofday;
-    dbi_profile($dbh, "Hi, mom", "fetchhash_bang", $t1, $t1 + 1);
-    ok(exists $data->{foo}{"Hi, mom"});
-}
+my $t1 = DBI::dbi_time;
+dbi_profile($dbh, "Hi, mom", "fetchhash_bang", $t1, $t1 + 1);
+ok(exists $data->{foo}{"Hi, mom"});
 
 # check that output went into the log file
 DBI->trace(0, File::Spec->devnull); # close current log to flush it

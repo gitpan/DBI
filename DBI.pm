@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.28 2003/03/07 22:00:17 timbo Exp $
+# $Id: DBI.pm,v 11.31 2003/05/13 13:52:05 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.35"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.36"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -105,7 +105,7 @@ and any other lists or forums you may use, I strongly
 recommend that you read "How To Ask Questions The Smart Way"
 by Eric Raymond:
 
-  http://www.tuxedo.org/~esr/faqs/smart-questions.html
+  http://www.catb.org/~esr/faqs/smart-questions.html
 
 This document often uses terms like I<references>, I<objects>,
 I<methods>.  If you're not familar with those terms then it would
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.34
-(C<$Date: 2003/03/07 22:00:17 $>).
+(C<$Date: 2003/05/13 13:52:05 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -153,7 +153,7 @@ See L</Naming Conventions and Name Space> and:
 
 package DBI;
 
-my $Revision = substr(q$Revision: 11.28 $, 10);
+my $Revision = substr(q$Revision: 11.31 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -259,12 +259,12 @@ Exporter::export_ok_tags(keys %EXPORT_TAGS);
 
 use strict;
 
-my $connect_via = "connect";
+$DBI::connect_via = "connect";
 
 # check if user wants a persistent database connection ( Apache + mod_perl )
 if ($INC{'Apache/DBI.pm'} && $ENV{MOD_PERL}) {
-    $connect_via = "Apache::DBI::connect";
-    DBI->trace_msg("DBI connect via $INC{'Apache/DBI.pm'}\n");
+    $DBI::connect_via = "Apache::DBI::connect";
+    DBI->trace_msg("DBI connect via $DBI::connect_via in $INC{'Apache/DBI.pm'}\n");
 }
 
 
@@ -361,6 +361,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
 	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
 	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
+	dump_handle  =>	{ U =>[1,3,'[$message [, $level]]'],	O=>0x0004 },
 	private_data =>	{ U =>[1,1],			O=>0x0004 },
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
@@ -384,6 +385,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
     db => {		# Database Session Class Interface
 	@Common_IF,
 	@TieHash_IF,
+	take_imp_data	=> { U =>[1,1], },
 	clone   	=> { U =>[1,1,''] },
 	connected   	=> { O=>0x0100 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
@@ -497,12 +499,12 @@ sub connect {
     my $driver;
 
     if ($attr and !ref($attr)) { # switch $old_driver<->$attr if called in old style
-	Carp::croak("DBI->connect using 'old-style' syntax is deprecated and will be an error in future versions");
+	Carp::carp("DBI->connect using 'old-style' syntax is deprecated and will be an error in future versions");
         ($old_driver, $attr) = ($attr, $old_driver);
     }
 
     my $connect_meth = $attr->{dbi_connect_method};
-    $connect_meth ||= $connect_via;	# fallback to default
+    $connect_meth ||= $DBI::connect_via;	# fallback to default
 
     $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '' unless $old_driver;
 
@@ -518,7 +520,7 @@ sub connect {
     # extract dbi:driver prefix from $dsn into $1
     $dsn =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i
 			or '' =~ /()/; # ensure $1 etc are empty if match fails
-    my $driver_attrib_spec = $2;
+    my $driver_attrib_spec = $2 || '';
 
     # Set $driver. Old style driver, if specified, overrides new dsn style.
     $driver = $old_driver || $1 || $ENV{DBI_DRIVER}
@@ -529,7 +531,8 @@ sub connect {
 	my $proxy = 'Proxy';
 	if ($ENV{DBI_AUTOPROXY} =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i) {
 	    $proxy = $1;
-	    $driver_attrib_spec = ($driver_attrib_spec) ? "$driver_attrib_spec,$2" : $2;
+	    my $attr_spec = $2 || '';
+	    $driver_attrib_spec = ($driver_attrib_spec) ? "$driver_attrib_spec,$attr_spec" : $attr_spec;
 	}
 	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
 	$driver = $proxy;
@@ -545,19 +548,23 @@ sub connect {
 	    PrintError => 1,
 	    AutoCommit => 1,
 	    ref $attr           ? %$attr : (),
+	    # attributes in DSN take precedence over \%attr connect parameter
 	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec) : (),
 	);
-	# XXX to be enabled for DBI v2.0?
-	#Carp::carp("AutoCommit attribute not specified in $class->connect")
-	#    if $^W && !defined($attr->{AutoCommit});
     }
     $attr = \%attributes; # now set $attr to refer to our local copy
 
     my $drh = $DBI::installed_drh{$driver} || $class->install_driver($driver)
 	or die "panic: $class->install_driver($driver) failed";
 
-    ($user, $pass) = $drh->default_user($user, $pass, \%attributes)
+    # attributes in DSN take precedence over \%attr connect parameter
+    $user =        $attr->{Username} if defined $attr->{Username};
+    $pass = delete $attr->{Password} if defined $attr->{Password};
+
+    ($user, $pass) = $drh->default_user($user, $pass, $attr)
 	if !(defined $user && defined $pass);
+
+    $attr->{Username} = $user;	# store username as attribute
 
     my $connect_closure = sub {
 	my ($old_dbh, $override_attr) = @_;
@@ -590,7 +597,7 @@ sub connect {
 	    no strict 'refs';
 	    if ($attr->{RootClass}) {	# explicit attribute (rather than static call)
 		delete $attr->{RootClass};
-		DBI::_load_module($rebless_class, 0) unless @{"$rebless_class\::ISA"};
+		DBI::_load_class($rebless_class, 0);
 	    }
 	    unless (@{"$rebless_class\::db::ISA"} && @{"$rebless_class\::st::ISA"}) {
 		Carp::carp("DBI subclasses '$rebless_class\::db' and ::st are not setup, RootClass ignored");
@@ -783,7 +790,7 @@ sub _rebless_dbtype_subclass {
     # add the rootclass prefix to each ('DBI::' or 'MyDBI::' etc)
     $_ = $rootclass.'::'.$_ foreach (@hierarchy);
     # load the modules from the 'top down'
-    DBI::_load_module($_, 1) foreach (reverse @hierarchy);
+    DBI::_load_class($_, 1) foreach (reverse @hierarchy);
     # setup class hierarchy if needed, does both '::db' and '::st'
     DBI::_set_isa(\@hierarchy, $rootclass);
     # finally bless the handle into the subclass
@@ -854,14 +861,16 @@ sub _dbtype_names { # list dbtypes for hierarchy, ie Informix=>ADO=>ODBC
     return @dbtypes;
 }
 
-sub _load_module {
-    (my $module = shift) =~ s!::!/!g;
-    my $missing_ok = shift;
-    eval {
-        require $module.'.pm';
-    };
+sub _load_class {
+    my ($load_class, $missing_ok) = @_;
+    #DBI->trace_msg("    _load_class($load_class, $missing_ok)\n");
+    no strict 'refs';
+    return 1 if @{"$load_class\::ISA"};	# already loaded/exists
+    (my $module = $load_class) =~ s!::!/!g;
+    #DBI->trace_msg("    _load_class require $module\n");
+    eval { require "$module.pm"; };
     return 1 unless $@;
-    return 0 if $missing_ok && $@ =~ /^\@INC\b/;
+    return 0 if $missing_ok && $@ =~ /^Can't locate \Q$module.pm\E/;
     die; # propagate $@;
 }
 
@@ -1066,7 +1075,6 @@ sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
     substr($imp_class,-4,4) = '::db';
     my $app_class = ref $drh;
     substr($app_class,-4,4) = '::db';
-# XXX move these three to _new_handle:
     $attr->{Err}    ||= \my $err;
     $attr->{Errstr} ||= \my $errstr;
     $attr->{State}  ||= \my $state;
@@ -1190,7 +1198,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     use strict;
 
     sub default_user {
-	my ($drh, $user, $pass) = @_;
+	my ($drh, $user, $pass, $attr) = @_;
 	unless (defined $user) {
 	    $user = $ENV{DBI_USER};
 	    carp("DBI connect: user not defined and DBI_USER env var not set")
@@ -1398,7 +1406,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    $sth->bind_col($_, \$values[$idx++]) || return;
 	}
 	my @col;
-	push @col, @values while $sth->fetch;
+	if (my $max = $attr->{MaxRows}) {
+	    push @col, @values while @col<$max && $sth->fetch;
+	}
+	else {
+	    push @col, @values while $sth->fetch;
+	}
 	return \@col;
     }
 
@@ -1588,58 +1601,92 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub execute_array {
 	my $sth = shift;
-	my ($attribs, @array_of_arrays) = @_;
+	my ($attr, @array_of_arrays) = @_;
+	my $NUM_OF_PARAMS = $sth->FETCH('NUM_OF_PARAMS'); # may be undef at this point
 
-	# get tuple status array or hash attribute (if any)
-	my $tuple_sts = $attribs->{ArrayTupleStatus};
+	# get tuple status array or hash attribute
+	my $tuple_sts = $attr->{ArrayTupleStatus};
 	return $sth->DBI::set_err(1, "ArrayTupleStatus attribute must be an arrayref")
-		if $tuple_sts and ref $tuple_sts ne 'ARRAY';
+		if ref $tuple_sts ne 'ARRAY';
 
 	# bind all supplied arrays
 	if (@array_of_arrays) {
 	    $sth->{ParamArrays} = { };	# clear out old params
-	    my $NUM_OF_PARAMS = $sth->FETCH('NUM_OF_PARAMS');
-	    return $sth->DBI::set_err(1, @array_of_arrays." bind values supplied but $NUM_OF_PARAMS expected")
-		    if @array_of_arrays != $NUM_OF_PARAMS;
+	    return $sth->DBI::set_err(1,
+		    @array_of_arrays." bind values supplied but $NUM_OF_PARAMS expected")
+		if defined ($NUM_OF_PARAMS) && @array_of_arrays != $NUM_OF_PARAMS;
 	    $sth->bind_param_array($_, $array_of_arrays[$_-1]) or return
-		    foreach (1..@array_of_arrays);
+		foreach (1..@array_of_arrays);
 	}
 
-	# no binds, no args, why did they call us ? just toss it to execute()
-	return $sth->execute
-		unless $sth->{ParamArrays};
+	my $tuple_idx = 0;
+	my $fetch_tuple;
 
-	# get the length of a bound array
-	my $len = 1; # in case all are scalars
-	my %hash_of_arrays = %{$sth->{ParamArrays}};
-	foreach (keys(%hash_of_arrays)) {
-	    my $ary = $hash_of_arrays{$_};
-	    $len = @$ary if ref $ary eq 'ARRAY';
+	if ($fetch_tuple = $attr->{ArrayTupleFetch}) {	# fetch on demand
+
+	    return $sth->DBI::set_err(1,
+		    "Can't use both ArrayTupleFetch and explicit bind values")
+		if @array_of_arrays; # previous bind_param_array calls will simply be ignored
+
+	    if (UNIVERSAL::isa($fetch_tuple,'DBI::st')) {
+		my $fetch_sth = $fetch_tuple;
+		return $sth->DBI::set_err(1,
+			"ArrayTupleFetch sth is not Active, need to execute() it first")
+		    unless $fetch_sth->{Active};
+		# check column count match to give more friendly message
+		my $NUM_OF_FIELDS = $fetch_sth->{NUM_OF_FIELDS};
+		return $sth->DBI::set_err(1,
+			"$NUM_OF_FIELDS columns from ArrayTupleFetch sth but $NUM_OF_PARAMS expected")
+		    if defined($NUM_OF_FIELDS) && defined($NUM_OF_PARAMS)
+		    && $NUM_OF_FIELDS != $NUM_OF_PARAMS;
+		$fetch_tuple = sub { $fetch_sth->fetchrow_arrayref };
+	    }
+	    elsif (!UNIVERSAL::isa($fetch_tuple,'CODE')) {
+		return $sth->DBI::set_err(1, "ArrayTupleFetch '$fetch_tuple' is not a code ref or statement handle");
+	    }
+
 	}
-	my @bind_ids = 1..keys(%hash_of_arrays);
+	else {
+	    my $NUM_OF_PARAMS_given = keys %{ $sth->{ParamArrays} || {} };
+	    return $sth->DBI::set_err(1,
+		    "$NUM_OF_PARAMS_given bind values supplied but $NUM_OF_PARAMS expected")
+		if defined($NUM_OF_PARAMS) && $NUM_OF_PARAMS != $NUM_OF_PARAMS_given;
 
+	    # get the length of a bound array
+	    my $len = 1; # in case all are scalars
+	    my %hash_of_arrays = %{$sth->{ParamArrays}};
+	    foreach (keys(%hash_of_arrays)) {
+		my $ary = $hash_of_arrays{$_};
+		$len = @$ary if ref $ary eq 'ARRAY';
+	    }
+	    my @bind_ids = 1..keys(%hash_of_arrays);
+
+	    $fetch_tuple = sub {
+		return if $tuple_idx >= $len;
+		my @tuple = map {
+		    my $a = $hash_of_arrays{$_};
+		    ref($a) ? $a->[$tuple_idx] : $a
+		} @bind_ids;
+		return \@tuple;
+	    };
+	}
+
+	# this could be moved to XS/C one day...
 	my ($errcount, $rowcount);
 	my %errstr_cache;
 	@$tuple_sts = () if $tuple_sts; # reset the status array
-	$tuple_sts->[$len-1] = undef;	# presize array
-	for (my $i=0; $i < $len; ++$i) {	# for each tuple
-
-	    my @tuple = map {
-		my $a = $hash_of_arrays{$_};
-		ref($a) ? $a->[$i] : $a
-	    } @bind_ids;
-	    my $rc = $sth->execute(@tuple);
+	while ( my $tuple = &$fetch_tuple() ) {
+	    my $rc = $sth->execute(@$tuple);
 	    if ($rc) {
-		$rowcount += $tuple_sts->[$i] = $rc;
-		next;
+		$rowcount += $tuple_sts->[$tuple_idx++] = $rc;
 	    }
-
-	    return unless $tuple_sts;	# return error if no status provided
-	    $errcount++;
-	    my $err = $sth->err;
-	    $tuple_sts->[$i] = [ $err, $errstr_cache{$err} ||= $sth->errstr ];
+	    else {
+		$errcount++;
+		my $err = $sth->err;
+		$tuple_sts->[$tuple_idx++] = [ $err, $errstr_cache{$err} ||= $sth->errstr ];
+	    }
 	}
-	return ($errcount) ? undef : $rowcount;
+	return ($errcount) ? undef : $tuple_idx;
     }
 
 
@@ -2113,11 +2160,11 @@ The C<$data_source> value must begin with "C<dbi:>I<driver_name>C<:>".
 The I<driver_name> specifies the driver that will be used to make the
 connection. (Letter case is significant.)
 
-As a convenience, if the C<$data_source> parameter is undefined or empty, the
-DBI will substitute the value of the environment variable C<DBI_DSN>.
-If just the I<driver_name> part is empty (i.e., the C<$data_source> prefix is "C<dbi::>"),
-the environment variable C<DBI_DRIVER> is used. If neither variable is set,
-then C<connect> dies.
+As a convenience, if the C<$data_source> parameter is undefined or empty,
+the DBI will substitute the value of the environment variable C<DBI_DSN>.
+If just the I<driver_name> part is empty (i.e., the C<$data_source>
+prefix is "C<dbi::>"), the environment variable C<DBI_DRIVER> is
+used. If neither variable is set, then C<connect> dies.
 
 Examples of C<$data_source> values are:
 
@@ -2147,10 +2194,10 @@ for more details.
 If C<$username> or C<$password> are undefined (rather than just empty),
 then the DBI will substitute the values of the C<DBI_USER> and C<DBI_PASS>
 environment variables, respectively.  The DBI will warn if the
-environment variables are not defined.  However, the everyday use of
-these environment
-variables is not recommended for security reasons. The mechanism is
-primarily intended to simplify testing.
+environment variables are not defined.  However, the everyday use
+of these environment variables is not recommended for security
+reasons. The mechanism is primarily intended to simplify testing.
+See below for alternative way to specify the username and password.
 
 C<DBI-E<gt>connect> automatically installs the driver if it has not been
 installed yet. Driver installation either returns a valid driver
@@ -2182,6 +2229,10 @@ C<PrintError>, C<RaiseError>, C<AutoCommit>, and other attributes. For example:
 	PrintError => 0,
 	AutoCommit => 0
   });
+
+The username and password can also be specified using the attributes
+C<Username> and C<Password>, in which case they take precedence
+over the C<$username> and C<$password> parameters.
 
 You can also define connection attribute values within the C<$data_source>
 parameter. For example:
@@ -2627,9 +2678,14 @@ database handles created by the L</connect_cached> method.
 
 =item C<CompatMode> (boolean, inherited)
 
-The C<CompatMode> attribute is used by emulation layers (such as Oraperl) to enable compatible behaviour
-in the underlying driver (e.g., DBD::Oracle) for this handle. Not normally
-set by application code.
+The C<CompatMode> attribute is used by emulation layers (such as
+Oraperl) to enable compatible behaviour in the underlying driver
+(e.g., DBD::Oracle) for this handle. Not normally set by application code.
+
+It also has the effect of disabling the 'quick FETCH' of attribute
+values from the handles attribute cache. So all attribute values
+are handled by the drivers own FETCH method. This makes them slightly
+slower but is useful for special-purpose drivers like DBD::Multiplex.
 
 =item C<InactiveDestroy> (boolean)
 
@@ -3160,6 +3216,8 @@ or numbers to use. For example:
   my $ary_ref = $dbh->selectcol_arrayref("select id, name from table", { Columns=>[1,2] });
   my %hash = @$ary_ref; # build hash from key-value pairs so $hash{$id} => name
 
+You can specify a maximum number of rows to fetch by including a
+'C<MaxRows>' attribute in \%attr.
 
 =item C<prepare>
 
@@ -3409,26 +3467,9 @@ B<Warning:> This method is experimental and may change.
 
   $sth = $dbh->table_info( $catalog, $schema, $table, $type );
   $sth = $dbh->table_info( $catalog, $schema, $table, $type, \%attr );
-  $sth = $dbh->table_info( \%attr ); # old style
 
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
-
-The old style interface passes all the parameters as a reference
-to an attribute hash with some or all of the following attributes:
-
-  %attr = (
-       TABLE_CAT   => $catalog  # String value of the catalog name
-     , TABLE_SCHEM => $schema   # String value of the schema name
-     , TABLE_NAME  => $table    # String value of the table name
-     , TABLE_TYPE  => $type     # String value of the table type(s)
-  );
-
-The old style interface is deprecated and will be removed in a future version.
-
-The support for the selection criteria is driver specific. If the
-driver doesn't support one or more of them then you may get back more
-than you asked for and can do the filtering yourself.
 
 The arguments $catalog, $schema and $table may accept search patterns
 according to the database/driver, for example: $table = '%FOO%';
@@ -3463,6 +3504,14 @@ If the value of $type is '%' and $catalog, $schema, and $table are all
 empty strings, the result set contains a list of table types.
 
 =back
+
+If your driver doesn't support one or more of the selection filter
+parameters then you may get back more than you asked for and can
+do the filtering yourself.
+
+This method can be expensive, and can return a large amount of data.
+(For example, small Oracle installation returns over 2000 rows.)
+So it's a good idea to use the filters to limit the data as much as possible.
 
 The statement handle returned has at least the following fields in the
 order show below. Other fields, after these, may also be present.
@@ -4082,6 +4131,38 @@ For example, for Oracle:
 
 would return C<"schema"."table"@"link">.
 
+=item C<take_imp_data>
+
+  $imp_data = $dbh->take_imp_data;
+
+Leaves the $dbh in an almost dead, zombie-like, state and returns
+a binary string of raw implementation data from the driver which
+describes the current database connection. Effectively it detaches
+the underlying database API connection data from the DBI handle.
+After calling take_imp_data(), all other methods except C<DESTROY>
+will generate a warning and return undef.
+
+Why would you want to do this? You don't, forget I even mentioned it.
+Unless, that is, you're implementing something advanced like a
+multi-threaded connection pool.
+
+The returned $imp_data can be passed as a C<dbi_imp_data> attribute
+to a later connect() call, even in a separate thread in the same
+process, where the driver can use it to 'adopt' the existing
+connection that the implementation data was taken from.
+
+Some things to keep in mind...
+
+B<*> the $imp_data holds the only reference to the underlying
+database API connection data. That connection is still 'live' and
+won't be cleaned up properly unless the $imp_data is used to create
+a new $dbh which can then disconnect() normally.
+
+B<*> using the same $imp_data to create more than one other new
+$dbh at a time may well lead to unpleasant problems. Don't do that.
+
+The C<take_imp_data> method was added in DBI 1.36.
+
 =back
 
 
@@ -4216,6 +4297,11 @@ a longer delay not only for the first fetch, but also whenever the
 cache needs refilling.
 
 See also the L</RowsInCache> statement handle attribute.
+
+=item C<Username>  (string)
+
+Returns the username used to connect to the database.
+
 
 =back
 
@@ -4359,8 +4445,7 @@ with L</execute_array>. For example:
   $sth->bind_param_array(1, [ 'John', 'Mary', 'Tim' ]);
   $sth->bind_param_array(2, [ 'Booth', 'Todd', 'Robinson' ]);
   $sth->bind_param_array(3, "SALES"); # scalar will be reused for each row
-  my @tuple_status;
-  $sth->execute_array( { ArrayTupleStatus => \@tuple_status } );
+  $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } );
 
 The C<%attr> argument is the same as defined for L</bind_param>.
 Refer to L</bind_param> for general details on using placeholders.
@@ -4373,10 +4458,10 @@ Scalar values, including C<undef>, may also be bound by
 C<bind_param_array>. In which case the same value will be used for each
 L</execute> call. Driver-specific implementations may behave
 differently, e.g., when binding to a stored procedure call, some
-databases permit mixing scalars and arrays as arguments.
+databases may permit mixing scalars and arrays as arguments.
 
 The default implementation provided by DBI (for drivers that have
-not implemented array binding) is to iteratively L</execute> for
+not implemented array binding) is to iteratively call L</execute> for
 each parameter tuple provided in the bound arrays.  Drivers may
 provide more optimized implementations using whatever bulk operation
 support the database API provides. The default driver behaviour should 
@@ -4384,10 +4469,11 @@ match the default DBI behaviour, but always consult your driver
 documentation as there may be driver specific issues to consider.
 
 Note that the default implementation currently only supports non-data
-returning statements. Also, C<bind_param_array> and L</bind_param>
-cannot be mixed in the same statement execution, and C<bind_param_array>
-must be used with L</execute_array>; using C<bind_param_array> will
-have no effect for L</execute>.
+returning statements (insert, update, but not select). Also,
+C<bind_param_array> and L</bind_param> cannot be mixed in the same
+statement execution, and C<bind_param_array> must be used with
+L</execute_array>; using C<bind_param_array> will have no effect
+for L</execute>.
 
 The C<bind_param_array> method was added in DBI 1.22.
 
@@ -4416,12 +4502,11 @@ rows that will be returned by the query (because most databases can't
 tell in advance), it simply returns a true value.
 
 If any arguments are given, then C<execute> will effectively call
-L</bind_param> for each value before executing the statement.
-Values bound in this way are usually treated as C<SQL_VARCHAR> types
-unless the driver can determine the correct type (which is rare), or
-unless
-C<bind_param> (or C<bind_param_inout>) has already been used to specify the
-type.
+L</bind_param> for each value before executing the statement.  Values
+bound in this way are usually treated as C<SQL_VARCHAR> types unless
+the driver can determine the correct type (which is rare), or unless
+C<bind_param> (or C<bind_param_inout>) has already been used to
+specify the type.
 
 If execute() is called on a statement handle that's still active
 ($sth->{Active} is true) then it should effectively call finish()
@@ -4433,85 +4518,109 @@ execution.
   $rv = $sth->execute_array(\%attr) or die $sth->errstr;
   $rv = $sth->execute_array(\%attr, @bind_values)  or die $sth->errstr;
 
-Execute the prepared statement for each parameter tuple provided
-either in the @bind_values, or by prior calls to L</bind_param_array>.
+Execute the prepared statement once for each parameter tuple
+(group of values) provided either in the @bind_values, or by prior
+calls to L</bind_param_array>, or via a reference passed in \%attr.
 
-An C<undef> is returned if an error occurs.  A successful
-C<execute_array> always returns true regardless of the number of
-rows affected, even if it's zero (see below). It is always important
-to check the return status of C<execute_array> (and most other DBI
-methods) for errors.
+The execute_array() method returns the number of tuples executed,
+or C<undef> if an error occured. Like execute(), a successful
+execute_array() always returns true regardless of the number of
+tuples executed, even if it's zero.  See the C<ArrayTupleStatus>
+attribute below for how to determine the execution status for each
+tuple.
 
-Parameters may be supplied either by prior calls to L</bind_param_array>,
-or in the C<@bind_values> argument. The values supplied may be either
-scalars, or arrayrefs. See L</bind_param_array> for details.
+Bind values for the tuples to be executed may be supplied by an
+C<ArrayTupleFetch> attribute, or else in the C<@bind_values> argument,
+or else by prior calls to L</bind_param_array>.
 
-The supplied C<\%attr> hashref currently supports only the C<ArrayTupleStatus>
-attribute, which should specify an arrayref to receive the status of each
-parameter tuple bound to the statement. For parameter tuples which
-are successfully executed, the element at the same ordinal position in the 
-status array will return the resulting rowcount.
+The C<ArrayTupleFetch> attribute can be used to specify a reference
+to a subroutine that will be called to provide the bind values for
+each tuple execution. The subroutine should return an reference to
+an array which contains the appropriate number of bind values, or
+return an undef if there is no more data to execute.
+
+As a convienience, the C<ArrayTupleFetch> attribute can also be
+used to specify a statement handle. In which case the fetchrow_arrayref()
+method will be called on the given statement handle in order to
+provide the bind values for each tuple execution.
+
+The values specified via bind_param_array() or the @bind_values
+parameter may be either scalars, or arrayrefs.  If any C<@bind_values>
+are given, then C<execute_array> will effectively call L</bind_param_array>
+for each value before executing the statement.  Values bound in
+this way are usually treated as C<SQL_VARCHAR> types unless the
+driver can determine the correct type (which is rare), or unless
+C<bind_param>, C<bind_param_inout>, C<bind_param_array>, or
+C<bind_param_inout_array> has already been used to specify the type.
+See L</bind_param_array> for details.
+
+The mandatory C<ArrayTupleStatus> attribute is used to specify a
+reference to an array which will receive the execute status of each
+executed parameter tuple.
+
+For tuples which are successfully executed, the element at the same
+ordinal position in the status array is the resulting rowcount.
+If the execution of a tuple causes an error, then the corresponding
+status array element will be set to a reference to an array containing
+the error code and error string set by the failed execution.
+
+If B<any> tuple execution returns an error, C<execute_array> will
+return C<undef>. In that case, the application should inspect the
+status array to determine which parameter tuples failed.
+Some databases may not continue executing tuples beyond the first
+failure. In this case the status array will either hold fewer
+elements, or the elements beyond the failure will be undef.
+
+If all parameter tuples are successfully executed, C<execute_array>
+returns the number tuples executed.  If no tuples were executed,
+then execute_array() returns "C<0E0>", just like execute() does,
+which Perl will treat as 0 but will regard as true.
 
 For example:
  
   $sth = $dbh->prepare("INSERT INTO staff (first_name, last_name) VALUES (?, ?)");
-  my @tuple_status;
-  $sth->execute_array(
-      { ArrayTupleStatus => \@tuple_status },
+  my $tuples = $sth->execute_array(
+      { ArrayTupleStatus => \my @tuple_status },
       \@first_names,
       \@last_names,
   );
+  if ($tuples) {
+      print "Successfully inserted $tuples records\n";
+  }
+  else {
+      for my $tuple (0..@last_names-1) {
+          my $status = $tuple_status[$tuple];
+          $status = [0, "Skipped"] unless defined $status;
+          next unless ref $status;
+          printf "Failed to insert (%s, %s): %s\n",
+              $first_names[$tuple], $last_names[$tuple], $status->[1];
+      }
+  }
 
-If a parameter tuple causes an error, the associated status array
-element will be set to an arrayref of [ $sth->err, $sth->errstr ]
-returned by the failed execution.  If B<any> tuple returns an error,
-C<execute_array> will return C<undef> B<after> it has executed all
-the parameter tuples. In that case, the application should inspect
-the status array to determine which parameter tuples failed.
+Support for data returning statements, i.e., select, is driver-specific
+and subject to change. At present, the default implementation
+provided by DBI only supports non-data returning statements.
 
-If no C<ArrayTupleStatus> is provided, C<execute_array> will return
-C<undef> on the first occurance of a parameter tuple causing an error.
-[XXX This may change as it doesn't match the behaviour of drivers
-which use bulk operation API to ship the data to the server.]
+Transaction semantics when using array binding are driver and
+database specific.  If C<AutoCommit> is on, the default DBI
+implementation will cause each parameter tuple to be inidividually
+committed (or rolled back in the event of an error). If C<AutoCommit>
+is off, the application is responsible for explicitly committing
+the entire set of bound parameter tuples.  Note that different
+drivers and databases may have different behaviours when some
+parameter tuples cause failures. In some cases, the driver or
+database may automatically rollback the effect of all prior parameter
+tuples that succeeded in the transaction; other drivers or databases
+may retain the effect of prior successfully executed parameter
+tuples. Be sure to check your driver and database for its specific
+behaviour.
 
-If all parameter tuples are successfully executed, C<execute_array> returns 
-the sum of the number of rows affected by all the parameter tuples,
-if known. If no rows were affected, then C<execute> returns
-"C<0E0>", which Perl will treat as 0 but will regard as true. Note that it
-is I<not> an error for no rows to be affected by a statement. If the
-number of rows affected is not known, then C<execute_array> may return a 
-negative number. Applications should not rely on the returned value to
-indicate actual total rowcounts, but use the C<ArrayTupleStatus> and explicitly
-inspect each returned element of the status array.
+Note that, in general, performance will usually be better with
+C<AutoCommit> turned off, and using explicit C<commit> after each
+C<execute_array> call.
 
-Support for data returning statements is driver-specific and subject
-to change. At present, the default implementation provided by DBI
-only supports non-data returning statements.
-
-If any C<@bind_values> are given, then C<execute_array> will effectively call
-L</bind_param_array> for each value before executing the statement.
-Values bound in this way are usually treated as C<SQL_VARCHAR> types
-unless the driver can determine the correct type (which is rare), or
-unless C<bind_param>, C<bind_param_inout>, C<bind_param_array>, 
-or C<bind_param_inout_array> has already been used to specify the type.
-
-Transaction semantics using array binding are driver and database specific.
-If C<AutoCommit> is on, the default DBI implementation will cause each 
-parameter tuple to be inidividually committed (or rolled back in the event
-of an error). If C<AutoCommit> is off, the application is responsible
-for explicitly committing the entire set of bound parameter tuples.
-Note that different drivers and databases may have different behaviours
-when some parameter tuples cause failures. In some cases, the driver or
-database may automatically rollback the effect of all prior parameter 
-tuples that succeeded in the transaction; other drivers or databases may 
-retain the effect of prior successfully executed parameter tuples. Be
-sure to check your driver and database for its specific behaviour.
-
-Note that, in general, performance will usually be better with C<AutoCommit>
-turned off, and using explicit C<commit> after each C<execute_array>
-call.
-
-The C<execute_aray> method was added in DBI 1.22.
+The C<execute_array> method was added in DBI 1.22, and ArrayTupleFetch
+was added in 1.36.
 
 
 =item C<fetchrow_arrayref>
@@ -4604,7 +4713,7 @@ afterwards (or use the C<RaiseError> attribute) to discover if the data is
 complete or was truncated due to an error.
 
 If $slice is an array reference, C<fetchall_arrayref> uses L</fetchrow_arrayref>
-to fetch each row as an array ref. If the parameter array is not empty
+to fetch each row as an array ref. If the $slice array is not empty
 then it is used as a slice to select individual columns by perl array
 index number (starting at 0, unlike column and parameter numbers which
 start at 1).

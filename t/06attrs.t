@@ -4,7 +4,7 @@ use strict;
 use Test;
 use DBI;
 
-BEGIN { plan tests => 125 }
+BEGIN { plan tests => 126 }
 
 $|=1;
 
@@ -40,20 +40,21 @@ ok( $dbh->{Kids}, 0 )		unless $DBI::PurePerl && ok(1);
 ok( $dbh->{ActiveKids}, 0 )	unless $DBI::PurePerl && ok(1);
 ok( ! defined $dbh->{CachedKids} );
 ok( ! defined $dbh->{HandleError} );
-ok( $dbh->{TraceLevel}, 0 );
+ok( $dbh->{TraceLevel}, $DBI::dbi_debug );
 ok( $dbh->{FetchHashKeyName}, 'NAME', );
 ok( $dbh->{LongReadLen}, 80 );
 ok( ! defined $dbh->{Profile} );
-ok( $dbh->{Name}, 'dummy' );
+ok( $dbh->{Name}, 'dummy' );	# fails for Multiplex
 ok( ! defined $dbh->{Statement} );
 ok( ! defined $dbh->{RowCacheSize} );
 
 # Raise an error.
 eval { $dbh->do('select foo from foo') };
 ok( my $err = $@ );
-ok( $err =~ /^DBD::ExampleP::db do failed: Unknown field names: foo/ );
+ok( $err =~ /^DBD::(ExampleP|Multiplex)::db do failed: Unknown field names: foo/ ) or print "got: $err\n";
 ok( $dbh->err );
-ok( $dbh->errstr, 'Unknown field names: foo' );
+ok( my $errstr = $dbh->errstr);
+ok( $errstr =~ /^Unknown field names: foo\b/ ) or print "got: $errstr\n";
 ok( $dbh->state, 'S1000' );
 
 # ------ Test the driver handle attributes.
@@ -82,8 +83,11 @@ ok(!$drh->{TaintIn} );
 ok(!$drh->{TaintOut} );
 ok(!$drh->{Taint} );
 
-ok( $drh->{Kids}, 1 )		unless $DBI::PurePerl && ok(1);
-ok( $drh->{ActiveKids}, 1 )	unless $DBI::PurePerl && ok(1);
+unless ($DBI::PurePerl or $dbh->{mx_handle_list}) {
+ok( $drh->{Kids}, 1 );
+ok( $drh->{ActiveKids}, 1 );
+}
+else { ok(1); ok(1); }
 ok( ! defined $drh->{CachedKids} );
 ok( ! defined $drh->{HandleError} );
 ok( $drh->{TraceLevel}, 0 );
@@ -101,10 +105,10 @@ ok( $drh->{Name}, 'ExampleP' );
 eval { $sth->execute };
 ok( $err = $@ );
 # we don't check actual opendir error msg because of locale differences
-ok( $err =~ /^DBD::ExampleP::st execute failed: opendir\(foo\): /i );
+ok( $err =~ /^DBD::(ExampleP|Multiplex)::st execute failed: opendir\(foo\): /i ) or print "\$\@=$err\n";
 
 # Test all of the statement handle attributes.
-ok( $sth->errstr =~ /^opendir\(foo\): / );
+ok( $sth->errstr =~ /^opendir\(foo\): / ) or print "errstr: ".$sth->errstr."\n";
 ok( $sth->state, 'S1000' );
 
 # booleans
@@ -126,7 +130,7 @@ ok( $sth->{Kids}, 0 )		unless $DBI::PurePerl && ok(1);
 ok( $sth->{ActiveKids}, 0 )	unless $DBI::PurePerl && ok(1);
 ok( ! defined $sth->{CachedKids} );
 ok( ! defined $sth->{HandleError} );
-ok( $sth->{TraceLevel}, 0 );
+ok( $sth->{TraceLevel}, $DBI::dbi_debug );
 ok( $sth->{FetchHashKeyName}, 'NAME', );
 ok( ! defined $sth->{Profile} );
 ok( $sth->{LongReadLen}, 80 );

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.15 2003/02/28 17:50:06 timbo Exp $
+# $Id: Makefile.PL,v 11.16 2003/05/10 23:30:28 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -11,7 +11,8 @@ BEGIN {
     unshift @INC, "lib";
 }
 
-if ($] < 5.006001) {
+if ($] < 5.006001 && $^O ne 'darwin') {
+	# we ignore scaring darwin users because they're stuck on 5.6.0 for now
 	warn qq{\a\a\a
 **************************************************************************
 **************************************************************************
@@ -124,8 +125,8 @@ my %opts = (
     EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl" ],
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
-    clean => { FILES=> "\$(DISTVNAME) Perl.xsi "
-			."dbiproxy$ext_pl dbiprof$ext_pl dbi.prof ndtest.prt" },
+    clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zz_*.t"
+			." dbiproxy$ext_pl dbiprof$ext_pl dbi.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest ci tardist',
 	PREOP => '$(MAKE) -f Makefile.old distdir',
@@ -280,6 +281,7 @@ inst_libdbi = ' . File::Spec->catdir($self->{INST_LIB}, 'DBI') . '
 changes_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Changes.pm') . '
 
 config :: $(changes_pm)
+	$(NOECHO) $(NOOP)
 
 $(changes_pm): Changes
 	$(NOECHO) $(MKPATH) $(inst_libdbi)

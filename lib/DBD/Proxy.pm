@@ -25,7 +25,7 @@ use strict;
 require DBI;
 DBI->require_version(1.0201);
 
-use RPC::PlClient 0.2000;
+use RPC::PlClient 0.2000; # XXX change to 0.2017 once it's released
 
 
 
@@ -70,7 +70,7 @@ sub proxy_set_err {
   my ($h,$errmsg) = @_;
   my ($err, $state) = ($errmsg =~ s/ \[err=(.*?),state=(.*?)\]//)
 	? ($1, $2) : (1, ' ' x 5);
-  return DBI::set_err($h, $err, $errmsg, $state);
+  return $h->set_err($err, $errmsg, $state);
 }
 
 package DBD::Proxy::dr; # ====== DRIVER ======
@@ -267,12 +267,24 @@ sub DESTROY {
 
 sub disconnect ($) {
     my ($dbh) = @_;
-    # XXX this should call $rdbh->disconnect to get the right
-    # disconnect behaviour. It should not undef these values.
-    # A proxy_no_disconnect option could be added (like for finish)
-    # to let people trade safety for speed if they need to.
-    undef $dbh->{'proxy_dbh'};    # Bug in Perl 5.004; would prefer delete
-    undef $dbh->{'proxy_client'};
+
+    # Sadly the Proxy too-often disagrees with the backend database
+    # on the subject of 'Active'.  In the short term, I'd like the
+    # Proxy to ease up and let me decide when it's proper to go over
+    # the wire.  This ultimately applies to finish() as well.
+    #return unless $dbh->SUPER::FETCH('Active');
+
+    # Drop database connection at remote end
+    my $rdbh = $dbh->{'proxy_dbh'};
+    local $SIG{__DIE__} = 'DEFAULT';
+    eval { $rdbh->disconnect() };
+    DBD::Proxy::proxy_set_err($dbh, $@) if $@;
+    
+    # Close TCP connect to remote
+    # XXX possibly best left till DESTROY? Add a config attribute to choose?
+    #$dbh->{proxy_client}->Disconnect(); # Disconnect method requires newer PlRPC module
+    $dbh->{proxy_client}->{socket} = undef; # hack
+
     $dbh->SUPER::STORE('Active' => 0);
     1;
 }
@@ -339,6 +351,8 @@ sub prepare ($$;$) {
       $sth->{'proxy_sth'} = $rsth;
       # If statement is a positioned update we do not want any readahead.
       $sth->{'RowCacheSize'} = 1 if $stmt =~ /\bfor\s+update\b/i;
+    # Since resources are used by prepared remote handle, mark us active.
+    $sth->SUPER::STORE(Active => 1);
     }
     $sth;
 }
@@ -376,7 +390,7 @@ sub table_info {
     local $SIG{__DIE__} = 'DEFAULT';
     my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
     return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
-    my $sth = DBI::_new_sth($dbh, {
+    my ($sth, $inner) = DBI::_new_sth($dbh, {
         'Statement' => "SHOW TABLES",
 	'proxy_params' => [],
 	'proxy_data' => \@rows,
@@ -390,7 +404,9 @@ sub table_info {
     	'proxy_cache_only' => 1,
     });
     $sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
-    $sth->SUPER::STORE('Active' => 1);
+    $inner->{NAME} = $names;
+    $inner->{TYPE} = $types;
+    $sth->SUPER::STORE('Active' => 1); # already execute()'d
     $sth->{'proxy_rows'} = @rows;
     return $sth;
 }

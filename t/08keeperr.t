@@ -48,13 +48,14 @@ my @con_info = ('dbi:ExampleP:.', undef, undef, { PrintError=>0, RaiseError=>1 }
 sub test_select {
   my $dbh = shift;
   eval { $dbh->selectrow_arrayref('select * from foo') };
+  $dbh->disconnect;
   return $@;
 }
 
 my $err1 = test_select( My::DBI->connect(@con_info) );
-::ok(0, substr($err1,0,52), "DBD::ExampleP::db selectrow_arrayref failed: opendir");
+::ok(0, $err1 =~ /^DBD::(ExampleP|Multiplex)::db selectrow_arrayref failed: opendir/) or print "got: $err1\n";
 
 my $err2 = test_select( DBI->connect(@con_info) );
-::ok(0, substr($err2,0,52), "DBD::ExampleP::db selectrow_arrayref failed: opendir");
+::ok(0, $err2 =~ /^DBD::(ExampleP|Multiplex)::db selectrow_arrayref failed: opendir/) or print "got: $err2\n";
 
 BEGIN { $tests = 2 }

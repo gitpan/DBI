@@ -39,16 +39,21 @@ my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1):', undef, undef);
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 ok(0, $dbh);
 ok(0, ref $dbh);
+$dbh->dump_handle("dump_handle test, write to log file", 2);
+
+DBI->trace(0, undef);	# turn off and restore to STDERR
+if ($^O =~ /cygwin/i) { # cygwin has buffer flushing bug
+	ok(0, 1);
+} else {
+	ok(0,  -s $trace_file, "trace file size = " . -s $trace_file);
+}
+unlink $trace_file;
+ok(0, !-e $trace_file);
+
+# internal hack to assist debugging using DBI_TRACE env var. See DBI.pm.
+DBI->trace(@DBI::dbi_debug) if @DBI::dbi_debug;
 
 $dbh->{Taint} = 1 unless $DBI::PurePerl;
-
-if (0) {
-DBI->trace(9,undef);
-warn DBI::dump_handle($dbh,"dump_handle",1);
-warn my $foo=$dbh->{Driver};
-warn $foo=$dbh->{Driver};
-die DBI::dump_handle($dbh,"dump_handle",1);
-}
 
 my $dbh2;
 
@@ -63,7 +68,7 @@ ok(0, $dbh ne $dbh2);
 my $dbh3 = DBI->connect_cached('dbi:ExampleP:', '', '');
 my $dbh4 = DBI->connect_cached('dbi:ExampleP:', '', '');
 ok(0, $dbh3 eq $dbh4);
-my $dbh5 = DBI->connect_cached('dbi:ExampleP:', '', '', { foo=>1 });
+my $dbh5 = DBI->connect_cached('dbi:ExampleP:', '', '', { examplep_foo=>1 });
 ok(0, $dbh5 ne $dbh4);
 
 #$dbh->trace(2);
@@ -85,33 +90,27 @@ ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
 ok(0, $dbh->quote(undef)     eq "NULL");
 
 print "quote_identifier\n";
-$dbh->{examplep_get_info}->{29} = '"'; # SQL_IDENTIFIER_QUOTE_CHAR
+my $get_info = $dbh->{examplep_get_info} || {};
+$get_info->{29}  ='"'; # SQL_IDENTIFIER_QUOTE_CHAR
+$dbh->{examplep_get_info} = $get_info;	# trigger STORE
+
 ok(0, $dbh->quote_identifier('foo')    eq '"foo"',  $dbh->quote_identifier('foo'));
 ok(0, $dbh->quote_identifier('f"o')    eq '"f""o"', $dbh->quote_identifier('f"o'));
 ok(0, $dbh->quote_identifier('foo','bar') eq '"foo"."bar"');
 ok(0, $dbh->quote_identifier(undef,undef,'bar') eq '"bar"');
+
+$get_info->{41}  ='@'; # SQL_CATALOG_NAME_SEPARATOR
+$get_info->{114} = 2;  # SQL_CATALOG_LOCATION
+$dbh->{examplep_get_info} = $get_info;	# trigger STORE
 ok(0, $dbh->quote_identifier('foo',undef,'bar') eq '"foo"."bar"');
+
 $dbh->{dbi_quote_identifier_cache} = undef; # force cache refresh
-$dbh->{examplep_get_info}->{41} = '@'; # SQL_CATALOG_NAME_SEPARATOR
-$dbh->{examplep_get_info}->{114} = 2;  # SQL_CATALOG_LOCATION
 ok(0, $dbh->quote_identifier('foo',undef,'bar') eq '"bar"@"foo"', $dbh->quote_identifier('foo',undef,'bar'));
 
 print "others\n";
 eval { $dbh->commit('dummy') };
 ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/)
 	unless $DBI::PurePerl && ok(0,1);
-
-DBI->trace(0, undef);
-if ($^O =~ /cygwin/i) { # cygwin has buffer flushing bug
-	ok(0, 1);
-} else {
-	ok(0,  -s $trace_file > 1024, "trace file size = " . -s $trace_file);
-}
-unlink $trace_file;
-ok(0, !-e $trace_file);
-
-# internal hack to assist debugging using DBI_TRACE env var. See DBI.pm.
-DBI->trace(@DBI::dbi_debug) if @DBI::dbi_debug;
 
 ok(0, $dbh->ping);
 
@@ -135,13 +134,15 @@ ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
 
 unless ($DBI::PurePerl) {
     ok(0, tied %{ $csr_a->{Database} });	# ie is 'outer' handle
-    ok(0, $csr_a->{Database} eq $dbh, "$csr_a->{Database} ne $dbh");
+    ok(0, $csr_a->{Database} eq $dbh, "$csr_a->{Database} ne $dbh")
+	unless $dbh->{mx_handle_list} && ok(0,1); # skip for Multiplex tests
     ok(0, tied %{ $csr_a->{Database}->{Driver} });	# ie is 'outer' handle
 }
 else {
     ok(0,1) foreach 1..3;
 }
-ok(0, $csr_a->{Database}->{Driver}->{Name} eq 'ExampleP');
+my $driver_name = $csr_a->{Database}->{Driver}->{Name};
+ok(0, $driver_name eq 'ExampleP', $driver_name);
 
 # --- FetchHashKeyName
 $dbh->{FetchHashKeyName} = 'NAME_uc';
@@ -204,24 +205,24 @@ $dir =~ m/(.*)/; $dir = $1|| die;
 my($col0, $col1, $col2, $rows);
 my(@row_a, @row_b);
 
+ok(0, $csr_a->{Taint} = 1) unless $DBI::PurePerl && ok(0,1);
+#$csr_a->trace(5);
 ok(0, $csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
 ok(0, $csr_a->execute( $dir ), $DBI::errstr);
-ok(0, $csr_a->{Taint} = 1) unless $DBI::PurePerl && ok(0,1);
 
-#$csr_a->trace(9);
 @row_a = $csr_a->fetchrow_array;
 ok(0, @row_a);
 
 # check bind_columns
-ok(0, $row_a[0] eq $col0);
-ok(0, $row_a[1] eq $col1);
-ok(0, $row_a[2] eq $col2);
+ok(0, $row_a[0] eq $col0) or print "$row_a[0] ne $col0\n";
+ok(0, $row_a[1] eq $col1) or print "$row_a[1] ne $col1\n";
+ok(0, $row_a[2] eq $col2) or print "$row_a[2] ne $col2\n";
 #$csr_a->trace(0);
 
 # Check Taint attribute works. This requires this test to be run
 # manually with the -T flag: "perl -T -Mblib t/examp.t"
 sub is_tainted {
-	my $foo;
+    my $foo;
     return ! eval { ($foo=join('',@_)), kill 0; 1; };
 }
 if (is_tainted($^X) && !$DBI::PurePerl) {
@@ -289,7 +290,7 @@ if (is_tainted($^X) && !$DBI::PurePerl) {
     $dbh->{'Taint'} = $csr_a->{'Taint'} = 1;
 }
 else {
-    warn " Taint attribute tests skipped\n";
+    warn " Taint attribute tests skipped\n" unless $DBI::PurePerl;
     ok(0,1) foreach (1..19);
 }
 
@@ -454,7 +455,7 @@ ok(0, $dbh->{AutoCommit});
 ok(0, !$dbh->{BegunWork});
 
 ok(0, $dbh->begin_work);
-ok(0, !$dbh->{AutoCommit});
+ok(0, !$dbh->{AutoCommit}, $dbh->{AutoCommit});
 ok(0, $dbh->{BegunWork});
 
 $dbh->commit;
@@ -493,7 +494,7 @@ ok(0, $se_sth1->{ShowErrorStatement});
 
 # check that $dbh->{Statement} tracks last _executed_ sth
 ok(0, $se_sth1->{Statement} eq "select mode from ?");
-ok(0, $dbh->{Statement}     eq "select mode from ?");
+ok(0, $dbh->{Statement}     eq "select mode from ?") or print "got: $dbh->{Statement}\n";
 my $se_sth2 = $dbh->prepare("select name from ?");
 ok(0, $se_sth2->{Statement} eq "select name from ?");
 ok(0, $dbh->{Statement}     eq "select name from ?");
@@ -531,6 +532,7 @@ my $HandleError = sub {
     my $msg = sprintf "HandleError: %s [h=%s, rv=%s, #=%d]",
 		$_[0],$_[1],(defined($_[2])?$_[2]:'undef'),scalar(@_);
     die $msg   if $HandleErrorReturn < 0;
+    print "$msg\n";
     $_[2] = 42 if $HandleErrorReturn == 2;
     return $HandleErrorReturn;
 };
@@ -550,7 +552,7 @@ ok(0, $@ =~ m/^HandleError:/, $@);
 print "HandleError -> 0 -> RaiseError\n";
 $HandleErrorReturn = 0;
 ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
-ok(0, $@ =~ m/^DBD::ExampleP::db prepare failed:/, $@);
+ok(0, $@ =~ m/^DBD::(ExampleP|Multiplex)::db prepare failed:/, $@);
 
 print "HandleError -> 1 -> return (original)undef\n";
 $HandleErrorReturn = 1;
@@ -564,7 +566,7 @@ print "HandleError -> 2 -> return (modified)42\n";
 $HandleErrorReturn = 2;
 $r = eval { $csr_c = $dbh->prepare($error_sql); };
 ok(0, !$@, $@);
-ok(0, $r==42, $r);
+ok(0, $r==42, $r) unless $dbh->{mx_handle_list} && ok(0,1); # skip for Multiplex
 
 $dbh->{HandleError} = undef;
 ok(0, !$dbh->{HandleError});
@@ -653,17 +655,19 @@ for (my $i = 0;  $i < 300;  $i += 100) {
     }
 }
 
-DBI->disconnect_all;	# doesn't do anything yet
-ok(0, 1);
 
-# Test the $dbh->func method
 print "Testing \$dbh->func().\n";
-my %tables = map { $_ =~ /lib/ ? ($_, 1) : () } $dbh->tables();
-my $ok = 1;
+my %tables;
+unless ($dbh->{mx_handle_list}) {
+%tables = map { $_ =~ /lib/ ? ($_, 1) : () } $dbh->tables();
 foreach my $t ($dbh->func('lib', 'examplep_tables')) {
     defined(delete $tables{$t}) or print "Unexpected table: $t\n";
 }
+}
 ok(0, (%tables == 0));
+
+$dbh->disconnect;
+ok(0, !$dbh->{Active});
 
 exit 0;
 
