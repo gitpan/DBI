@@ -7,7 +7,7 @@ use Config qw(%Config);
 
 BEGIN {
     if (!$Config{useithreads} || $] < 5.008) {
-	print "1..0 # Skipped: perl $] not configured to support iThreads\n";
+	print "1..0 # Skipped: this perl $] not configured to support iThreads\n";
 	exit 0;
     }
 }

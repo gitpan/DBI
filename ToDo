@@ -1,6 +1,8 @@
 
 *** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
 
+Ability to remove an sth from the prepare_cached cache.
+
 Devel::Leak
 
 DBIx::DWIW

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 11.5 2002/06/05 03:26:39 timbo Exp $
+# $Id: test.pl,v 11.6 2003/02/26 17:56:01 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 11.5 $}."\n";
+    print q{DBI test application $Revision: 11.6 $}."\n";
     $| = 1;
 }
 
@@ -53,7 +53,7 @@ print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
 print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 
 
-my $dbh = DBI->connect('', '', '', $driver); # old-style connect syntax
+my $dbh = DBI->connect("dbi:$driver:", '', ''); # old-style connect syntax
 $dbh->debug($::opt_h);
 
 if (0) {

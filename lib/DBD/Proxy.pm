@@ -183,6 +183,7 @@ sub connect ($$;$$) {
 	    $this->{$var} = $attr{$var};
 	}
     }
+    $this->SUPER::STORE('Active' => 1);
 
     $this;
 }
@@ -270,6 +271,7 @@ sub disconnect ($) {
     # to let people trade safety for speed if they need to.
     undef $dbh->{'proxy_dbh'};    # Bug in Perl 5.004; would prefer delete
     undef $dbh->{'proxy_client'};
+    $this->SUPER::STORE('Active' => 0);
     1;
 }
 
@@ -474,12 +476,14 @@ sub execute ($@) {
 	$sth->SUPER::STORE('NUM_OF_PARAMS' => $numParams);
       }
 
-    } else {
+    }
+    else {
       if ($rsth) {
 	($numRows, @outData) = eval { $rsth->execute($params, $proto_ver) };
 	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 
-      } else {
+      }
+      else {
 	my $rdbh = $dbh->{'proxy_dbh'};
 	
 	# Legacy prepare is actually prepare + first execute on the server.
@@ -526,7 +530,7 @@ sub fetch ($) {
 
     my $data = $sth->{'proxy_data'};
 
-    if(!$data  ||  !@$data) {
+    if(!$data || !@$data) {
 	return undef unless $sth->SUPER::FETCH('Active');
 
 	my $rsth = $sth->{'proxy_sth'};
@@ -547,7 +551,7 @@ sub fetch ($) {
     }
     my $row = shift @$data;
 
-	$sth->SUPER::STORE(Active => 0) if ( $sth->{proxy_cache_only} and !@$data );
+    $sth->SUPER::STORE(Active => 0) if ( $sth->{proxy_cache_only} and !@$data );
     return $sth->_set_fbav($row);
 }
 *fetchrow_arrayref = \&fetch;

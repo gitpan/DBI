@@ -1,3 +1,12 @@
+# $Id: GetInfoReturn.pm,v 1.4 2003/02/26 17:56:01 timbo Exp $
+#
+# Copyright (c) 2002  Tim Bunce  Ireland
+#
+# Constant data describing return values from the DBI getinfo function.
+#
+# You may distribute under the terms of either the GNU General Public
+# License or the Artistic License, as specified in the Perl README file.
+
 package DBI::Const::GetInfoReturn;
 
 use strict;
@@ -8,6 +17,9 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %GetInfoReturnTypes %GetInfoReturnValues);
 
 @ISA = qw(Exporter);
 @EXPORT = qw(%GetInfoReturnTypes %GetInfoReturnValues);
+
+my
+$VERSION = sprintf "%d.%02d", '$Revision: 1.4 $ ' =~ /(\d+)\.(\d+)/;
 
 =head1 NAME
 

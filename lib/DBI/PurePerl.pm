@@ -1,9 +1,10 @@
 ########################################################################
 package DBI;
+# vim: ts=8:sw=4
 
 ########################################################################
 #
-# Copyright (c) 2002  Tim Bunce  Ireland.
+# Copyright (c) 2002,2003  Tim Bunce  Ireland.
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 #
@@ -24,7 +25,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.15 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.16 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -94,7 +95,7 @@ use constant SQL_WVARCHAR => (-9);
 use constant IMA_HAS_USAGE	=> 0x0001; #/* check parameter usage	*/
 use constant IMA_FUNC_REDIRECT	=> 0x0002; #/* is $h->func(..., "method")*/
 use constant IMA_KEEP_ERR	=> 0x0004; #/* don't reset err & errstr	*/
-use constant IMA_spare		=> 0x0008; #/* */
+use constant IMA_KEEP_ERR_SUB	=> 0x0008; #/*  '' if in nested call */
 use constant IMA_NO_TAINT_IN   	=> 0x0010; #/* don't check for tainted args*/
 use constant IMA_NO_TAINT_OUT   => 0x0020; #/* don't taint results	*/
 use constant IMA_COPY_STMT   	=> 0x0040; #/* copy sth Statement to dbh */
@@ -173,6 +174,17 @@ sub  _install_method {
     my @pre_call_frag;
 
     push @pre_call_frag, q{
+	return if $h_inner; # ignore DESTROY for outer handle
+    } if $method_name eq 'DESTROY';
+
+    push @pre_call_frag, q{
+	# copy err/errstr/state up to driver so $DBI::err etc still work
+	if ($h->{err} and my $drh = $h->{Driver}) {
+	    $drh->{$_} = $h->{$_} for ('err','errstr','state');
+	}
+    } if $method eq 'DBI::db::DESTROY';
+
+    push @pre_call_frag, q{
 	return $h->{$_[0]} if exists $h->{$_[0]};
     } if $method_name eq 'FETCH' && !exists $ENV{DBI_TRACE};
 
@@ -189,10 +201,29 @@ sub  _install_method {
 	$dbh->{Statement} = $h->{Statement} if $dbh;
     } if IMA_COPY_STMT & $bitmask;
 
-    push @pre_call_frag, q{
-	$h->{err} = 0;
-	$h->{errstr} = $DBI::state = '';
-    } unless IMA_KEEP_ERR & $bitmask;	# see above
+    if (IMA_KEEP_ERR & $bitmask) {
+	push @pre_call_frag, q{
+	    my $keep_error = 1;
+	};
+    }
+    elsif (IMA_KEEP_ERR_SUB & $bitmask) {
+	push @pre_call_frag, q{
+	    my $keep_error = $h->{_parent}->{_call_depth};
+	    unless ($keep_error) {
+		#warn "$method_name cleared err";
+		$h->{err} = 0;
+		$h->{errstr} = $DBI::state = '';
+	    };
+	};
+    }
+    else {
+	push @pre_call_frag, q{
+	    my $keep_error;
+	    #warn "$method_name cleared err";
+	    $h->{err} = 0;
+	    $h->{errstr} = $DBI::state = '';
+	};
+    }
 
     push @pre_call_frag, q{
         if ($DBI::dbi_debug >= 2) {
@@ -205,7 +236,6 @@ sub  _install_method {
     push @pre_call_frag, q{
         $h->{'_last_method'} = $method_name;
     } unless exists $DBI::last_method_except{$method_name};
-
 
     # --- post method call code fragments ---
     my @post_call_frag;
@@ -221,14 +251,14 @@ sub  _install_method {
     } if exists $ENV{DBI_TRACE}; # note use of exists
 
     push @post_call_frag, q{
-	if ($h->{BegunWork}) {;
+	if ($h->{BegunWork}) {
 	    $h->{BegunWork}  = 0;
 	    $h->{AutoCommit} = 1;
 	}
     } if IMA_END_WORK & $bitmask;
 
     push @post_call_frag, q{
-        if ($h->{err} && $call_depth <= 1) {
+        if ($h->{err} && !$keep_error && $call_depth <= 1 && !$h->{_parent}{_call_depth}) {
             my $last = ($DBI::last_method_except{$method_name})
 		? ($h->{'_last_method'}||$method_name) : $method_name;
             my $errstr = $h->{errstr} || $DBI::errstr || $DBI::err || '';
@@ -251,8 +281,10 @@ sub  _install_method {
 		$do_croak = 0 if &$subsub($msg,$h,$ret[0]);
             }
 	    if ($do_croak) {
+		printf $DBI::tfh "    $method_name has failed ($h->{PrintError},$h->{RaiseError})\n"
+			if $DBI::dbi_debug >= 4;
   	        carp  $msg if $h->{PrintError};
-	        croak $msg if $h->{RaiseError};
+	        die $msg if $h->{RaiseError};
 	    }
 	}
     } unless IMA_KEEP_ERR & $bitmask;
@@ -264,7 +296,8 @@ sub  _install_method {
 	my $h_inner = tied(%$h);
 
 	]
-	. ($method_name eq 'DESTROY' ? "return if \$h_inner;\n" : "")
+	# ignore DESTROY for outer handle
+	. ($method_name eq 'DESTROY' ? q{return if $h_inner;} : "")
 	. q[
 
 	$h = $h_inner if $h_inner;
@@ -291,7 +324,7 @@ sub  _install_method {
     warn "$@\n$method_code\n" if $@;
     die "$@\n$method_code\n" if $@;
     *$method = $code_ref;
-    if (0 && $method =~ 'FETCH') { # debuging tool
+    if (0 && $method =~ 'DESTROY') { # debuging tool
 	my $l=0; # show line-numbered code for method
 	warn "*$method = ".join("\n", map { ++$l.": $_" } split/\n/,$method_code);
     }
@@ -313,7 +346,7 @@ sub _setup_handle {
 	    $h_inner->{$_} = $parent->{$_}
 		if exists $parent->{$_} && !exists $h_inner->{$_};
 	}
-	if (ref($parent) =~ /^[^:]+::db/) {
+	if (ref($parent) =~ /::db$/) {
 	    $h_inner->{Database} = $parent;
 	    $parent->{Statement} = $h_inner->{Statement};
 	    if (0) {
@@ -321,7 +354,7 @@ sub _setup_handle {
 		warn Dumper([ "PARENT: $parent:", $parent, "CHILD:  $h_inner:", $h_inner, ]) if 1;
 	    }
 	}
-	elsif (ref($parent) =~ /^[^:]+::dr/){
+	elsif (ref($parent) =~ /::dr$/){
 	    $h_inner->{Driver} = $parent;
 	}
 	$h_inner->{_parent} = $parent;
@@ -552,7 +585,7 @@ sub set_err {
     $h->{err}    = $DBI::err    = $errnum;
     $h->{errstr} = $DBI::errstr = $msg;
     $h->{state}  = $DBI::state  = (defined $state) ? ($state eq "00000" ? "" : $state) : ($errnum ? "S1000" : "");
-    if (my $p = $h->{_parent}) {
+    if (my $p = $h->{Database}) { # just sth->dbh, not dbh->drh (see ::db::DESTROY)
 	$p->{err}    = $errnum;
 	$p->{errstr} = $msg;
 	$p->{state}  = $DBI::state;
@@ -562,7 +595,6 @@ sub set_err {
 sub trace_msg {
     my ($h, $msg, $minlevel)=@_;
     $minlevel = 1 unless defined $minlevel;
-    #my $curlevel = (ref $h) ? $h->{TraceLevel} : 0;	# XXX
     my $curlevel = $DBI::dbi_debug; # XXX if $DBI::dbi_debug > $curlevel;
     return if $curlevel < $minlevel;
     print $DBI::tfh $msg;

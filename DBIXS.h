@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.11 2002/12/01 22:34:29 timbo Exp $
+/* $Id: DBIXS.h,v 11.12 2003/02/26 17:56:01 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -234,6 +234,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_Profile     0x010000	/* profile activity on this handle      */
 #define DBIcf_TaintIn     0x020000	/* check inputs for taintedness */
 #define DBIcf_TaintOut    0x040000	/* taint outgoing data */
+/* new flags may require clone() to be updated */
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\

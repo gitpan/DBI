@@ -174,10 +174,10 @@ sub _read_body {
             # it's a key
             ($key, $index) = ($2, $1 - 1);
 
-            # unmangle key	XXX looks unsafe
-            $key =~ s/\\n/\n/g;
-            $key =~ s/\\r/\r/g;
-            $key =~ s/\\\\/\\/g;
+            # unmangle key
+            $key =~ s/(?<!\\)\\n/\n/g; # expand \n, unless it's a \\n
+            $key =~ s/(?<!\\)\\r/\r/g; # expand \r, unless it's a \\r
+            $key =~ s/\\\\/\\/g;       # \\ to \
 
             $#path = $index;      # truncate path to new length
             $path[$index] = $key; # place new key at end

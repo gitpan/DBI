@@ -1,3 +1,12 @@
+# $Id: GetInfoType.pm,v 1.5 2003/02/26 17:56:01 timbo Exp $
+#
+# Copyright (c) 2002  Tim Bunce  Ireland
+#
+# Constant data describing info type codes for the DBI getinfo function.
+#
+# You may distribute under the terms of either the GNU General Public
+# License or the Artistic License, as specified in the Perl README file.
+
 package DBI::Const::GetInfoType;
 
 use strict;
@@ -8,6 +17,9 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %GetInfoType);
 
 @ISA = qw(Exporter);
 @EXPORT = qw(%GetInfoType);
+
+my
+$VERSION = sprintf "%d.%02d", '$Revision: 1.5 $ ' =~ /(\d+)\.(\d+)/;
 
 =head1 NAME
 

@@ -5,7 +5,7 @@ use Test;
 use strict;
 
 BEGIN {
-	plan tests => 22;
+	plan tests => 26;
 }
 
 $|=1;
@@ -24,7 +24,7 @@ my $drh;
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.5 $',
+		'Version' => '$Revision: 11.6 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -54,7 +54,7 @@ my $drh;
     $DBD::Test::db::imp_data_size = 0;
     $DBD::Test::db::imp_data_size = 0;	# avoid typo warning
 
-    sub DESTROY { undef }
+    sub DESTROY { print "DBD::Test::db::DESTROY\n"; }
 
     sub do {	# just used to run tests 'inside' a driver
 	my $h = shift;
@@ -92,9 +92,21 @@ ok(DBI::_get_imp_data($drh), 77);
 
 $drh->data_sources;	# trigger driver internal tests above
 
+do {			# scope to test DESTROY behaviour
+
 my $dbh = $drh->connect;
 
-$dbh->do('dummy');		# trigger more driver internal tests above
+$dbh->do('dummy');	# trigger more driver internal tests above
+
+$drh->set_err("41", "foo 41 drh");
+ok($drh->err, 41);
+$dbh->set_err("42", "foo 42 dbh");
+ok($dbh->err, 42);
+ok($drh->err, 41);
+
+};			# DESTROY $dbh, should set $drh->err to 42
+
+ok($drh->err, 42);	# copied up to drh from dbh when dbh was DESTROYd
 
 $drh->set_err("99", "foo");
 ok($DBI::err, 99);
@@ -103,10 +115,10 @@ ok($DBI::errstr, "foo");
 $drh->set_err(0, "00000");
 ok($DBI::state, "");
 
-$drh->set_err(1, "test error");
+$drh->set_err(1, "test error 1");
 ok($DBI::state, "S1000");
 
-$drh->set_err(1, "test error", "IM999");
+$drh->set_err(2, "test error 2", "IM999");
 ok($DBI::state, "IM999");
 
 eval { $DBI::rows = 1 };

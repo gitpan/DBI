@@ -390,14 +390,13 @@ The dbi_profile() function can be used to add extra sample data
 into the profile data tree. For example:
 
     use DBI;
-    use DBI::Profile (dbi_profile);
-    use Time::HiRes qw(gettimeofday);
+    use DBI::Profile (dbi_profile dbi_time);
 
-    my $t1 = gettimeofday;
+    my $t1 = dbi_time(); # returns floatingpoint high-resolution time
 
     ... execute code you want to profile here ...
 
-    my $t2 = gettimeofday;
+    my $t2 = dbi_time();
     dbi_profile($h, $statement, $method, $t1, $t2);
 
 The $h parameter is the handle the extra profile sample should be
@@ -407,7 +406,8 @@ then $h->{Statement} will be used. Similarly $method is the string
 to use if the Path specifies DBIprofile_MethodName. There is no
 default value for $method.
 
-The $h->{Path} attribute is processed by dbi_profile() in the usual way.
+The $h->{Profile}{Path} attribute is processed by dbi_profile() in
+the usual way.
 
 It is recommended that you keep these extra data samples separate
 from the DBI profile data samples by using values for $statement
@@ -446,13 +446,13 @@ Time spent fetching tied variables, $DBI::errstr, is counted.
 DBI::PurePerl does not support profiling (though it could in theory).
 
 A few platforms don't support the gettimeofday() high resolution
-time function used by the DBI. In which case you'll get integer
-resolution time which are mostly useless.
+time function used by the DBI (and available via the dbi_time() function).
+In which case you'll get integer resolution time which is mostly useless.
 
 This documentation could be more clear. Probably needs to be reordered
 to start with several examples and build from there.  Trying to
-explain the concepts first seems to lead to many forward references.
-(Patches welcome.)
+explain the concepts first seems painful and to lead to just as
+many forward references.  (Patches welcome!)
 
 =cut
 
@@ -465,14 +465,16 @@ use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge);
 
-$VERSION = sprintf "%d.%02d", '$Revision: 1.4 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 1.5 $ ' =~ /(\d+)\.(\d+)/;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(
     DBIprofile_Statement
     DBIprofile_MethodName
+    DBIprofile_MethodClass
     dbi_profile
     dbi_profile_merge
+    dbi_time
 );
 @EXPORT_OK = qw(
     format_profile_thingy

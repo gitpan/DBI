@@ -1,3 +1,13 @@
+# $Id: ODBC.pm,v 1.3 2003/02/26 17:56:01 timbo Exp $
+#
+# Copyright (c) 2002  Tim Bunce  Ireland
+#
+# Constant data describing Microsoft ODBC info types and return values
+# for the SQLGetInfo() method of ODBC.
+#
+# You may distribute under the terms of either the GNU General Public
+# License or the Artistic License, as specified in the Perl README file.
+
 package DBI::Const::GetInfo::ODBC;
 
 =head1 NAME
@@ -23,6 +33,9 @@ The API for this module is private and subject to change.
   sqlext.h
 
 =cut
+
+my
+$VERSION = sprintf "%d.%02d", '$Revision: 1.3 $ ' =~ /(\d+)\.(\d+)/;
 
 %InfoTypes =
 (
