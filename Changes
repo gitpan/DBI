@@ -10,7 +10,30 @@ Move FIRSTKEY/NEXTKEY/EXISTS/DELETE? to XS (and pureperl)
 
 =head1 CHANGES
 
-=head2 Changes in DBI 1.23,    23nd May 2002
+=head2 Changes in DBI 1.24,    4th June 2002
+
+  Fixed reference loop causing a handle/memory leak
+    that was introduced in DBI 1.16.
+  Fixed DBI::Format to work with 'filehandles' from IO::Scalar
+    and similar modules thanks to report by Jeff Boes.
+  Fixed $h->func for DBI::PurePerl thanks to Jeff Zucker.
+  Fixed $dbh->{Name} for DBI::PurePerl thanks to Dean Arnold.
+
+  Added DBI method call profiling and benchmarking.
+    This is a major new addition to the DBI.
+    See $h->{Profile} attribute and DBI::Profile module.
+    For a quick trial, set the DBI_PROFILE environment variable and
+    run your favourite DBI script. Try it with DBI_PROFILE set to 1,
+    then try 2, 4, 8, 10, and -10. Have fun!
+
+  Added execute_array() and bind_param_array() documentation
+    with thanks to Dean Arnold.
+  Added notes about the DBI having not yet been tested with iThreads
+    (testing and patches for SvLOCK etc welcome).
+  Removed undocumented Handlers attribute (replaced by HandleError).
+  Tested with 5.5.3 and 5.8.0 RC1.
+
+=head2 Changes in DBI 1.23,    25th May 2002
 
   Greatly improved DBI::PurePerl in performance and accuracy.
   Added more detail to DBI::PurePerl docs about what's not supported.

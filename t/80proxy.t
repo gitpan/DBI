@@ -27,9 +27,16 @@ eval {
     require DBI::ProxyServer;
     require Net::Daemon::Test;
 };
-if ($@) { print "1..0\n"; print $@; exit 0; }
+if ($@) {
+    print "1..0 # Skipped: modules required for proxy are probably not installed\n";
+    exit 0;
+}
 
-if ($DBI::PurePerl) { print "1..0\n"; print $@; exit 0; } # XXX temporary I hope
+if ($DBI::PurePerl) {
+    # XXX temporary I hope
+    print "1..0 # Skipped: DBD::Proxy currently has a problem under DBI::PurePerl\n";
+    exit 0;
+}
 
 {
     my $numTest = 0;
@@ -75,14 +82,14 @@ if (@ARGV) {
 
     # If desperate uncomment this and add '-d' after $^X below:
     # local $ENV{PERLDB_OPTS} = "AutoTrace NonStop=1 LineInfo=dbiproxy.dbg";
-
+    my $dbi_trace_level = DBI->trace(0);
     ($handle, $port) = Net::Daemon::Test->Child($numTests,
 	#'truss', '-o', 'dbiproxy.truss',
 	$^X, '-Iblib/lib', '-Iblib/arch', 
 	'dbiproxy', '--test', # --test must be first command line arg
-	(exists $ENV{DBI_TRACE} ? ('--dbitrace=dbiproxy.log') : ()),
+	($dbi_trace_level ? ('--dbitrace=dbiproxy.log') : ()),
 	'--configfile', $config_file,
-	(($ENV{DBI_TRACE}) ? ('--logfile=1') : ()),
+	(($dbi_trace_level) ? ('--logfile=1') : ()),
 	'--mode=single',
 	'--debug',
 	'--timeout=60'

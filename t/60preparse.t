@@ -6,7 +6,7 @@ $|=1;
 sub ok($;$);
 
 if ($DBI::PurePerl) {
-    print "1..0\n";
+    print "1..0 # Skipped: preparse not supported for DBI::PurePerl\n";
     exit 0;
 }
 

@@ -1,6 +1,7 @@
-#!perl -w
+#!perl -Tw
 
 use lib qw(blib/arch blib/lib);	# needed since -T ignores PERL5LIB
+#use blib;
 use DBI qw(:sql_types);
 use Config;
 use Cwd;
@@ -111,6 +112,8 @@ ok(0, !-e $trace_file);
 DBI->trace(@DBI::dbi_debug) if @DBI::dbi_debug;
 
 ok(0, $dbh->ping);
+
+# --- errors
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 ok(0, !defined $cursor_e);
 ok(0, $DBI::err);
@@ -118,6 +121,7 @@ ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name/);
 ok(0, $DBI::err    == $dbh->err,    "DBI::err='$DBI::err', dbh->err=".$dbh->err);
 ok(0, $DBI::errstr eq $dbh->errstr, "DBI::errstr='$DBI::errstr', dbh->errstr=".$dbh->errstr);
 
+# --- func
 ok(0, $dbh->errstr eq $dbh->func('errstr'));
 
 foreach(17..19) { ok(0, 1) }	# soak up to next round number
@@ -125,15 +129,24 @@ foreach(17..19) { ok(0, 1) }	# soak up to next round number
 my $std_sql = "select mode,size,name from ?";
 my $csr_a = $dbh->prepare($std_sql);
 ok(0, ref $csr_a);
+ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
+
+unless ($DBI::PurePerl) {
+    ok(0, tied %{ $csr_a->{Database} });	# ie is 'outer' handle
+    ok(0, $csr_a->{Database} eq $dbh, "$csr_a->{Database} ne $dbh");
+    ok(0, tied %{ $csr_a->{Database}->{Driver} });	# ie is 'outer' handle
+}
+else {
+    ok(0,1) foreach 1..3;
+}
+ok(0, $csr_a->{Database}->{Driver}->{Name} eq 'ExampleP');
+
+# --- FetchHashKeyName
 $dbh->{FetchHashKeyName} = 'NAME_uc';
 my $csr_b = $dbh->prepare($std_sql);
 ok(0, ref $csr_b);
 
 ok(0, $csr_a != $csr_b);
-ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
-ok(0, $csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'ExampleP');
-ok(0, $csr_a->{'Database'} eq $dbh, "$csr_a->{'Database'} ne $dbh")
-    unless $DBI::PurePerl && ok(0,1);
 
 ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");	# before NAME
 ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
@@ -150,6 +163,9 @@ my $dir = getcwd() || cwd();
 $dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
 # untaint $dir
 $dir =~ m/(.*)/; $dir = $1|| die;
+
+
+# ---
 
 my($col0, $col1, $col2, $rows);
 my(@row_a, @row_b);
@@ -189,11 +205,11 @@ if (is_tainted($^X)) {
 	ok(0, $@ =~ /Insecure dependency/, $@);
 	eval { $csr_a->execute($^X); 1; };
 	ok(0, $@ =~ /Insecure dependency/, $@);
-undef $@;
+    undef $@;
 }
 else {
-    print "Taint attribute tests skipped\n";
-    ok(0,1) while (1..7);
+    warn " Taint attribute tests skipped\n";
+    ok(0,1) foreach (1..7);
 }
 $csr_a->{Taint} = 0;
 
@@ -549,4 +565,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 201; }
+BEGIN { $tests = 210; }

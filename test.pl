@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 11.4 2002/05/20 21:03:53 timbo Exp $
+# $Id: test.pl,v 11.5 2002/06/05 03:26:39 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,11 +14,11 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 11.4 $}."\n";
+    print q{DBI test application $Revision: 11.5 $}."\n";
     $| = 1;
-    eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
-    warn $@ if $@;
 }
+
+use blib;
 
 use DBI;
 

@@ -24,6 +24,7 @@ lib/DBI/Const/GetInfo/ODBC.pm	GetInfo data based on ODBC standard
 lib/DBI/DBD.pm		Some basic help for people writing DBI drivers
 lib/DBI/FAQ.pm		The DBI FAQ in module form for perldoc
 lib/DBI/Format.pm		Class for formatting rows of data
+lib/DBI/Profile.pm	Manage DBI usage profile data
 lib/DBI/ProxyServer.pm	The proxy drivers server
 lib/DBI/PurePerl.pm	A DBI.xs emulation in Perl
 lib/DBI/Shell.pm	The DBI interactive shell
@@ -31,10 +32,12 @@ lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
 lib/Win32/DBIODBC.pm	An experimental Win32::ODBC emulation layer for DBI
 t/01basics.t
 t/02dbidrv.t
+t/03hleak.t
 t/10examp.t
 t/15array.t
 t/20meta.t
 t/30subclass.t
+t/40profile.t
 t/60preparse.t
 t/70shell.t
 t/80proxy.t

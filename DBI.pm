@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.10 2002/05/25 17:36:13 timbo Exp $
+# $Id: DBI.pm,v 11.12 2002/06/05 03:26:39 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.23; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.24; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -108,8 +108,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.23
-(C<$Date: 2002/05/25 17:36:13 $>).
+This is the DBI specification that corresponds to the DBI version 1.24
+(C<$Date: 2002/06/05 03:26:39 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
@@ -136,7 +136,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.10 $, 10);
+my $Revision = substr(q$Revision: 11.12 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -211,6 +211,9 @@ BEGIN {
    utils     => [ qw(
 	neat neat_list dump_results looks_like_number
    ) ],
+   profile   => [ qw(
+	dbi_profile dbi_profile_merge
+   ) ],
 );
 
 $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
@@ -256,6 +259,7 @@ if ($DBI::dbi_debug) {
 	# digits (and equals) are stripped off and used as the level
 	unshift @DBI::dbi_debug, 2;
 	@DBI::dbi_debug = ($1,$2) if $DBI::dbi_debug =~ m/^(\d+)=(.*)/;
+	$DBI::dbi_debug = $DBI::dbi_debug[0];
     }
     DBI->trace(@DBI::dbi_debug);
 }
@@ -467,8 +471,9 @@ sub connect {
     }
     else {		# new-style connect so new default semantics
 	%attr = (
-	    PrintError=>1, AutoCommit=>1,
-	    ref $attr ? %$attr : (),
+	    PrintError => 1,
+	    AutoCommit => 1,
+	    ref $attr           ? %$attr : (),
 	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec) : (),
 	);
 	# XXX to be enabled for DBI v2.0?
@@ -916,7 +921,9 @@ sub DBI::st::TIEHASH { bless $_[1] => $_[0] };
 
 
 # These three special constructors are called by the drivers
-# The way they are called is likey to change.
+# The way they are called is likely to change.
+
+my $profile;
 
 sub _new_drh {	# called by DBD::<drivername>::driver()
     my ($class, $initial_attr, $imp_data) = @_;
@@ -934,7 +941,24 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 	FetchHashKeyName=> 'NAME',
 	%$initial_attr,
     };
-    _new_handle('DBI::dr', '', $attr, $imp_data, $class);
+    my ($h, $i) = _new_handle('DBI::dr', '', $attr, $imp_data, $class);
+
+    # XXX DBI_PROFILE unless DBI::PurePerl because for some reason
+    # it kills the t/zz_*_pp.t tests (they silently exit early)
+    if ($ENV{DBI_PROFILE} && !$DBI::PurePerl) {
+	# The profile object created here when the first driver is loaded
+	# is shared by all drivers so we end up with just one set of profile
+	# data and thus the 'total time in DBI' is really the true total.
+	if (!$profile) {	# first time
+	    $h->{Profile} = $ENV{DBI_PROFILE};
+	    $profile = $h->{Profile};
+	}
+	else {
+	    $h->{Profile} = $profile;
+	}
+    }
+    return $h unless wantarray;
+    ($h, $i);
 }
 
 sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
@@ -4158,6 +4182,51 @@ Undefined values or C<undef> are used to indicate null values.
 See also L</"Placeholders and Bind Values"> for more information.
 
 
+=item C<bind_param_array>
+
+  $rc = $sth->bind_param_array($p_num, $array_ref_or_value)
+  $rc = $sth->bind_param_array($p_num, $array_ref_or_value, \%attr)
+  $rc = $sth->bind_param_array($p_num, $array_ref_or_value, $bind_type)
+
+The C<bind_param_array> method is used to bind an array of values
+to a placeholder embedded in the prepared statement which is to be executed
+with L</execute_array>. For example:
+
+  $dbh->{RaiseError} = 1;        # save having to check each method call
+  $sth = $dbh->prepare("INSERT INTO people(first_name, last_name) VALUES(?, ?)");
+  $sth->bind_param_array(1, [ 'John', 'Mary', 'Tim' ]);
+  $sth->bind_param_array(2, [ 'Booth', 'Todd', 'Robinson' ]);
+  my @tuple_status;
+  $sth->execute_array(\@tuple_status);
+
+The C<%attr> argument is the same as defined for L</bind_param>.
+Refer to L</bind_param> for general details on using placeholders.
+
+Each array bound to the statement must have the same number of
+elements.  Some drivers may define a method attribute to relax this
+safety check.
+
+Scalar values, including C<undef>, may also be bound by
+C<bind_param_array>. In which case the same value will be used for each
+L</execute> call. Driver-specific implementations may behave
+differently, e.g., when binding to a stored procedure call, some
+databases permit mixing scalars and arrays as arguments.
+
+The default implementation provided by DBI (for drivers that have
+not implemented array binding) is to iteratively L</execute> for
+each parameter tuple provided in the bound arrays.  Drivers may
+provide more optimized implementations using whatever bulk operation
+support the database API provides. The default driver behaviour should 
+match the default DBI behaviour, but always consult your driver
+documentation as there may be driver specific issues to consider.
+
+Note that the default implementation currently only supports non-data
+returning statements. Also, C<bind_param_array> and L</bind_param>
+cannot be mixed in the same statement execution, and C<bind_param_array>
+must be used with L</execute_array>; using C<bind_param_array> will
+have no effect for L</execute>.
+
+
 =item C<execute>
 
   $rv = $sth->execute                or die $sth->errstr;
@@ -4188,6 +4257,80 @@ unless the driver can determine the correct type (which is rare), or
 unless
 C<bind_param> (or C<bind_param_inout>) has already been used to specify the
 type.
+
+
+=item C<execute_array>
+
+  $rv = $sth->execute_array(\%attr) or die $sth->errstr;
+  $rv = $sth->execute_array(\%attr, @bind_values)  or die $sth->errstr;
+
+Execute the prepared statement for each parameter tuple provided
+either in the @bind_values, or by prior calls to L</bind_param_array>.
+
+An C<undef> is returned if an error occurs.  A successful
+C<execute_array> always returns true regardless of the number of
+rows affected, even if it's zero (see below). It is always important
+to check the return status of C<execute_array> (and most other DBI
+methods) for errors.
+
+Parameters may be supplied either by prior calls to L</bind_param_array>,
+or in the C<@bind_values> argument. The values supplied may be either
+scalars, or arrayrefs. See L</bind_param_array> for details.
+
+The supplied C<\%attr> hashref currently supports only the C<ArrayTupleStatus>
+attribute, which should specify an arrayref to receive the status of each
+parameter tuple bound to the statement. For parameter tuples which
+are successfully executed, the element at the same ordinal position in the 
+status array will return the resulting rowcount.
+
+If a parameter tuple causes an error, the associated status array
+element will be set to an arrayref of [ $sth->err, $sth->errstr ]
+returned by the failed execution.  If B<any> tuple returns an error,
+C<execute_array> will return C<undef> B<after> it has executed all
+the parameter tuples. In that case, the application should inspect
+the status array to determine which parameter tuples failed.
+
+If no C<ArrayTupleStatus> is provided, C<execute_array> will return
+C<undef> on the first occurance of a parameter tuple causing an error.
+[XXX This may change as it doesn't match the behaviour of drivers
+which use bulk operation API to ship the data to the server.]
+
+If all parameter tuples are successfully executed, C<execute_array> returns 
+the sum of the number of rows affected by all the parameter tuples,
+if known. If no rows were affected, then C<execute> returns
+"C<0E0>", which Perl will treat as 0 but will regard as true. Note that it
+is I<not> an error for no rows to be affected by a statement. If the
+number of rows affected is not known, then C<execute_array> may return a 
+negative number. Applications should not rely on the returned value to
+indicate actual total rowcounts, but use the C<ArrayTupleStatus> and explicitly
+inspect each returned element of the status array.
+
+Support for data returning statements is driver-specific and subject
+to change. At present, the default implementation provided by DBI
+only supports non-data returning statements.
+
+If any C<@bind_values> are given, then C<execute_array> will effectively call
+L</bind_param_array> for each value before executing the statement.
+Values bound in this way are usually treated as C<SQL_VARCHAR> types
+unless the driver can determine the correct type (which is rare), or
+unless C<bind_param>, C<bind_param_inout>, C<bind_param_array>, 
+or C<bind_param_inout_array> has already been used to specify the type.
+
+Transaction semantics using array binding are driver and database specific.
+If C<AutoCommit> is on, the default DBI implementation will cause each 
+parameter tuple to be inidividually committed (or rolled back in the event
+of an error). If C<AutoCommit> is off, the application is responsible
+for explicitly committing the entire set of bound parameter tuples.
+Note that different drivers and databases may have different behaviors
+when some parameter tuples cause failures. In some cases, the driver or
+database may automatically rollback the effect of all prior parameter 
+tuples that succeeded in the transaction; other drivers or databases may 
+retain the effect of prior successfully executed parameter tuples. Be
+sure to check your driver and database for its specific behavior.
+
+Note that, in general, performance will usually be better with C<AutoCommit>
+turned off, and using explicit C<commit> after each C<execute_array>
+call.
 
 
 =item C<fetchrow_arrayref>
@@ -4837,12 +4980,24 @@ See L<perlop/"Quote and Quote-like Operators"> for more details.
 
 =head2 Threads and Thread Safety
 
-Perl versions 5.004_50 and later include optional experimental support
-for multiple threads on many platforms.  If the DBI is built using a
-Perl that has threads enabled then it will use a per-driver mutex to
-ensure that only one thread is with a driver at any one time.
-Please note that support for threads in Perl is still experimental and
-is known to have some significant problems. It's use is not recommended.
+If the DBI is built using a Perl that has perl 5.005 style threads
+enabled then it will use a per-driver mutex to ensure that only one
+thread is with a driver at any one time. However perl 5.005 style
+threads are unstable and shoud not be used in production.
+
+Perl 5.7 and later support a new threading model called iThreads
+which is much more stable. However the DBI has not yet had any extra
+code added or testing done to make sure it works properly with
+iThreads. So at this time the DBI should not be used with iThreads
+in situations where more than one thread may enter a cloned instance
+of the DBI. It is I<possibly> safe to have multiple threads load
+the DBI module I<after> they have been created, but the DBI probably
+won't be providing any protection against multiple threads entering a
+databases own library code. As many databases don't have thread
+safe libraries that is likely to cause problems.
+
+Summary: Using DBI with perl threads of any kind is not recommended
+for production environments.
 
 
 =head2 Signal Handling and Canceling Operations

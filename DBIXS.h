@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.4 2002/05/20 21:03:53 timbo Exp $
+/* $Id: DBIXS.h,v 11.6 2002/06/05 03:26:39 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -109,7 +109,7 @@ typedef struct dbih_com_attr_st {
     SV *State;		/* Standard SQLSTATE, 5 char string	*/
     SV *Err;		/* Native engine error code		*/
     SV *Errstr;		/* Native engine error message		*/
-    SV *Handlers;
+    SV *spare;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
     SV *FetchHashKeyName;	/* for fetchrow_hashref		*/
     /* (NEW FIELDS?... DON'T FORGET TO UPDATE dbih_clearcom()!)	*/
@@ -199,7 +199,6 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_STATE(imp)		SvRV(_imp2com(imp, attr.State))
 #define DBIc_ERR(imp)		SvRV(_imp2com(imp, attr.Err))
 #define DBIc_ERRSTR(imp)	SvRV(_imp2com(imp, attr.Errstr))
-#define DBIc_HANDLERS(imp)	SvRV(_imp2com(imp, attr.Handlers))
 #define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
 #define DBIc_LongReadLen_init	80	/* may change */
 #define DBIc_FetchHashKeyName(imp) (_imp2com(imp, attr.FetchHashKeyName))
@@ -233,6 +232,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_ShowErrorStatement  0x002000	/* include Statement in error	*/
 #define DBIcf_BegunWork   0x004000	/* between begin_work & commit/rollback */
 #define DBIcf_HandleError 0x008000	/* has coderef in HandleError attribute	*/
+#define DBIcf_Profile     0x010000	/* profile activity on this handle	*/
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\

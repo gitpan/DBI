@@ -6,7 +6,7 @@ See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 RECENT NEWS:
 
-    The DBI comes bundled with DBI::Shell, DBD::ADO, DBD::Proxy and
+    The DBI comes bundled with DBI::Shell, DBD::Proxy and
     DBI::ProxyServer modules. Those are still alpha releases.
 
     Note that recent additions to the DBI spec (marked *NEW*) may

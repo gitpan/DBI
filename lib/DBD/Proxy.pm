@@ -168,16 +168,16 @@ sub rollback;
 
 use vars qw(%ATTR $AUTOLOAD);
 
-%ATTR = (
+%ATTR = (	# see also %ATTR in DBD::Proxy::st
     'Warn' => 'local',
     'Active' => 'local',
     'Kids' => 'local',
     'CachedKids' => 'local',
+    'Driver' => 'local',
     'PrintError' => 'local',
     'RaiseError' => 'local',
     'RowCacheSize' => 'inherited',
     'AutoCommit' => 'cached',
-    'Database' => 'cached',
     'Statement' => 'local',
 );
 
@@ -350,13 +350,14 @@ $DBD::Proxy::st::imp_data_size = 0;
 
 use vars qw(%ATTR);
 
-%ATTR = (
+%ATTR = (	# see also %ATTR in DBD::Proxy::db
     'Warn' => 'local',
     'Active' => 'local',
     'Kids' => 'local',
     'CachedKids' => 'local',
     'PrintError' => 'local',
     'RaiseError' => 'local',
+    'Database' => 'local',
     'RowsInCache' => 'local',
     'RowCacheSize' => 'inherited',
     'NULLABLE' => 'cache_only',
@@ -377,7 +378,7 @@ sub execute ($@) {
     # new execute, so delete any cached rows from previous execute
     undef $sth->{'proxy_data'};
 
-    my $dbh = $sth->{'Database'};
+    my $dbh = $sth->FETCH('Database');
     my $client = $dbh->{'proxy_client'};
     my $rsth = $sth->{proxy_sth};
 
@@ -482,7 +483,7 @@ sub finish ($) {
     return 0 unless $rsth; # Something's out of sync
     my $no_finish = exists($sth->{'proxy_no_finish'})
  	? $sth->{'proxy_no_finish'}
-	: $sth->{Database}->{'proxy_no_finish'};
+	: $sth->FETCH('Database')->{'proxy_no_finish'};
     unless ($no_finish) {
 	my $result = eval { $rsth->finish() };
 	return DBI::set_err($sth, 1, $@) if $@;
@@ -525,7 +526,7 @@ sub FETCH ($$) {
 	if (exists($sth->{$attr})) {
 	    return $sth->{$attr};
 	}
-	return $sth->{'Database'}->{$attr};
+	return $sth->FETCH('Database')->{$attr};
     }
 
     if ($type eq 'cache_only'  &&

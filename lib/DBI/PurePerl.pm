@@ -24,13 +24,12 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.8 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.9 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
 open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
 
-warn __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n" if $DBI::dbi_debug;
 
 %DBI::last_method_except = map { $_=>1 } qw(DESTROY _set_fbav set_err);
 
@@ -149,6 +148,7 @@ sub valid_attribute {
 my $initial_setup;
 sub initial_setup {
     $initial_setup = 1;
+    warn __FILE__ . " version " . $DBI::PurePerl::VERSION . "\n" if $DBI::dbi_debug;
     untie $DBI::err;
     untie $DBI::errstr;
     untie $DBI::state;
@@ -172,8 +172,7 @@ sub  _install_method {
 	if IMA_STUB & $bitmask;
 
     push @pre_call_frag, q{
-	$imp =~ s/^(.*)::[^:]+$/$1/;
-	$method_name = $imp.'::db::'. pop @_;
+	$method_name = $imp . '::' . pop @_;
     } if IMA_FUNC_REDIRECT & $bitmask;
 
     push @pre_call_frag, q{
@@ -284,7 +283,7 @@ sub _setup_handle {
     my $h_inner = tied(%$h) || $h;
     warn "\n_setup_handle(@_)" if $DBI::dbi_debug >= 4;
     if (ref($parent) =~ /^[^:]+::dr/){
-        $h_inner->{$_} = $parent->{$_} foreach (qw(Name Version Attribution));
+        #$h_inner->{$_} ||= $parent->{$_} foreach (qw(Name Version Attribution));
         $h_inner->{Driver} = $parent;
     }
     $h_inner->{"_call_depth"} = 0;
@@ -311,7 +310,7 @@ sub constant {
 sub trace {
     my ($h, $level, $file) = @_;
     my $old_level = $level;
-    _set_trace_file($file);# if defined $file;
+    _set_trace_file($file);
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
@@ -344,9 +343,10 @@ sub _handles {
 	return $h unless wantarray;
 	return ($h, $h_inner);
     }
-    # XXX this isn't... we have an inner handle but
-    # currently have no way to get at the outer handle
-    # so we just return the inner one for both
+    # XXX this isn't okay... we have an inner handle but
+    # currently have no way to get at its outer handle,
+    # so we just warn and return the inner one for both...
+    Carp::carp("Can't return outer handle from inner handle using DBI::PurePerl");
     return $h unless wantarray;
     return ($h,$h);
 }
@@ -518,8 +518,11 @@ sub set_err {
     return $rv; # usually undef
 }
 sub trace_msg {
-    my($h,$msg,$minlevel)=@_;
-    return if $DBI::dbi_debug < ($minlevel||1);
+    my ($h, $msg, $minlevel)=@_;
+    $minlevel = 1 unless defined $minlevel;
+    #my $curlevel = (ref $h) ? $h->{TraceLevel} : 0;	# XXX
+    my $curlevel = $DBI::dbi_debug; # XXX if $DBI::dbi_debug > $curlevel;
+    return if $curlevel < $minlevel;
     print $DBI::tfh $msg;
     return 1;
 }

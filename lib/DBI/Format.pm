@@ -23,7 +23,7 @@ package DBI::Format;
 
 use Text::Abbrev;
 
-$DBI::Format::VERSION = $DBI::Format::VERSION = (qw$Revision: 11.3 $)[1];
+$DBI::Format::VERSION = $DBI::Format::VERSION = (qw$Revision: 11.4 $)[1];
 
 
 sub available_formatters {
@@ -79,6 +79,8 @@ sub formatter {
 
 package DBI::Format::Base;
 
+use DBI qw(:sql_types);
+
 sub new {
     my $class = shift;
     my $self = (@_ == 1) ? { %{shift()} } : { @_ };
@@ -87,16 +89,24 @@ sub new {
 }
 
 sub setup_fh {
-    my ($self, $fh)  = @_;
-    if (ref($fh) =~ m/glob/i) {
-    	return $fh;
-    }
+    my ($self, $fh) = @_;
+
+    # This method has grown confused as to what it's trying to do and why
+    # Partly because this module was written in pre-perl5.3 days
+    # the code in other methods originally did: $fh->print(...)
+    # because C<print $fh ...> didn't work reliably as a method call.
+    # Now the code uses C<print $fh ...> some of this may no longer be
+    # required. It's important that things like IO::Scalar handles work.
+
+    return $self->{fh} if !$fh && $self->{fh};
 
     $fh ||= \*STDOUT;
 
-    if ($fh !~ /=/) {	# not blessed
-		require FileHandle;
-		bless $fh => "FileHandle";
+    return $fh if ref($fh) =~ m/GLOB/;
+
+    unless (UNIVERSAL::can($fh,'print')) {	# not blessed
+	require FileHandle;
+	bless $fh => "FileHandle";
     }
 
     return $fh;
@@ -115,11 +125,11 @@ sub trailer {
 sub _determine_width {
     my($self , $type, $precision) = @_;
 	my $width = 
-		($type == DBI::SQL_DATE)? 8 :
-		($type == DBI::SQL_INTEGER 
+		($type == SQL_DATE)? 8 :
+		($type == SQL_INTEGER 
 			and defined $precision
 			and $precision > 15 ) ? 10 :
-		($type == DBI::SQL_NUMERIC 
+		($type == SQL_NUMERIC 
 			and defined $precision
 			and $precision > 15 ) ? 10 :
 			defined($precision) ?  $precision: 0;
@@ -134,7 +144,7 @@ package DBI::Format::Neat;
 
 sub header {
     my($self, $sth, $fh, $sep) = @_;
-    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'fh'} = $fh = $self->setup_fh($fh);
     $self->{'sth'} = $sth;
     $self->{'rows'} = 0;
     $self->{sep} = $sep if defined $sep;
@@ -162,11 +172,13 @@ sub row {
 
 package DBI::Format::Box;
 
+use DBI qw(:sql_types);
+
 @DBI::Format::Box::ISA = qw(DBI::Format::Base);
 
 sub header {
     my($self, $sth, $fh, $sep) = @_;
-    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'fh'} = $fh = $self->setup_fh($fh);
     $self->{'sth'} = $sth;
     $self->{'data'} = [];
     $self->{sep} = $sep if defined $sep;
@@ -179,13 +191,13 @@ sub header {
 	push(@widths, defined($names->[$i]) ? length($names->[$i]) : 0);
 	$type = $types->[$i];
 	push(@right_justify,
-	     ($type == DBI::SQL_NUMERIC()   ||
-	      $type == DBI::SQL_DECIMAL()   ||
-	      $type == DBI::SQL_INTEGER()   ||
-	      $type == DBI::SQL_SMALLINT()  ||
-	      $type == DBI::SQL_FLOAT()     ||
-	      $type == DBI::SQL_REAL()      ||
-	      $type == DBI::SQL_TINYINT()));
+	     ($type == SQL_NUMERIC   ||
+	      $type == SQL_DECIMAL   ||
+	      $type == SQL_INTEGER   ||
+	      $type == SQL_SMALLINT  ||
+	      $type == SQL_FLOAT     ||
+	      $type == SQL_REAL      ||
+	      $type == SQL_TINYINT));
     }
     $self->{'widths'} = \@widths;
     $self->{'right_justify'} = \@right_justify;
@@ -255,7 +267,7 @@ package DBI::Format::Raw;
 
 sub header {
     my($self, $sth, $fh, $sep) = @_;
-    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'fh'} = $fh = $self->setup_fh($fh);
     $self->{'sth'} = $sth;
     $self->{'rows'} = 0;
     $self->{sep} = $sep if defined $sep;
@@ -277,7 +289,7 @@ package DBI::Format::String;
 
 sub header {
     my($self, $sth, $fh, $sep) = @_;
-    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'fh'} = $fh = $self->setup_fh($fh);
     $self->{'sth'} = $sth;
     $self->{'data'} = [];
     $self->{sep} = $sep if defined $sep;
@@ -357,7 +369,7 @@ package DBI::Format::HTML;
 
 sub header {
     my($self, $sth, $fh) = @_;
-    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'fh'} = $fh = $self->setup_fh($fh);
     $self->{'sth'} = $sth;
     $self->{'data'} = [];
     my $types = $sth->{'TYPE'};

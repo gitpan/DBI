@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.7 2002/05/20 21:03:53 timbo Exp $
+/* $Id: DBI.xs,v 11.9 2002/06/05 03:26:39 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -852,24 +852,23 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err",1,0);	/* scalar ref	*/
 	DBIc_ATTR(imp, State)    = COPY_PARENT("State",1,0);	/* scalar ref	*/
 	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1,0);	/* scalar ref	*/
-	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1,0);	/* array ref	*/
 	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0,0);	/* scalar (int)	*/
 	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0,0);	/* scalar ref */
 	if (parent) {
 	    dbih_setup_attrib(h,"HandleError",parent,0,1);
+	    if (DBIc_has(parent_imp,DBIcf_Profile)) {
+		dbih_setup_attrib(h,"Profile",parent,0,1);
+	    }
+	    DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp);
 	}
-	if (parent)
-	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp);
-	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
+	else {
+	    DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
+	}
 
 	switch (DBIc_TYPE(imp)) {
 	case DBIt_DB:
-	    /* pre-load Driver attribute */
-	    hv_store((HV*)SvRV(h), "Driver", 6, newRV((SV*)DBIc_MY_H(parent_imp)), 0);
 	    break;
 	case DBIt_ST:
-	    /* pre-load Database attribute */
-	    hv_store((HV*)SvRV(h), "Database", 8, newRV((SV*)DBIc_MY_H(parent_imp)), 0);
 	    /* copy (alias) Statement from the sth up into the dbh	*/
 	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
 	    if (tmp_svp)
@@ -925,10 +924,11 @@ dbih_dumpcom(imp_xxh, msg, level)
     if (DBIc_is(imp_xxh, DBIcf_LongTruncOk))	sv_catpv(flags,"LongTruncOk ");
     if (DBIc_is(imp_xxh, DBIcf_MultiThread))	sv_catpv(flags,"MultiThread ");
     if (DBIc_is(imp_xxh, DBIcf_Taint))		sv_catpv(flags,"Taint ");
+    if (DBIc_is(imp_xxh, DBIcf_Profile))	sv_catpv(flags,"Profile ");
     PerlIO_printf(DBILOGFP,"%s FLAGS 0x%lx: %s\n", pad, (long)DBIc_FLAGS(imp_xxh), SvPV(flags,lna));
     PerlIO_printf(DBILOGFP,"%s TYPE %d\n",	pad, DBIc_TYPE(imp_xxh));
     PerlIO_printf(DBILOGFP,"%s PARENT %s\n",	pad, neatsvpv((SV*)DBIc_PARENT_H(imp_xxh),0));
-    PerlIO_printf(DBILOGFP,"%s KIDS %ld (%ld active)\n", pad,
+    PerlIO_printf(DBILOGFP,"%s KIDS %ld (%ld Active)\n", pad,
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
     PerlIO_printf(DBILOGFP,"%s IMP_DATA %s in '%s'\n", pad,
 	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
@@ -1035,7 +1035,6 @@ dbih_clearcom(imp_xxh)
 
     sv_free(DBIc_IMP_DATA(imp_xxh));	/* do this first	*/
     if (DBIc_TYPE(imp_xxh) <= DBIt_ST) {	/* DBIt_FD doesn't have attr */
-	sv_free(_imp2com(imp_xxh, attr.Handlers));
 	sv_free(_imp2com(imp_xxh, attr.Debug));
 	sv_free(_imp2com(imp_xxh, attr.State));
 	sv_free(_imp2com(imp_xxh, attr.Err));
@@ -1269,6 +1268,43 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	DBIc_set(imp_xxh,DBIcf_HandleError, on);
 	cacheit = 1; /* child copy setup by dbih_setup_handle() */
     }
+    else if (strEQ(key, "Profile")) {
+	char *class = "DBI::Profile";
+	if (on && (!SvROK(valuesv) || (SvTYPE(SvRV(valuesv)) != SVt_PVHV)) ) {
+	    /* not a hash ref so use DBI::Profile to work out what to do */
+	    dSP;
+	    I32 returns;
+	    TAINT_NOT; /* the require is presumed innocent till proven guilty */
+	    perl_require_pv("DBI/Profile.pm");
+	    if (SvTRUE(ERRSV)) {
+		STRLEN lna;
+		warn("Can't load %s: %s", class, SvPV(ERRSV,lna));
+		valuesv = &sv_undef;
+	    }
+	    else {
+		PUSHMARK(SP);
+		XPUSHs(sv_2mortal(newSVpv(class,0)));
+		XPUSHs(valuesv);
+		PUTBACK;
+		returns = perl_call_method("_auto_new", G_SCALAR);
+		if (returns != 1)
+		    croak("_auto_new");
+		SPAGAIN;
+		valuesv = POPs;
+		PUTBACK;
+	    }
+	    on = SvTRUE(valuesv); /* in case it returns undef */
+	}
+	if (on && !sv_isobject(valuesv)) {
+	    /* not blessed already - so default to DBI::Profile */
+	    HV *stash;
+	    perl_require_pv(class);
+	    stash = gv_stashpv(class, GV_ADDWARN);
+	    sv_bless(valuesv, stash);
+	}
+	DBIc_set(imp_xxh,DBIcf_Profile, on);
+	cacheit = 1; /* child copy setup by dbih_setup_handle() */
+    }
     else if (strEQ(key, "ShowErrorStatement")) {
 	DBIc_set(imp_xxh,DBIcf_ShowErrorStatement, on);
     }
@@ -1333,11 +1369,6 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	cacheit = 1;
     }
     if (cacheit) {
-	/* old code
-	SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, 1);
-	SvREFCNT_dec(*svp);
-	*svp = SvREFCNT_inc(valuesv);
-	*/
 	hv_store((HV*)SvRV(h), key, keylen, newSVsv(valuesv), 0);
     }
     return TRUE;
@@ -1451,7 +1482,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     ) {
 	D_imp_from_child(imp_dbh, imp_dbh_t, imp_xxh);
 	valuesv = newRV((SV*)DBIc_MY_H(imp_dbh));
-	cacheit = TRUE;	/* XXX may change? */
+	cacheit = FALSE;  /* else create ref loop */
     }
     else if (htype==DBIt_ST && keylen==11 && strEQ(key, "RowsInCache")) {
 	valuesv = &sv_undef;
@@ -1570,61 +1601,16 @@ dbih_find_attr(h, keysv, copydown, spare)
 
 static SV *
 dbih_event(hrv, evtype, a1, a2)
-    SV *hrv;    /* ref to inner hash */
+    SV *hrv;
     char *evtype;
     SV *a1, *a2;
 {
-    dPERINTERP;
-    dSP;
-    D_imp_xxh(hrv);
     /* We arrive here via DBIh_EVENT* macros (see DBIXS.h) called from	*/
     /* DBD driver C code OR $h->event() method (in DBD::_::common)	*/
     /* If an array of handlers is defined then call them in reverse	*/
     /* order until one returns true */
-
-    AV *handlers_av = (AV*)DBIc_HANDLERS(imp_xxh);
-    SV *status = &sv_undef;
-    SV *evtype_sv = Nullsv;
-    int i;
-
-    if (DBIS->debug >= 3)
-	PerlIO_printf(DBILOGFP,"    %s EVENT %s %s on %s\n",
-	    evtype, neatsvpv(a1,0), neatsvpv(a2,0), neatsvpv(hrv,0));
-
-    if (SvTYPE(handlers_av) != SVt_PVAV) {	/* must be \@ or undef	*/
-	if (SvOK(handlers_av))
-	    warn("%s->{Handlers} (%s) is not an array reference or undef",
-		neatsvpv(hrv,0), neatsvpv((SV*)handlers_av,0));
-	return &sv_undef;
-    }
-
-    i = av_len(handlers_av) + 1;
-    while(--i >= 0) {	/* Call each handler in turn	*/
-	SV *sv = *av_fetch(handlers_av, i, 1);
-	if (!evtype_sv)
-	    evtype_sv = sv_2mortal(newSVpv(evtype,0));
-	/* call handler */
-/* XXX probably need a better way. Note that DBD::ExampleP uses this! */
-	PUSHMARK(sp);
-	EXTEND(sp, 4);
-	PUSHs(hrv);
-	PUSHs(evtype_sv);
-	if (SvOK(a2) || SvOK(a1)) { PUSHs(a1); }
-	if (SvOK(a2))             { PUSHs(a2); }
-	PUTBACK;
-	perl_call_sv(sv, G_SCALAR);	/* NOTE: May longjmp (die)	*/
-	SPAGAIN;
-	status = POPs;
-	PUTBACK;
-	if (DBIS->debug >= 3)
-	    PerlIO_printf(DBILOGFP, "    %s handler%d %s returned %s\n",
-		    neatsvpv(hrv,0), i,
-		    neatsvpv(sv,0), neatsvpv(status,0));
-	if (SvTRUE(status))	/* event was handled so		*/
-	    break;		/* don't call any more handlers	*/
-    }
-
-    return status;	/* true if event was 'handled' (not defined)	*/
+    /* XXX VERY OLD INTERFACE/CONCEPT MAY GO SOON */
+    return &sv_undef;
 }
 
 
@@ -1797,6 +1783,216 @@ clear_cached_kids(h, imp_xxh, meth_name, trace_level)
     }
 }
 
+static double
+dbi_highres_time() {
+# ifdef HAS_GETTIMEOFDAY
+    struct timeval when;
+    gettimeofday(&when, (struct timezone *) 0);
+    return when.tv_sec + (when.tv_usec / 1000000.0);
+# else	/* per-second is almost useless */
+    return time(NULL);
+# endif
+}
+
+static void
+dbi_profile(SV *h, imp_xxh_t *imp_xxh, char *statement, SV *method, double t1, double t2)
+{
+#define DBIprof_MAX_PATH_ELEM	9	/* STATEMENT->$Statement->$method */
+#define DBIprof_COUNT		0
+#define DBIprof_TOTAL_TIME	1
+#define DBIprof_FIRST_TIME	2
+#define DBIprof_MIN_TIME	3
+#define DBIprof_MAX_TIME	4
+#define DBIprof_FIRST_CALLED	5
+#define DBIprof_LAST_CALLED	6
+#define DBIprof_max_index	6
+    double ti = t2 - t1;
+    char *path[DBIprof_MAX_PATH_ELEM+1];
+    int idx = -1;
+    STRLEN lna;
+    SV *profile;
+    SV *tmp;
+    AV *av;
+
+    int call_depth = DBIc_CALL_DEPTH(imp_xxh);
+    int parent_call_depth = DBIc_PARENT_COM(imp_xxh) ? DBIc_CALL_DEPTH(DBIc_PARENT_COM(imp_xxh)) : 0;
+    /* Only count calls originating from the application code	*/
+    /* *MAY* be made configurable later				*/
+    /* XXX BEWARE that if nested call profile data is merged	*/
+    /* with the non-nested data then we'll get invalid results	*/
+    if (call_depth > 1 || parent_call_depth > 0)
+	return;
+
+    if (!DBIc_has(imp_xxh, DBIcf_Profile))
+	return;
+
+    profile = *hv_fetch((HV*)SvRV(h), "Profile", 7, 1);
+    if (!( profile && SvROK(profile) && SvTYPE(SvRV(profile))==SVt_PVHV )) {
+	DBIc_set(imp_xxh, DBIcf_Profile, 0); /* disable */
+	if (!dirty)
+	    warn("Profile attribute isn't a hash ref (%s,%d)", neatsvpv(profile,0), SvTYPE(profile));
+	return;
+    }
+
+    if (!statement) {
+	SV **psv = hv_fetch((HV*)SvRV(h), "Statement", 9, 0);
+	statement = (psv && SvOK(*psv)) ? SvPV(*psv, lna) : "";
+    }
+    if (DBIS->debug >= 4)
+	PerlIO_printf(DBILOGFP, "dbi_profile %s %f %d %d q{%s}\n",
+		neatsvpv((SvTYPE(method)==SVt_PVCV) ? (SV*)CvGV(method) : method, 0),
+		ti, call_depth, parent_call_depth, statement);
+
+    idx = 0;
+    path[idx++] = "Data";
+    tmp = *hv_fetch((HV*)SvRV(profile), "Path", 4, 1);
+    if (SvROK(tmp) && SvTYPE(SvRV(tmp))==SVt_PVCV) {
+	/* call sub, use returned list of values as path */
+	/* if no values returned then don't save data	*/
+	path[idx++] = Nullch;
+    }
+    else if (SvROK(tmp) && SvTYPE(SvRV(tmp))==SVt_PVAV) {
+	int len;
+	av = (AV*)SvRV(tmp);
+	len = av_len(av); /* -1=empty, 0=one element */
+	for ( ;(idx-1) <= len && idx < DBIprof_MAX_PATH_ELEM; ++idx) {
+	    SV *pathsv = AvARRAY(av)[idx-1];
+	    char *p;
+	    switch(SvIOK(pathsv) ? SvIV(pathsv) : 0) {
+	    case -2100000001:
+		p = statement;
+		break;
+	    case -2100000002:
+		p = (SvTYPE(method)==SVt_PVCV)
+			? GvNAME(CvGV(method))
+			: (isGV(method) ? GvNAME(method) : SvPV(method,lna));
+		break;
+	    case -2100000003:
+		if (SvTYPE(method) == SVt_PVCV) {
+		    p = SvPV((SV*)CvGV(method), lna);
+		}
+		else if (isGV(method)) {
+		    /* just using SvPV(method,lna) sometimes causes an error:	*/
+		    /* "Can't coerce GLOB to string" so we use gv_efullname()	*/
+		    SV *tmpsv = sv_2mortal(newSVpv("",0));
+		    gv_efullname(tmpsv, (GV*)method);
+		    p = SvPV(tmpsv,lna);
+		}
+		else {
+		    p = SvPV(method,lna);
+		}
+		break;
+	    default:
+		p = SvPV(pathsv,lna);
+		break;
+	    }
+	    path[idx] = p;
+	}
+    }
+    else if (SvOK(tmp)) {
+	DBIc_set(imp_xxh, DBIcf_Profile, 0); /* disable */
+	warn("Profile Path attribute isn't valid (%s)", neatsvpv(tmp,0));
+	return;
+    }
+    else {
+	path[idx++] = statement;
+    }
+    path[idx++] = Nullch;
+
+    tmp = profile;
+    for (idx=0; path[idx]; ++idx) {
+	if (SvROK(tmp))
+	    tmp = SvRV(tmp);
+	else if (SvTYPE(tmp) != SVt_PVHV) {
+	    HV *hv = newHV();
+	    if (SvOK(tmp))
+		warn("Profile data element %s replaced with new hash ref", neatsvpv(tmp,0));
+	    sv_setsv(tmp, newRV_noinc((SV*)hv));
+	    tmp = (SV*)hv;
+	}
+	if (SvTYPE(tmp) != SVt_PVHV)
+	    break;
+	tmp = *hv_fetch((HV*)tmp, path[idx], strlen(path[idx]), 1);
+	/* warn("%d hv_fetch %s = %s", idx, path[idx], neatsvpv(tmp,0)); */
+    }
+    if (!SvOK(tmp)) {
+	av = newAV();
+	sv_setsv(tmp, newRV_noinc((SV*)av));
+	av_store(av, DBIprof_COUNT,		newSViv(1));
+	av_store(av, DBIprof_TOTAL_TIME,	newSVnv(ti));
+	av_store(av, DBIprof_FIRST_TIME,	newSVnv(ti));
+	av_store(av, DBIprof_MIN_TIME,		newSVnv(ti));
+	av_store(av, DBIprof_MAX_TIME,		newSVnv(ti));
+	av_store(av, DBIprof_FIRST_CALLED,	newSVnv(t1));
+	av_store(av, DBIprof_LAST_CALLED,	newSVnv(t1));
+        return;
+    }
+    if (SvROK(tmp))
+	tmp = SvRV(tmp);
+    if (SvTYPE(tmp) != SVt_PVAV)
+	croak("Invalid Profile data leaf element at depth %d: %s (type %d)",
+		idx, neatsvpv(tmp,0), SvTYPE(tmp));
+    av = (AV*)tmp;
+    sv_inc( *av_fetch(av, DBIprof_COUNT, 1));
+    tmp = *av_fetch(av, DBIprof_TOTAL_TIME, 1);
+    sv_setnv(tmp, SvNV(tmp) + ti);
+    tmp = *av_fetch(av, DBIprof_MIN_TIME, 1);
+    if (ti < SvNV(tmp)) sv_setnv(tmp, ti);
+    tmp = *av_fetch(av, DBIprof_MAX_TIME, 1);
+    if (ti > SvNV(tmp)) sv_setnv(tmp, ti);
+    sv_setnv( *av_fetch(av, DBIprof_LAST_CALLED, 1), t1);
+    return;
+}
+
+static void
+dbi_profile_merge(SV *dest, SV *increment)
+{
+    AV *d_av, *i_av;
+    SV *tmp;
+    double i_nv;
+    if (!SvROK(dest)      || SvTYPE(SvRV(dest))      != SVt_PVAV
+    ||  !SvROK(increment) || SvTYPE(SvRV(increment)) != SVt_PVAV)
+	croak("dbi_profile_merge(%s, %s) requires array refs",
+		neatsvpv(dest,0), neatsvpv(dest,0));
+    i_av = (AV*)SvRV(increment);
+    d_av = (AV*)SvRV(dest);
+
+    if (av_len(d_av) < DBIprof_max_index) {
+	int idx;
+	av_extend(d_av, DBIprof_max_index);
+	for(idx=0; idx<=DBIprof_max_index; ++idx) {
+	    tmp = *av_fetch(d_av, idx, 1);
+	    if (!SvOK(tmp))
+		sv_setiv(tmp, 0);
+	}
+    }
+
+    tmp = *av_fetch(d_av, DBIprof_COUNT, 1);
+    sv_setiv( tmp, SvIV(tmp) + SvIV( *av_fetch(i_av, DBIprof_COUNT, 1)) );
+
+    tmp = *av_fetch(d_av, DBIprof_TOTAL_TIME, 1);
+    sv_setnv( tmp, SvNV(tmp) + SvNV( *av_fetch(i_av, DBIprof_TOTAL_TIME, 1)) );
+
+    tmp = *av_fetch(d_av, DBIprof_FIRST_TIME, 1);
+    sv_setnv( tmp, SvNV(tmp) + SvNV( *av_fetch(i_av, DBIprof_FIRST_TIME, 1)) );
+
+    i_nv = SvNV(*av_fetch(i_av, DBIprof_MIN_TIME, 1));
+    tmp  =      *av_fetch(d_av, DBIprof_MIN_TIME, 1);
+    if (i_nv < SvNV(tmp)) sv_setnv(tmp, i_nv);
+
+    i_nv = SvNV(*av_fetch(i_av, DBIprof_MAX_TIME, 1));
+    tmp  =      *av_fetch(d_av, DBIprof_MAX_TIME, 1);
+    if (i_nv > SvNV(tmp)) sv_setnv(tmp, i_nv);
+
+    i_nv = SvNV(*av_fetch(i_av, DBIprof_FIRST_CALLED, 1));
+    tmp  =      *av_fetch(d_av, DBIprof_FIRST_CALLED, 1);
+    if (i_nv < SvNV(tmp)) sv_setnv(tmp, i_nv);
+
+    i_nv = SvNV(*av_fetch(i_av, DBIprof_LAST_CALLED, 1));
+    tmp  =      *av_fetch(d_av, DBIprof_LAST_CALLED, 1);
+    if (i_nv > SvNV(tmp)) sv_setnv(tmp, i_nv);
+}
+
 
 /* ----------------------------------------------------------------- */
 /* ---   The DBI dispatcher. The heart of the perl DBI.          --- */
@@ -1818,6 +2014,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     int keep_error = FALSE;
     int i, outitems;
     int call_depth;
+    double profile_t1 = 0.0;
 
     char	*meth_name = GvNAME(CvGV(cv));
     dbi_ima_t	*ima       = (dbi_ima_t*)CvXSUBANY(cv).any_ptr;
@@ -1825,10 +2022,6 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     SV		*imp_msv   = NULL; /* handle implementors method (GV or CV) */
     SV		*qsv       = NULL; /* quick result from a shortcut method   */
 
-
-    if (!SvROK(h) || SvTYPE(SvRV(h)) != SVt_PVHV) {
-        croak("%s: handle %s is not a hash reference",meth_name,neatsvpv(h,0));
-    }
 
     if (debug >= 9) {
 	PerlIO *logfp = DBILOGFP;
@@ -1888,6 +2081,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     }
 
+    if (!SvROK(h) || SvTYPE(SvRV(h)) != SVt_PVHV) {
+        croak("%s: handle %s is not a hash reference",meth_name,neatsvpv(h,0));
+    }
+
     /* If h is a tied hash ref, switch to the inner ref 'behind' the tie.
        This means *all* DBI methods work with the inner (non-tied) ref.
        This makes it much easier for methods to access the real hash
@@ -1922,6 +2119,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     }
 
     imp_xxh = DBIh_COM(h); /* get common Internal Handle Attributes	*/
+
+    if (DBIc_has(imp_xxh,DBIcf_Profile)) {
+	profile_t1 = dbi_highres_time(); /* just get start time here */
+    }
 
     if (tainting && items > 1		      /* method call has args	*/
 	&& DBIc_is(imp_xxh, DBIcf_Taint)      /* taint checks requested	*/
@@ -1968,6 +2169,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    if (ima->flags & IMA_COPY_STMT) { /* execute() */
 		SV *parent = DBIc_PARENT_H(imp_xxh);
 		SV **tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
+		/* XXX sv_copy() if Profiling? */
 		hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*tmp_svp), 0);
 	    }
 	}
@@ -2189,6 +2391,46 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
     }
 
+    if (tainting
+	&& DBIc_is(imp_xxh, DBIcf_Taint)      /* taint checks requested	*/
+	&& 0/* XXX disabled*/ /* !(ima && ima->flags & IMA_NO_TAINT_OUT) */
+    ) {
+	dTHR;
+	TAINT; /* affects sv_setsv()'s within same perl statement */
+	for(i=0; i < outitems; ++i) {
+	    I32 avi;
+	    char *p;
+	    SV *s;
+	    SV *agg = ST(i);
+	    if ( !SvROK(agg) )
+		continue;
+	    agg = SvRV(agg);
+#define DBI_OUT_TAINTABLE(s) (!SvREADONLY(s) && !SvTAINTED(s))
+	    switch (SvTYPE(agg)) {
+	    case SVt_PVAV:
+		for(avi=0; avi <= AvFILL((AV*)agg); ++avi) {
+		    s = AvARRAY((AV*)agg)[avi];
+		    if (DBI_OUT_TAINTABLE(s))
+			SvTAINTED_on(s);
+		}
+		break;
+	    case SVt_PVHV:
+		hv_iterinit((HV*)agg);
+		while( (s = hv_iternextsv((HV*)agg, &p, &avi)) ) {
+		    if (DBI_OUT_TAINTABLE(s))
+			SvTAINTED_on(s);
+		}
+		break;
+	    default:
+		if (DBIc_WARN(imp_xxh)) {
+		    PerlIO_printf(DBILOGFP,"Don't know how to taint contents of returned %s (type %ld)",
+			neatsvpv(agg,0), SvTYPE(agg));
+		}
+	    }
+	}
+    }
+
+
     if (   !keep_error				/* so would be a new error	*/
 	&& SvTRUE(DBIc_ERR(imp_xxh))		/* and an error exists		*/
 	&& call_depth <= 1			/* skip nested (internal) calls	*/
@@ -2198,23 +2440,24 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     ) {
 	SV *msg;
 	SV **hook_svp = 0;
-	SV **statement;
+	SV **statement = NULL;
+	char *err_meth_name = meth_name;
 	char intro[200];
 
 	if (*meth_name=='s' && strEQ(meth_name,"set_err")) {
 	    SV **sem_svp = hv_fetch((HV*)SvRV(h), "dbi_set_err_method", 18, GV_ADDWARN);
 	    if (SvOK(*sem_svp))
-		meth_name = SvPV(*sem_svp,lna);
+		err_meth_name = SvPV(*sem_svp,lna);
 	}
 
-	sprintf(intro,"%s %s failed: ", HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name);
+	sprintf(intro,"%s %s failed: ", HvNAME(DBIc_IMP_STASH(imp_xxh)), err_meth_name);
 	msg = sv_2mortal(newSVpv(intro,0));
 	sv_catsv(msg, DBIc_ERRSTR(imp_xxh));
 
 	if (    DBIc_has(imp_xxh, DBIcf_ShowErrorStatement)
 	    && (DBIc_TYPE(imp_xxh) == DBIt_ST
-		|| strEQ(meth_name,"prepare")
-		|| strEQ(meth_name,"do")
+		|| strEQ(err_meth_name,"prepare")
+		|| strEQ(err_meth_name,"do")
 		)
 	    && (statement = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
 	    &&  statement && SvOK(*statement)
@@ -2223,6 +2466,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    sv_catsv(msg, *statement);
 	    sv_catpv(msg, "''])");
 	}
+
 	if (DBIc_has(imp_xxh, DBIcf_HandleError)
 		&& (hook_svp=hv_fetch((HV*)SvRV(h),"HandleError",11,0))
 		&&  hook_svp && SvOK(*hook_svp)
@@ -2259,6 +2503,11 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    (result ? ")" : "")
 		);
 	}
+
+	if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines below */
+	    dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
+		profile_t1, dbi_highres_time());
+	}
 	if (!hook_svp) {
 	    if (DBIc_has(imp_xxh, DBIcf_PrintError))
 		warn("%s", SvPV(msg,lna));
@@ -2266,44 +2515,9 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		croak("%s", SvPV(msg,lna));
 	}
     }
-
-    if (tainting
-	&& DBIc_is(imp_xxh, DBIcf_Taint)      /* taint checks requested	*/
-	&& 0/*disabled*/ /* !(ima && ima->flags & IMA_NO_TAINT_OUT) */
-    ) {
-	dTHR;
-	TAINT; /* affects sv_setsv()'s within same perl statement */
-	for(i=0; i < outitems; ++i) {
-	    I32 avi;
-	    char *p;
-	    SV *s;
-	    SV *agg = ST(i);
-	    if ( !SvROK(agg) )
-		continue;
-	    agg = SvRV(agg);
-#define DBI_OUT_TAINTABLE(s) (!SvREADONLY(s) && !SvTAINTED(s))
-	    switch (SvTYPE(agg)) {
-	    case SVt_PVAV:
-		for(avi=0; avi <= AvFILL((AV*)agg); ++avi) {
-		    s = AvARRAY((AV*)agg)[avi];
-		    if (DBI_OUT_TAINTABLE(s))
-			SvTAINTED_on(s);
-		}
-		break;
-	    case SVt_PVHV:
-		hv_iterinit((HV*)agg);
-		while( (s = hv_iternextsv((HV*)agg, &p, &avi)) ) {
-		    if (DBI_OUT_TAINTABLE(s))
-			SvTAINTED_on(s);
-		}
-		break;
-	    default:
-		if (DBIc_WARN(imp_xxh)) {
-		    PerlIO_printf(DBILOGFP,"Don't know how to taint contents of returned %s (type %ld)",
-			neatsvpv(agg,0), SvTYPE(agg));
-		}
-	    }
-	}
+    else if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines above */
+	dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
+		profile_t1, dbi_highres_time());
     }
 
     XSRETURN(outitems);
@@ -2914,6 +3128,44 @@ _svdump(sv)
     sv_dump(sv);
 #endif
     }
+
+
+SV *
+dbi_profile(h, statement, method, t1, t2)
+    SV *h
+    SV *statement
+    SV *method
+    double t1
+    double t2
+    CODE:
+    D_imp_xxh(h);
+    STRLEN lna = 0;
+    dbi_profile(h, imp_xxh,
+	SvOK(statement) ? SvPV(statement,lna) : Nullch,
+	SvROK(method)   ? SvRV(method)        : method,
+	t1, t2
+    );
+    RETVAL = &sv_undef;
+    OUTPUT:
+    RETVAL
+
+
+SV *
+dbi_profile_merge(dest, ...)
+    SV * dest
+    CODE:
+    {
+	if (!SvROK(dest) || SvTYPE(SvRV(dest)) != SVt_PVAV)
+	    croak("dbi_profile_merge(%s,...) not an array reference", neatsvpv(dest,0));
+	/* items==2 for dest + 1 arg, ST(0) is dest, ST(1) is first arg */
+	while (--items >= 1) {
+	    SV *thingy = ST(items); /* currently has to be an array ref */
+	    dbi_profile_merge(dest, thingy);
+	}
+	RETVAL = newSVsv(*av_fetch((AV*)SvRV(dest), DBIprof_TOTAL_TIME, 1));
+    }
+    OUTPUT:
+    RETVAL
 
 
 MODULE = DBI   PACKAGE = DBI::var
