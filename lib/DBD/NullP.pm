@@ -14,7 +14,6 @@
 #   License or the Artistic License, as specified in the Perl README file.
 
     $drh = undef;	# holds driver handle once initialised
-    $err = 0;		# The $DBI::err value
 
     sub driver{
 	return $drh if $drh;
@@ -105,10 +104,6 @@
 	}
 	$sth->finish;     # no more data so finish
 	return undef;
-    }
-
-    sub finish {
-	my($sth) = @_;
     }
 
     sub FETCH {

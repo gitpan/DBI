@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.46"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.47"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -115,7 +115,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.46.
+This is the DBI specification that corresponds to the DBI version 1.47.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -298,16 +298,18 @@ my $dbd_prefix_registry = {
   best_    => { class => 'DBD::BestWins',	},
   csv_     => { class => 'DBD::CSV',		},
   db2_     => { class => 'DBD::DB2',		},
-  dbm_     => { class => 'DBD::DBM',		},
   dbi_     => { class => 'DBI',			},
+  dbm_     => { class => 'DBD::DBM',		},
   df_      => { class => 'DBD::DF',		},
   f_       => { class => 'DBD::File',		},
   file_    => { class => 'DBD::TextFile',	},
   ib_      => { class => 'DBD::InterBase',	},
   ing_     => { class => 'DBD::Ingres',		},
   ix_      => { class => 'DBD::Informix',	},
+  jdbc_    => { class => 'DBD::JDBC',		},
   msql_    => { class => 'DBD::mSQL',		},
   mysql_   => { class => 'DBD::mysql',		},
+  mx_      => { class => 'DBD::Multiplex',	},
   nullp_   => { class => 'DBD::NullP',		},
   odbc_    => { class => 'DBD::ODBC',		},
   ora_     => { class => 'DBD::Oracle',		},
@@ -316,9 +318,9 @@ my $dbd_prefix_registry = {
   rdb_     => { class => 'DBD::RDB',		},
   sapdb_   => { class => 'DBD::SAP_DB',		},
   solid_   => { class => 'DBD::Solid',		},
+  sponge_  => { class => 'DBD::Sponge',		},
   sql_     => { class => 'SQL::Statement',	},
   syb_     => { class => 'DBD::Sybase',		},
-  sponge_  => { class => 'DBD::Sponge',		},
   tdat_    => { class => 'DBD::Teradata',	},
   tmpl_    => { class => 'DBD::Template',	},
   tmplss_  => { class => 'DBD::TemplateSS',	},
@@ -330,7 +332,9 @@ my $dbd_prefix_registry = {
 
 sub dump_dbd_registry {
     require Data::Dumper;
-    print Data::Dumper::Dump($dbd_prefix_registry);
+    local $Data::Dumper::Sortkeys=1;
+    local $Data::Dumper::Indent=1;
+    print Data::Dumper->Dump([$dbd_prefix_registry], [qw($dbd_prefix_registry)]);
 }
 
 # --- Dynamically create the DBI Standard Interface
@@ -1400,8 +1404,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	$drh->STORE('CachedKids', $cache = {}) unless $cache;
 
 	my @attr_keys = $attr ? sort keys %$attr : ();
-	my $key = join "~~", $dsn, $user||'', $auth||'',
-		$attr ? (@attr_keys,@{$attr}{@attr_keys}) : ();
+	my $key = do { local $^W; # silence undef warnings
+	    join "~~", $dsn, $user||'', $auth||'', $attr ? (@attr_keys,@{$attr}{@attr_keys}) : ()
+	};
 	my $dbh = $cache->{$key};
 	if ($dbh && $dbh->FETCH('Active') && eval { $dbh->ping }) {
 	    # XXX warn if BegunWork?
@@ -2272,25 +2277,109 @@ remember that the placeholder substitutes for the whole string.
 So you should use "C<... LIKE ? ...>" and include any wildcard
 characters in the value that you bind to the placeholder.
 
-B<Null Values>
+B<NULL Values>
 
-Undefined values, or C<undef>, can be used to indicate null values.
+Undefined values, or C<undef>, are used to indicate NULL values.
+You can insert update columns with a NULL value as you would a
+non-NULL value.  Consider these examples that insert and update the
+column C<product_code> with a NULL value:
+
+  $sth = $dbh->prepare(qq{
+    INSERT INTO people (name, age) VALUES (?, ?)
+  });
+  $sth->execute("Joe Bloggs", undef);
+
+  $sth = $dbh->prepare(qq{
+    UPDATE people SET age = ? WHERE name = ?
+  });
+  $sth->execute(undef, "Joe Bloggs");
+
 However, care must be taken in the particular case of trying to use
-null values to qualify a C<SELECT> statement. Consider:
+NULL values to qualify a C<WHERE> clause.  Consider:
 
-  SELECT description FROM products WHERE product_code = ?
+  SELECT name FROM people WHERE age = ?
 
 Binding an C<undef> (NULL) to the placeholder will I<not> select rows
-which have a NULL C<product_code>! Refer to the SQL manual for your database
+which have a NULL C<product_code>!  At least for database engines that
+conform to the SQL standard.  Refer to the SQL manual for your database
 engine or any SQL book for the reasons for this.  To explicitly select
-NULLs you have to say "C<WHERE product_code IS NULL>" and to make that
-general you have to say:
+NULLs you have to say "C<WHERE product_code IS NULL>".
 
-  ... WHERE (product_code = ? OR (? IS NULL AND product_code IS NULL))
+A common issue is to have a code fragment handle a value that could be
+either C<defined> or C<undef> (non-NULL or NULL) in a C<WHERE> clause.
+A general way to do this is:
 
-and bind the same value to both placeholders. Sadly, that more general
-syntax doesn't work for Sybase and MS SQL Server. However on those two
-servers the original "C<product_code = ?>" syntax works for binding nulls.
+  if (defined $age) {
+      push @sql_qual, "age = ?";
+      push @sql_bind, $age;
+  }
+  else {
+      push @sql_qual, "age IS NULL";
+  }
+  $sth = $dbh->prepare(qq{
+      SELECT id FROM products WHERE }.join(" AND ", @sql_qual).qq{
+  });
+  $sth->execute(@sql_bind);
+
+If your WHERE clause contains many "NULLs-allowed" columns, you'll
+need to manage many combinations of statements and this approach
+rapidly becomes more complex.
+
+A better solution would be to design a single C<WHERE> clause that
+supports both NULL and non-NULL comparisons.  Several examples of
+C<WHERE> clauses that do this are presented below.  But each example
+lacks portability, robustness, or simplicity.  Whether an example
+is supported on your database engine depends on what SQL extensions it
+supports, and where it can support the C<?> parameter in a statement.
+
+  0) age = ?
+  1) NVL(age, xx) = NVL(?, xx)
+  2) ISNULL(age, xx) = ISNULL(?, xx)
+  3) DECODE(age, ?, 1, 0) = 1
+  4) age = ? OR (age IS NULL AND ? IS NULL)
+  5) age = ? OR (age IS NULL AND SP_ISNULL(?) = 1)
+  6) age = ? OR (age IS NULL AND ? = 1)
+
+Statements formed with the above C<WHERE> clauses require execute
+statements as follows:
+
+  0-3) $sth->execute($age);
+  4,5) $sth->execute($age, $age);
+  6)   $sth->execute($age, defined($age)?0:1);
+
+Example 0 should not work (as mentioned earlier), but may work on
+a few database engines anyway.
+
+Examples 1 and 2 are not robust: they require that you provide a
+valid column value xx (e.g. '~') which is not present in any row.
+That means you must have some notion of what data won't be stored
+in the column, and expect clients to adhere to that.
+
+Example 5 requires that you provide a stored procedure (SP_ISNULL
+in this example) that acts as a function: it checks whether a value
+is null, and returns 1 if it is, or 0 if not.
+
+Example 6, the least simple, is probably the most portable, i.e., it
+should work with with most, if not all, database engines.
+
+Here is a table that indicates which examples above are known to work on
+various database engines:
+
+              -----Examples------
+              0  1  2  3  4  5  6
+              -  -  -  -  -  -  -
+  Oracle 9    N           Y 
+  Informix    N  N  N  Y  N  Y  Y
+  MS SQL      
+  DB2
+  Sybase
+  MySQL 4
+
+DBI provides a sample perl script that will test the examples above
+on your database engine and tell you which ones work.  It is located
+in the F<ex/> subdirectory of the DBI source distribution, or here:
+L<http://svn.perl.org/modules/dbi/trunk/ex/perl_dbi_nulls_test.pl>
+Please use the script to help us fill-in and maintain this table.
 
 B<Performance>
 
@@ -2414,9 +2503,17 @@ There is I<no standard> for the text following the driver name. Each
 driver is free to use whatever syntax it wants. The only requirement the
 DBI makes is that all the information is supplied in a single string.
 You must consult the documentation for the drivers you are using for a
-description of the syntax they require. (Where a driver author needs
-to define a syntax for the C<$data_source>, it is recommended that
-they follow the ODBC style, shown in the last example above.)
+description of the syntax they require.
+
+It is recommended that drivers support the ODBC style, shown in the
+last example above. It is also recommended that that they support the
+three common names 'C<host>', 'C<port>', and 'C<database>' (plus 'C<db>'
+as an alias for C<database>). This simplifies automatic construction
+of basic DSNs: C<"dbi:$driver:database=$db;host=$host;port=$port">.
+Drivers should aim to 'do something reasonable' when given a DSN
+in this form, but if any part is meaningless for that driver (such
+as 'port' for Informix) it should generate an error if that part
+is not empty.
 
 If the environment variable C<DBI_AUTOPROXY> is defined (and the
 driver in C<$data_source> is not "C<Proxy>") then the connect request
@@ -2527,9 +2624,38 @@ behaviour of persistent connections implemented by Apache::DBI.
 
 Caching connections can be useful in some applications, but it can
 also cause problems, such as too many connections, and so should
-be used with care.
+be used with care. In particular, avoid changing the attributes of
+a database handle created via connect_cached() because it will affect
+other code that may be using the same handle.
 
-The cache can be accessed (and cleared) via the L</CachedKids> attribute.
+Where multiple separate parts of a program are using connect_cached()
+to connect to the same database with the same (initial) attributes
+it is a good idea to add a private attribute to the connect_cached()
+call to effectively limit the scope of the caching. For example:
+
+  DBI->connect_cached(..., { private_foo_cachekey => "Bar", ... });
+
+Handles returned from that connect_cached() call will only be returned
+by other connect_cached() call elsewhere in the code if those other
+calls also pass in the same attribute values, including the private one.
+(I've used C<private_foo_cachekey> here as an example, you can use
+any attribute name with a C<private_> prefix.)
+
+Taking that one step further, you can limit a particular connect_cached()
+call to return handles unique to that one place in the code by setting the
+private attribute to a unique value for that place:
+
+  DBI->connect_cached(..., { private_foo_cachekey => __FILE__.__LINE__, ... });
+
+By using a private attribute you still get connection caching for
+the individual calls to connect_cached() but, by making separate
+database conections for separate parts of the code, the database
+handles are isolated from any attribute changes made to other handles.
+
+The cache can be accessed (and cleared) via the L</CachedKids> attribute:
+
+  my $CachedKids_hashref = $dbh->{Driver}->{CachedKids};
+  %$CachedKids_hashref = () if $CachedKids_hashref;
 
 
 =item C<available_drivers>
@@ -3391,14 +3517,15 @@ does not support it must arrange to return C<undef> as the attribute value.
 =item C<LongReadLen> (unsigned integer, inherited)
 
 The C<LongReadLen> attribute may be used to control the maximum
-length of 'long' fields ("blob", "memo", etc.) which the driver will
+length of 'long' type fields (LONG, BLOB, CLOB, MEMO, etc.) which the driver will
 read from the database automatically when it fetches each row of data.
 
 The C<LongReadLen> attribute only relates to fetching and reading
 long values; it is not involved in inserting or updating them.
 
-A value of 0 means not to automatically fetch any long data. (C<fetch>
-should return C<undef> for long fields when C<LongReadLen> is 0.)
+A value of 0 means not to automatically fetch any long data.
+Drivers may return undef or an empty string for long fields when
+C<LongReadLen> is 0.
 
 The default is typically 0 (zero) bytes but may vary between drivers.
 Applications fetching long fields should set this value to slightly
@@ -3418,17 +3545,21 @@ too generous. If you can't be sure what value to use you could
 execute an extra select statement to determine the longest value.
 For example:
 
-  $dbh->{LongReadLen} = $dbh->selectrow_array{qq{
-      SELECT MAX(long_column_name) FROM table WHERE ...
+  $dbh->{LongReadLen} = $dbh->selectrow_array(qq{
+      SELECT MAX(OCTET_LENGTH(long_column_name))
+      FROM table WHERE ...
   });
   $sth = $dbh->prepare(qq{
       SELECT long_column_name, ... FROM table WHERE ...
   });
 
 You may need to take extra care if the table can be modified between
-the first select and the second being executed.
+the first select and the second being executed. You may also need to
+use a different function if OCTET_LENGTH() does not work for long
+types in your database. For example, for Sybase use DATALENGTH() and
+for Oracle use LENGTHB().
 
-See L</LongTruncOk> for more information on truncation behaviour.
+See also L</LongTruncOk> for information on truncation of long types.
 
 =item C<LongTruncOk> (boolean, inherited)
 
@@ -3877,16 +4008,16 @@ alternatives:
 
 =over 4
 
-B<0>: A warning will be generated, and finish() will be called on
+=item B<0>: A warning will be generated, and finish() will be called on
 the statement handle before it is returned.  This is the default
 behaviour if $if_active is not passed.
 
-B<1>: finish() will be called on the statement handle, but the
+=item B<1>: finish() will be called on the statement handle, but the
 warning is suppressed.
 
-B<2>: Disables any checking.
+=item B<2>: Disables any checking.
 
-B<3>: The existing active statement handle will be removed from the
+=item B<3>: The existing active statement handle will be removed from the
 cache and a new statement handle prepared and cached in its place.
 This is the safest option because it doesn't affect the state of the
 old handle, it just removes it from the cache. [Added in DBI 1.40]
@@ -4281,6 +4412,7 @@ For example:
 
 The statement handle will return one row per column, ordered by
 TABLE_CAT, TABLE_SCHEM, TABLE_NAME, and KEY_SEQ.
+If there is no primary key then the statement handle will fetch no rows.
 
 Note: The support for the selection criteria, such as $catalog, is
 driver specific.  If the driver doesn't support catalogs and/or
@@ -4317,6 +4449,7 @@ See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 Simple interface to the primary_key_info() method. Returns a list of
 the column names that comprise the primary key of the specified table.
 The list is in primary key column sequence order.
+If there is no primary key then an empty list is returned.
 
 =item C<foreign_key_info>
 
@@ -5376,9 +5509,11 @@ the returned hash for those fields.
 Because of the extra work C<fetchrow_hashref> and Perl have to perform, it
 is not as efficient as C<fetchrow_arrayref> or C<fetchrow_array>.
 
-Currently, a new hash reference is returned for each row.  I<This will
-change> in the future to return the same hash ref each time, so don't
-rely on the current behaviour.
+By default a reference to a new hash is returned for each row.
+It is likely that a future version of the DBI will support an
+attribute which will enable the same hash to be reused for each
+row. This will give a significant performance boost, but it won't
+be enabled by default because of the risk of breaking old code.
 
 
 =item C<fetchall_arrayref>
