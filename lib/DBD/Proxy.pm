@@ -175,7 +175,8 @@ use vars qw(%ATTR $AUTOLOAD);
     'CachedKids' => 'local',
     'PrintError' => 'local',
     'RaiseError' => 'local',
-    'RowCacheSize' => 'inherited'
+    'RowCacheSize' => 'inherited',
+    'AutoCommit' => 'cached'
 );
 
 sub AUTOLOAD {
@@ -237,9 +238,10 @@ sub STORE ($$$) {
 	return 1;
     }
 
-    if ($type eq 'remote') {
+    if ($type eq 'remote'  ||  $type eq 'cached') {
 	my $result = eval { $dbh->{'proxy_dbh'}->STORE($attr => $val) };
 	return DBI::set_err($dbh, 1, $@) if $@; # returns undef
+	$dbh->{$attr} = $val if $type eq 'cached';
 	return $result;
     }
     return $dbh->SUPER::STORE($attr => $val);
@@ -249,7 +251,8 @@ sub FETCH ($$) {
     my($dbh, $attr) = @_;
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr =~ /^proxy_/  ||  $type eq 'inherited') {
+    if ($attr =~ /^proxy_/  ||  $type eq 'inherited'  ||
+	$type eq 'cached') {
 	return $dbh->{$attr};
     }
 
@@ -305,6 +308,7 @@ sub table_info {
     my $dbh = shift;
     my $rdbh = $dbh->{'proxy_dbh'};
     my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
+    return DBI::set_err($dbh, 1, $@) if $@;
     my $sth = DBI::_new_sth($dbh, {
         'Statement' => "SHOW TABLES",
 	'proxy_params' => [],

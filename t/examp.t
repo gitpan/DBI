@@ -4,7 +4,9 @@ use lib qw(blib/arch blib/lib);	# needed since -T ignores PERL5LIB
 use DBI qw(:sql_types);
 use Config;
 use Cwd;
+
 $|=1;
+$^W=1;
 
 my $haveFileSpec = eval { require File::Spec };
 
@@ -62,6 +64,16 @@ ok(0, $dbh->quote("quote's") eq "'quote''s'");
 ok(0, $dbh->quote("42", SQL_VARCHAR) eq "'42'");
 ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
 ok(0, $dbh->quote(undef)     eq "NULL");
+
+ok(0, $dbh->quote_identifier('foo')    eq '"foo"',  $dbh->quote_identifier('foo'));
+ok(0, $dbh->quote_identifier('foo', 1) eq 'foo',    $dbh->quote_identifier('foo',1));
+ok(0, $dbh->quote_identifier('f"o')    eq '"f""o"', $dbh->quote_identifier('f"o'));
+ok(0, $dbh->quote_identifier('f"o', 1) eq '"f""o"', $dbh->quote_identifier('f"o',1));
+ok(0, $dbh->quote_identifier(['foo','bar']) eq '"foo"."bar"');
+ok(0, $dbh->quote_identifier(['foo',undef,'bar']) eq '"foo"."bar"');
+ok(0, $dbh->quote_identifier([undef,undef,'bar']) eq '"bar"');
+ok(0, $dbh->quote_identifier(['foo',undef,'bar'], 1) eq 'foo.bar');
+ok(0, $dbh->quote_identifier(['foo',undef,'b"r'], 1) eq 'foo."b""r"');
 
 eval { $dbh->commit('dummy') };
 ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/);
@@ -333,17 +345,21 @@ $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
 ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/);
 
-print "RaiseError & PrintError & ShowErrorStatement\n";
+print "RaiseError & PrintError & ShowErrorStatement & HandleError\n";
 $dbh->{RaiseError} = 1;
-$dbh->{ShowErrorStatement} = 1;
 ok(0, $dbh->{RaiseError});
+$dbh->{ShowErrorStatement} = 1;
 ok(0, $dbh->{ShowErrorStatement});
+$dbh->{HandleError} = sub { die sprintf "HandleError: %s [h=%s, #=%d]",$_[0],$_[1],scalar(@_) };
+ok(0, $dbh->{HandleError});
+
 my $error_sql = "select unknown_field_name2 from ?";
 ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
 #print "$@\n";
-ok(0, $@ =~ m/Unknown field names: unknown_field_name2/, $@);
+ok(0, $@ =~ m/HandleError.*Unknown field names: unknown_field_name2/, $@);
 ok(0, $@ =~ m/\Q$error_sql/, $@); # ShowErrorStatement
 
+# check that $dbh->{Statement} tracks last _executed_ sth
 my $se_sth1 = $dbh->prepare("select mode from ?");
 ok(0, $se_sth1->{Statement} eq "select mode from ?");
 ok(0, $dbh->{Statement}     eq "select mode from ?");
@@ -359,13 +375,15 @@ $dbh->{RaiseError} = 0;
 ok(0, !$dbh->{RaiseError});
 $dbh->{ShowErrorStatement} = 0;
 ok(0, !$dbh->{ShowErrorStatement});
+$dbh->{HandleError} = undef;
+ok(0, !$dbh->{HandleError});
 
 {
   my @warn;
   local($SIG{__WARN__}) = sub { push @warn, @_ };
   $dbh->{PrintError} = 1;
   ok(0, $dbh->{PrintError});
-  ok(0, ! $dbh->prepare("select unknown_field_name3 from ?"));
+  ok(0, ! $dbh->selectall_arrayref("select unknown_field_name3 from ?"));
   ok(0, "@warn" =~ m/Unknown field names: unknown_field_name3/);
   $dbh->{PrintError} = 0;
   ok(0, !$dbh->{PrintError});
@@ -466,4 +484,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 175; }
+BEGIN { $tests = 186; }

@@ -112,7 +112,7 @@ typedef struct dbih_com_attr_st {
     SV *Handlers;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
     SV *FetchHashKeyName;	/* for fetchrow_hashref		*/
-    /* (new fields?... don't forget to update dbih_clearcom()!)	*/
+    /* (NEW FIELDS?... DON'T FORGET TO UPDATE dbih_clearcom()!)	*/
 } dbih_com_attr_t;
 
 
@@ -215,22 +215,23 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_FDESC_AV(imp)  	_imp2com(imp, fields_fdav)
 #define DBIc_FDESC(imp, i)  	((imp_fdh_t*)(void*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
 
-#define DBIcf_COMSET	  0x0001	/* needs to be clear'd before free'd	*/
-#define DBIcf_IMPSET	  0x0002	/* has implementor data to be clear'd	*/
-#define DBIcf_ACTIVE	  0x0004	/* needs finish/disconnect before clear	*/
-#define DBIcf_IADESTROY	  0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
-#define DBIcf_WARN  	  0x0010	/* warn about poor practice etc  	*/
-#define DBIcf_COMPAT  	  0x0020	/* compat/emulation mode (eg oraperl)	*/
+#define DBIcf_COMSET	  0x000001	/* needs to be clear'd before free'd	*/
+#define DBIcf_IMPSET	  0x000002	/* has implementor data to be clear'd	*/
+#define DBIcf_ACTIVE	  0x000004	/* needs finish/disconnect before clear	*/
+#define DBIcf_IADESTROY	  0x000008	/* do DBIc_ACTIVE_off before DESTROY	*/
+#define DBIcf_WARN  	  0x000010	/* warn about poor practice etc  	*/
+#define DBIcf_COMPAT  	  0x000020	/* compat/emulation mode (eg oraperl)	*/
 
-#define DBIcf_ChopBlanks  0x0040	/* rtrim spaces from fetch char columns	*/
-#define DBIcf_RaiseError  0x0080	/* throw exception (croak) on error	*/
-#define DBIcf_PrintError  0x0100	/* warn() on error			*/
-#define DBIcf_AutoCommit  0x0200	/* dbh only. used by drivers		*/
-#define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
-#define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
-#define DBIcf_Taint       0x1000	/* taint fetched data			*/
-#define DBIcf_ShowErrorStatement  0x2000	/* include Statement in error	*/
-#define DBIcf_BegunWork   0x4000	/* between begin_work & commit/rollback */
+#define DBIcf_ChopBlanks  0x000040	/* rtrim spaces from fetch char columns	*/
+#define DBIcf_RaiseError  0x000080	/* throw exception (croak) on error	*/
+#define DBIcf_PrintError  0x000100	/* warn() on error			*/
+#define DBIcf_AutoCommit  0x000200	/* dbh only. used by drivers		*/
+#define DBIcf_LongTruncOk 0x000400	/* truncation to LongReadLen is okay	*/
+#define DBIcf_MultiThread 0x000800	/* allow multiple threads to enter	*/
+#define DBIcf_Taint       0x001000	/* taint fetched data			*/
+#define DBIcf_ShowErrorStatement  0x002000	/* include Statement in error	*/
+#define DBIcf_BegunWork   0x004000	/* between begin_work & commit/rollback */
+#define DBIcf_HandleError 0x008000	/* has coderef in HandleError attribute	*/
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\

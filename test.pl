@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 11.2 2001/08/24 22:10:44 timbo Exp $
+# $Id: test.pl,v 11.3 2002/01/10 15:14:06 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 11.2 $}."\n";
+    print q{DBI test application $Revision: 11.3 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
     warn $@ if $@;
@@ -53,23 +53,32 @@ print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
 print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 
 
-my $dbh = DBI->connect('', '', '', $driver);
+my $dbh = DBI->connect('', '', '', $driver); # old-style connect syntax
 $dbh->debug($::opt_h);
 
-if (0) {	# only works after 5.004_04
-    my $h = DBI->connect('dbi:NullP:','','');
-    $h->trace(3);
-    {
+if (0) {
+    DBI->trace(3);
+    my $h = DBI->connect('dbi:NullP:','','', { RootClass=>'MyTestDBI', DbTypeSubclass=>'foo, bar' });
+    DBI->trace(0);
+    { # only works after 5.004_04:
 	warn "RaiseError= '$h->{RaiseError}' (pre local)\n";
 	local($h->{RaiseError});# = undef;
 	warn "RaiseError= '$h->{RaiseError}' (post local)\n";
     }
     warn "RaiseError= '$h->{RaiseError}' (post local block)\n";
+    exit 1;
 }
 
 if ($::opt_m) {
     #$dbh->trace(9);
-    mem_test($dbh) while 1;
+    my $cnt = 10000;
+    print "Using $driver, same dbh...\n";
+    #for (my $i=0; $i<$cnt; ++$i) { mem_test($dbh, undef, 4) }
+    print "Using NullP, reconnecting each time...\n";
+    #for (my $i=0; $i<$cnt; ++$i) { mem_test(undef, ['dbi:NullP:'], 4) }
+    print "Using ExampleP, reconnecting each time...\n";
+    mem_test(undef, ['dbi:ExampleP:'], 4) while 1;
+    #mem_test(undef, ['dbi:mysql:VC'], 4, "select * from campaigns where length(?)>0") while 1;
 }
 elsif ($::opt_t) {
 	thread_test();
@@ -113,40 +122,47 @@ else {
 print "$0 done\n";
 exit 0;
 
+
 sub mem_test {	# harness to help find basic leaks
-    my ($dbh) = @_;
-    system("echo $count; $ps$$") if (($count++ % 100) == 0);
-    my $cursor_a = $dbh->prepare("select mode,ino,name from ?");
-    $cursor_a->execute('.');
-    my $rows = $cursor_a->fetchall_arrayref({});
+    my ($orig_dbh, $connect, $level, $select, $params) = @_;
+    $select ||= "select mode,ino,name from ?";
+    $params ||= [ '.' ];
+    my $dbh = $orig_dbh || DBI->connect(@$connect);
+    system("echo $count; $ps$$") if (($count++ % 500) == 0);
+    my $cursor_a;
+    $cursor_a = $dbh->prepare($select)		if $level >= 2;
+    $cursor_a->execute(@$params)		if $level >= 3;
+    my $rows = $cursor_a->fetchall_arrayref({})	if $level >= 4;
+    $cursor_a->finish if $cursor_a && $cursor_a->{Active};
+    $dbh->disconnect unless $orig_dbh;
 }
 
 
 sub thread_test {
-	require Thread;
-	my $dbh = DBI->connect("dbi:ExampleP:.", "", "") || die $DBI::err;
-	#$dbh->trace(4);
-	my @t;
-	print "Starting $::opt_t threads:\n";
-	foreach(1..$::opt_t) {
-		print "$_\n";
-		push @t, Thread->new(\&thread_test_loop, $dbh, $::opt_n||99);
-	}
-	print "Small sleep to allow threads to progress\n";
-	sleep 2;
-	print "Joining threads:\n";
-	foreach(@t) {
-		print "$_\n";
-		$_->join
-	}
+    require Thread;
+    my $dbh = DBI->connect("dbi:ExampleP:.", "", "") || die $DBI::err;
+    #$dbh->trace(4);
+    my @t;
+    print "Starting $::opt_t threads:\n";
+    foreach(1..$::opt_t) {
+	print "$_\n";
+	push @t, Thread->new(\&thread_test_loop, $dbh, $::opt_n||99);
+    }
+    print "Small sleep to allow threads to progress\n";
+    sleep 2;
+    print "Joining threads:\n";
+    foreach(@t) {
+	print "$_\n";
+	$_->join
+    }
 }
 
 sub thread_test_loop {
-	my $dbh = shift;
-	my $i = shift || 10;
+    my $dbh = shift;
+    my $i = shift || 10;
     while($i-- > 0) {
-		$dbh->selectall_arrayref("select * from ?", undef, ".");
-	}
+	$dbh->selectall_arrayref("select * from ?", undef, ".");
+    }
 }
 
 # end.

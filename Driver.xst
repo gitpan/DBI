@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.2 2001/08/24 22:10:44 timbo Exp $
+#  $Id: Driver.xst,v 11.3 2002/01/10 15:14:06 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -349,6 +349,33 @@ fetchrow_array(sth)
 	    PUSHs(AvARRAY(av)[i]);
 	}
     }
+
+
+#if 0
+
+void
+fetchall_arrayref(sth, slice=0)
+    SV *	sth
+    SV *	slice
+    CODE:
+    D_imp_sth(sth);
+    AV *rows;
+    AV *av;
+    if (slice) {
+	call SUPER method
+	return ...
+    }
+    /* push @rows, [ @$row ] while($row = $sth->fetch); */
+    rows = newAV();
+    av_extend(rows, 60);
+    while (av = dbd_st_fetch(sth, imp_sth)) {
+	AV * row_av = av_make(AvFILL(av), AvARRAY(av));
+	av_push(rows_av, newRV(row_av));
+	SvREFCNT_dec(row_av);
+    }
+    ST(0) = sv_2mortal(newRV(sv_2mortal((SV *)rows)));
+
+#endif
 
 void
 finish(sth)

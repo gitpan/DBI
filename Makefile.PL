@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.2 2001/08/24 22:10:44 timbo Exp $
+# $Id: Makefile.PL,v 11.3 2002/01/10 15:14:06 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -20,6 +20,8 @@ use strict;
 use Test::Harness;	# tests use it so check it's loadable early
 
 
+$| = 1;
+$^W = 1;
 my $os = $^O;
 my $osvers = $Config{osvers};
 $osvers =~ s/^\s*(\d+\.\d+).*/$1/;  # drop sub-sub-version: 2.5.1 -> 2.5

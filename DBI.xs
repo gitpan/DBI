@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.2 2001/08/24 22:10:44 timbo Exp $
+/* $Id: DBI.xs,v 11.3 2002/01/10 15:14:06 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -52,6 +52,8 @@ static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 #  define CopFILEGV(cop) cop->cop_filegv
 #  define CopLINE(cop)   cop->cop_line
 #  define get_sv perl_get_sv
+#  define CopSTASH(cop)           cop->cop_stash
+#  define CopSTASHPV(cop)           (CopSTASH(cop) ? HvNAME(CopSTASH(cop)) : Nullch)
 #endif
 
 
@@ -96,6 +98,7 @@ typedef struct dbi_ima_st {
 #define IMA_NO_TAINT_OUT   	0x0020	/* don't taint results		*/
 #define IMA_COPY_STMT   	0x0040	/* copy sth Statement to dbh	*/
 #define IMA_END_WORK	   	0x0080	/* set on commit & rollback	*/
+#define IMA_STUB		0x0100	/* donothing eg $dbh->connected */
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -464,6 +467,32 @@ set_trace_file(file)
 }
 
 
+static int
+set_trace(h, level, file)
+    SV *h;
+    int	level;
+    SV *file;
+{
+    dPERINTERP;
+    D_imp_xxh(h);
+    SV *dsv = DBIc_DEBUG(imp_xxh);
+    /* Return trace level in effect now. No change if new value not given */
+    int RETVAL = (DBIS->debug > SvIV(dsv)) ? DBIS->debug : SvIV(dsv);
+    set_trace_file(file);
+    if (level != RETVAL) {	 /* set value */
+	if (level > 0) {
+	    PerlIO_printf(DBILOGFP,"    %s trace level set to %d in DBI %s%s\n",
+		neatsvpv(h,0), level, XS_VERSION, dbi_build_opt);
+	    if (!dowarn && level>0)
+		PerlIO_printf(DBILOGFP,"    Note: perl is running without the recommended perl -w option\n");
+	    PerlIO_flush(DBILOGFP);
+	}
+	sv_setiv(dsv, level);
+    }
+    return RETVAL;
+}
+
+
 static SV *
 dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     SV *orv;         	/* ref of outer hash */
@@ -827,6 +856,7 @@ dbih_dumpcom(imp_xxh, msg, level)
     if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
     if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
+    if (DBIc_is(imp_xxh, DBIcf_HandleError))	sv_catpv(flags,"HandleError ");
     if (DBIc_is(imp_xxh, DBIcf_ShowErrorStatement))	sv_catpv(flags,"ShowErrorStatement ");
     if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
     if (DBIc_is(imp_xxh, DBIcf_BegunWork))	sv_catpv(flags,"BegunWork ");
@@ -1170,6 +1200,10 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "PrintError")) {
 	DBIc_set(imp_xxh,DBIcf_PrintError, on);
     }
+    else if (strEQ(key, "HandleError") && (!SvOK(valuesv) || SvROK(valuesv)) ) {
+	DBIc_set(imp_xxh,DBIcf_HandleError, on);
+	cacheit = 1;
+    }
     else if (strEQ(key, "ShowErrorStatement")) {
 	DBIc_set(imp_xxh,DBIcf_ShowErrorStatement, on);
     }
@@ -1203,6 +1237,9 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     else if (htype==DBIt_DB && keylen==9 && strEQ(key, "BegunWork")) {
 	DBIc_set(imp_xxh,DBIcf_BegunWork, on);
     }
+    else if (keylen==10  && strEQ(key, "TraceLevel")) {
+	set_trace(h, SvIV(valuesv), Nullch);
+    }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
@@ -1220,7 +1257,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	    char *hint = "";
 	    if (strEQ(key, "NUM_FIELDS"))
 		hint = " (perhaps you meant NUM_OF_FIELDS)";
-	    croak("Can't set %s->{%s}: unrecognised attribute%s",
+	    croak("Can't set %s->{%s}: unrecognised attribute or invalid value%s",
 		    neatsvpv(h,0), key, hint);
 	}
 	/* Allow private_* attributes to be stored in the cache.	*/
@@ -1359,6 +1396,9 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     }
     else if (keylen==4  && strEQ(key, "Kids")) {
 	valuesv = newSViv(DBIc_KIDS(imp_xxh));
+    }
+    else if (keylen==10  && strEQ(key, "TraceLevel")) {
+	valuesv = newSViv(DBIc_DEBUGIV(imp_xxh));
     }
     else if (keylen==10  && strEQ(key, "ActiveKids")) {
 	valuesv = newSViv(DBIc_ACTIVE_KIDS(imp_xxh));
@@ -1559,12 +1599,77 @@ quick_FETCH(hrv, keysv, imp_msv)
     if ( (type=SvTYPE(SvRV(sv))) == SVt_RV
 	&& SvTYPE(SvRV(SvRV(sv))) == SVt_PVCV)
 	return SvRV(sv); /* return deref if ref to CODE ref */
+return sv; /* special handling of CV's now deprecated */
     if (type != SVt_PVCV)
 	return sv;	 /* return non-code refs */
     *imp_msv = (SV*)SvRV(sv); /* tell dispatch() to execute this code instead */
     return NULL;
 }
 
+
+STATIC I32
+dbi_dopoptosub_at(PERL_CONTEXT *cxstk, I32 startingblock)
+{
+    I32 i;
+    register PERL_CONTEXT *cx;
+    for (i = startingblock; i >= 0; i--) {
+	cx = &cxstk[i];
+	switch (CxTYPE(cx)) {
+	default:
+	    continue;
+	case CXt_EVAL:
+	case CXt_SUB:
+#ifdef CXt_FORMAT
+	case CXt_FORMAT:
+#endif
+	    DEBUG_l( Perl_deb(aTHX_ "(Found sub #%ld)\n", (long)i));
+	    return i;
+	}
+    }
+    return i;
+}
+
+
+static char *
+dbi_caller(long *line)
+{
+    register I32 cxix;
+    register PERL_CONTEXT *cx;
+    register PERL_CONTEXT *ccstack = cxstack;
+    PERL_SI *top_si = PL_curstackinfo;
+    char *stashname;
+
+    *line = -1;
+    for ( cxix = dbi_dopoptosub_at(ccstack, cxstack_ix) ;; cxix = dbi_dopoptosub_at(ccstack, cxix - 1)) {
+	/* we may be in a higher stacklevel, so dig down deeper */
+	while (cxix < 0 && top_si->si_type != PERLSI_MAIN) {
+	    top_si = top_si->si_prev;
+	    ccstack = top_si->si_cxstack;
+	    cxix = dbi_dopoptosub_at(ccstack, top_si->si_cxix);
+	}
+	if (cxix < 0) {
+	    return NULL;
+	}
+	if (PL_DBsub && cxix >= 0 && ccstack[cxix].blk_sub.cv == GvCV(PL_DBsub))
+	    continue;
+	cx = &ccstack[cxix];
+	stashname = CopSTASHPV(cx->blk_oldcop);
+	if (!stashname)
+	    continue;
+	if (!(stashname[0] == 'D'
+	    && stashname[1] == 'B'
+	    && strchr("DI", stashname[2])
+	    && (!stashname[3] || (stashname[3] == ':' && stashname[4] == ':')))) 
+	{
+	    STRLEN len;
+	    *line = (I32)CopLINE(cx->blk_oldcop);
+	    return SvPV(GvSV(CopFILEGV(cx->blk_oldcop)), len);
+	}
+	cxix = dbi_dopoptosub_at(ccstack, cxix - 1);
+    }
+    /* NOT REACHED */
+    return NULL;
+}
 
 static char *
 log_where(int trace_level, SV *buf, int append, char *suffix)
@@ -1578,20 +1683,26 @@ log_where(int trace_level, SV *buf, int append, char *suffix)
     if (!append)
 	sv_setpv(buf,"");
     if (CopLINE(curcop)) {
-	char *file;
 	STRLEN len;
-	/* XXX go up scopes till not DBI.pm */
-	file = SvPV(GvSV(CopFILEGV(curcop)), len);
-	if (trace_level<=4) {
+	long  near_line = CopLINE(curcop);
+	char *near_file = SvPV(GvSV(CopFILEGV(curcop)), len);
+	char *file = near_file;
+	if (trace_level <= 4) {
 	    char *sep;
 	    if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
 		file = sep+1;
 	}
-	sv_catpvf(buf, " at %s line %ld%s", file, (long)CopLINE(curcop),
-		dirty ? " during global destruction" : "");
+	sv_catpvf(buf, " at %s line %ld", file, near_line);
+
+	if (trace_level >= 3) {
+	    long far_line;
+	    char *far_file = dbi_caller(&far_line);
+	    if (far_file && !(far_line==near_line && strEQ(far_file,near_file)) )
+		sv_catpvf(buf, " via %s line %ld", far_file, far_line);
+	}
     }
-    else
-	sv_catpvf(buf, dirty ? " during global destruction" : "");
+    if (dirty)
+	sv_catpvf(buf, " during global destruction");
     if (suffix)
 	sv_catpv(buf, suffix);
     return SvPVX(buf);
@@ -1671,17 +1782,23 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     /* Check method call against Internal Method Attributes */
     if (ima) {
 
-	if (ima->flags & IMA_FUNC_REDIRECT) {
-	    SV *meth_name_sv = POPs;
-	    PUTBACK;
-	    --items;
-	    if (!SvPOK(meth_name_sv) || SvNIOK(meth_name_sv))
-		croak("%s->%s() invalid redirect method name %s",
-			neatsvpv(h,0), meth_name, neatsvpv(meth_name_sv,0));
-	    meth_name = SvPV(meth_name_sv, lna);
+	if (ima->flags & (IMA_STUB|IMA_FUNC_REDIRECT|IMA_KEEP_ERR)) {
+
+	    if (ima->flags & IMA_STUB) {
+		XSRETURN(0);
+	    }
+	    if (ima->flags & IMA_FUNC_REDIRECT) {
+		SV *meth_name_sv = POPs;
+		PUTBACK;
+		--items;
+		if (!SvPOK(meth_name_sv) || SvNIOK(meth_name_sv))
+		    croak("%s->%s() invalid redirect method name %s",
+			    neatsvpv(h,0), meth_name, neatsvpv(meth_name_sv,0));
+		meth_name = SvPV(meth_name_sv, lna);
+	    }
+	    if (ima->flags & IMA_KEEP_ERR)
+		keep_error = TRUE;
 	}
-    	if (ima->flags & IMA_KEEP_ERR)
-	    keep_error = TRUE;
 
 	if (ima->flags & IMA_HAS_USAGE) {
 	    char *err = NULL;
@@ -1910,9 +2027,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	else {
 	    outitems = perl_call_sv(isGV(imp_msv) ? (SV*)GvCV(imp_msv) : imp_msv, gimme);
 	}
+	SPAGAIN;
 
 	if (debug) { /* XXX restore local vars so ST(n) works below	*/
-	    SPAGAIN; sp -= outitems; ax = (sp - stack_base) + 1; 
+	    sp -= outitems; ax = (sp - stack_base) + 1; 
 	}
 
 	/* We might perform some fancy error handling here one day	*/
@@ -1990,13 +2108,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		/* for begin_work, or has but hasn't correctly turned AutoCommit	*/
 		/* back on in their commit or rollback code. So we have to do it.	*/
 		/* This is bad because it'll probably trigger a spurious commit()	*/
-		SPAGAIN;
 		PUSHMARK(SP);
 		XPUSHs(h);
 		XPUSHs(sv_2mortal(newSVpv("AutoCommit",0)));
 		XPUSHs(&sv_yes);
 		PUTBACK;
 		perl_call_method("STORE", G_DISCARD);
+		SPAGAIN;
 	    }
 	}
     }
@@ -2004,11 +2122,12 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     if (   !keep_error				/* so would be a new error	*/
 	&& SvTRUE(DBIc_ERR(imp_xxh))		/* and an error exists		*/
 	&& call_depth <= 1			/* skip nested (internal) calls	*/
-	&& DBIc_has(imp_xxh, DBIcf_RaiseError|DBIcf_PrintError)
+	&& DBIc_has(imp_xxh, DBIcf_RaiseError|DBIcf_PrintError|DBIcf_HandleError)
 	/* check that we're not nested inside a call to our parent */
 	&& (!DBIc_PARENT_COM(imp_xxh) || DBIc_CALL_DEPTH(DBIc_PARENT_COM(imp_xxh)) < 1)
     ) {
 	SV *msg;
+	SV **hook_svp = 0;
 	SV **statement;
 	char intro[200];
 	sprintf(intro,"%s %s failed: ", HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name);
@@ -2028,10 +2147,29 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    sv_catpv(msg, "''])");
 	}
 
-	if (DBIc_has(imp_xxh, DBIcf_PrintError))
-	    warn("%s", SvPV(msg,lna));
-	if (DBIc_has(imp_xxh, DBIcf_RaiseError))
-	    croak("%s", SvPV(msg,lna));
+	if (DBIc_has(imp_xxh, DBIcf_HandleError)
+		&& (hook_svp=hv_fetch((HV*)SvRV(h),"HandleError",11,0))
+		&& SvOK(*hook_svp)
+	) {
+		IV items;
+		SV *result0 = ST(0);
+		PUSHMARK(SP);
+		XPUSHs(msg);
+		XPUSHs(sv_2mortal(newRV((SV*)DBIc_MY_H(imp_xxh))));
+		XPUSHs(result0); /* XXX :-) */
+		PUTBACK;
+		items = perl_call_sv(*hook_svp, G_SCALAR);
+		SPAGAIN;
+		if (!SvTRUE(POPs)) /* handler says it didn't handle it, so... */
+		    hook_svp = 0;  /* pretend we didn't have a handler...     */
+		PUTBACK;
+	}
+	if (!hook_svp) {
+	    if (DBIc_has(imp_xxh, DBIcf_PrintError))
+		warn("%s", SvPV(msg,lna));
+	    if (DBIc_has(imp_xxh, DBIcf_RaiseError))
+		croak("%s", SvPV(msg,lna));
+	}
     }
 
     if (tainting
@@ -2341,29 +2479,62 @@ I32
 constant()
 	PROTOTYPE:
     ALIAS:
-	SQL_ALL_TYPES	= SQL_ALL_TYPES
-	SQL_CHAR	= SQL_CHAR
-	SQL_NUMERIC	= SQL_NUMERIC
-	SQL_DECIMAL	= SQL_DECIMAL
-	SQL_INTEGER	= SQL_INTEGER
-	SQL_SMALLINT	= SQL_SMALLINT
-	SQL_FLOAT	= SQL_FLOAT
-	SQL_REAL	= SQL_REAL
-	SQL_DOUBLE	= SQL_DOUBLE
-	SQL_DATE	= SQL_DATE
-	SQL_TIME	= SQL_TIME
-	SQL_TIMESTAMP	= SQL_TIMESTAMP
-	SQL_VARCHAR	= SQL_VARCHAR
-	SQL_LONGVARCHAR = SQL_LONGVARCHAR
-	SQL_BINARY	= SQL_BINARY
-	SQL_VARBINARY	= SQL_VARBINARY
-	SQL_LONGVARBINARY = SQL_LONGVARBINARY
-	SQL_TINYINT	= SQL_TINYINT
-	SQL_BIGINT	= SQL_BIGINT
-	SQL_WCHAR       = SQL_WCHAR
-	SQL_WVARCHAR    = SQL_WVARCHAR
-	SQL_WLONGVARCHAR = SQL_WLONGVARCHAR
-	SQL_BIT         = SQL_BIT
+	SQL_ALL_TYPES                    = SQL_ALL_TYPES
+	SQL_ARRAY                        = SQL_ARRAY
+	SQL_ARRAY_LOCATOR                = SQL_ARRAY_LOCATOR
+	SQL_BIGINT                       = SQL_BIGINT
+	SQL_BINARY                       = SQL_BINARY
+	SQL_BIT_VARYING                  = SQL_BIT_VARYING
+	SQL_BLOB                         = SQL_BLOB
+	SQL_BLOB_LOCATOR                 = SQL_BLOB_LOCATOR
+	SQL_BOOLEAN                      = SQL_BOOLEAN
+	SQL_CHAR                         = SQL_CHAR
+	SQL_CLOB                         = SQL_CLOB
+	SQL_CLOB_LOCATOR                 = SQL_CLOB_LOCATOR
+	SQL_DATE                         = SQL_DATE
+	SQL_DATETIME                     = SQL_DATETIME
+	SQL_DECIMAL                      = SQL_DECIMAL
+	SQL_DOUBLE                       = SQL_DOUBLE
+	SQL_FLOAT                        = SQL_FLOAT
+	SQL_GUID                         = SQL_GUID
+	SQL_INTEGER                      = SQL_INTEGER
+	SQL_INTERVAL                     = SQL_INTERVAL
+	SQL_INTERVAL_DAY                 = SQL_INTERVAL_DAY
+	SQL_INTERVAL_DAY_TO_HOUR         = SQL_INTERVAL_DAY_TO_HOUR
+	SQL_INTERVAL_DAY_TO_MINUTE       = SQL_INTERVAL_DAY_TO_MINUTE
+	SQL_INTERVAL_DAY_TO_SECOND       = SQL_INTERVAL_DAY_TO_SECOND
+	SQL_INTERVAL_HOUR                = SQL_INTERVAL_HOUR
+	SQL_INTERVAL_HOUR_TO_MINUTE      = SQL_INTERVAL_HOUR_TO_MINUTE
+	SQL_INTERVAL_HOUR_TO_SECOND      = SQL_INTERVAL_HOUR_TO_SECOND
+	SQL_INTERVAL_MINUTE              = SQL_INTERVAL_MINUTE
+	SQL_INTERVAL_MINUTE_TO_SECOND    = SQL_INTERVAL_MINUTE_TO_SECOND
+	SQL_INTERVAL_MONTH               = SQL_INTERVAL_MONTH
+	SQL_INTERVAL_SECOND              = SQL_INTERVAL_SECOND
+	SQL_INTERVAL_YEAR                = SQL_INTERVAL_YEAR
+	SQL_INTERVAL_YEAR_TO_MONTH       = SQL_INTERVAL_YEAR_TO_MONTH
+	SQL_LONGVARBINARY                = SQL_LONGVARBINARY
+	SQL_LONGVARCHAR                  = SQL_LONGVARCHAR
+	SQL_NUMERIC                      = SQL_NUMERIC
+	SQL_REAL                         = SQL_REAL
+	SQL_REF                          = SQL_REF
+	SQL_ROW                          = SQL_ROW
+	SQL_SMALLINT                     = SQL_SMALLINT
+	SQL_TIME                         = SQL_TIME
+	SQL_TIMESTAMP                    = SQL_TIMESTAMP
+	SQL_TINYINT                      = SQL_TINYINT
+	SQL_TYPE_DATE                    = SQL_TYPE_DATE
+	SQL_TYPE_TIME                    = SQL_TYPE_TIME
+	SQL_TYPE_TIMESTAMP               = SQL_TYPE_TIMESTAMP
+	SQL_TYPE_TIMESTAMP_WITH_TIMEZONE = SQL_TYPE_TIMESTAMP_WITH_TIMEZONE
+	SQL_TYPE_TIME_WITH_TIMEZONE      = SQL_TYPE_TIME_WITH_TIMEZONE
+	SQL_UDT                          = SQL_UDT
+	SQL_UDT_LOCATOR                  = SQL_UDT_LOCATOR
+	SQL_UNKNOWN_TYPE                 = SQL_UNKNOWN_TYPE
+	SQL_VARBINARY                    = SQL_VARBINARY
+	SQL_VARCHAR                      = SQL_VARCHAR
+	SQL_WCHAR                        = SQL_WCHAR
+	SQL_WLONGVARCHAR                 = SQL_WLONGVARCHAR
+	SQL_WVARCHAR                     = SQL_WVARCHAR
 	DBIpp_cm_cs	= DBIpp_cm_cs
 	DBIpp_cm_hs	= DBIpp_cm_hs
 	DBIpp_cm_dd	= DBIpp_cm_dd
@@ -2847,11 +3018,12 @@ fetchrow_hashref(sth, keyattrib=Nullch)
 	int num_fields = AvFILL(rowav)+1;
 	HV *hv = newHV();
 
-	while (--num_fields >= 0) {
+	int i;
+	for (i=0; i < num_fields; ++i) {	/* honor the original order as sent by the database */
 	    STRLEN len;
-	    SV  **field_name_svp = av_fetch(ka_av, num_fields, 1);
+	    SV  **field_name_svp = av_fetch(ka_av, i, 1);
 	    char *field_name     = SvPV(*field_name_svp, len);
-	    hv_store(hv, field_name, len, newSVsv((SV*)(AvARRAY(rowav)[num_fields])), 0);
+	    hv_store(hv, field_name, len, newSVsv((SV*)(AvARRAY(rowav)[i])), 0);
 	}
 	RETVAL = newRV((SV*)hv);
 	SvREFCNT_dec(hv);  	/* since newRV incremented it	*/
@@ -2998,32 +3170,15 @@ errstr(h)
 
 
 int
-trace(sv, level=0, file=Nullsv)
-    SV *	sv
+trace(h, level=0, file=Nullsv)
+    SV *h
     int	level
     SV *file
     ALIAS:
     debug = 1
     CODE:
-    {
-    dPERINTERP;
-    D_imp_xxh(sv);
-    SV *dsv = DBIc_DEBUG(imp_xxh);
-    /* Return trace level in effect now. No change if new value not given */
-    RETVAL = (DBIS->debug > SvIV(dsv)) ? DBIS->debug : SvIV(dsv);
-    set_trace_file(file);
-    if (level != RETVAL) {	 /* set value */
-	if (level > 0) {
-	    PerlIO_printf(DBILOGFP,"    %s trace level set to %d in DBI %s%s\n",
-		neatsvpv(sv,0), level, XS_VERSION, dbi_build_opt);
-	    if (!dowarn && level>0)
-		PerlIO_printf(DBILOGFP,"    Note: perl is running without the recommended perl -w option\n");
-	    PerlIO_flush(DBILOGFP);
-	    ix = ix;		/* avoid 'unused variable' warning	*/
-	}
-	sv_setiv(dsv, level);
-    }
-    }
+    ix = ix;	/* avoid 'unused variable' warning	*/
+    RETVAL = set_trace(h, level, file);
     OUTPUT:
     RETVAL
 

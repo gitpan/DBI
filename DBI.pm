@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.3 2001/08/24 23:33:40 timbo Exp $
+# $Id: DBI.pm,v 11.4 2002/01/10 15:14:06 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.20"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.20_1; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -34,8 +34,9 @@ DBI - Database independent interface for Perl
   $ary_ref = $dbh->selectcol_arrayref($statement);
   $ary_ref = $dbh->selectcol_arrayref($statement, \%attr);
 
-  $ary_ref = $dbh->selectrow_arrayref($statement);
-  @row_ary = $dbh->selectrow_array($statement);
+  $ary_ref  = $dbh->selectrow_arrayref($statement);
+  @row_ary  = $dbh->selectrow_array($statement);
+  $hash_ref = $dbh->selectrow_hashref($statement);
 
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare_cached($statement);
@@ -66,7 +67,7 @@ DBI - Database independent interface for Perl
   $rc  = $dbh->commit;
   $rc  = $dbh->rollback;
 
-  $sql = $dbh->quote($string);
+  $quoted_string = $dbh->quote($string);
 
   $rc  = $h->err;
   $str = $h->errstr;
@@ -103,8 +104,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.20
-(C<$Date: 2001/08/24 23:33:40 $>).
+This is the DBI specification that corresponds to the DBI version 1.20_1
+(C<$Date: 2002/01/10 15:14:06 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -119,7 +120,7 @@ you use. Talk to the authors of those drivers if you need the features.
 Extensions to the DBI and other DBI related modules use the C<DBIx::*>
 namespace. See L</Naming Conventions and Name Space> and:
 
-  http://www.perl.com/CPAN/modules/by-module/DBIx/
+  http://search.cpan.org/search?mode=module&query=DBIx%3A%3A
 
 =head2 RECENT CHANGES 
 
@@ -139,14 +140,11 @@ Added selectall_hashref, selectrow_hashref, selectrow_arrayref methods.
 
 # The POD text continues at the end of the file.
 
-# DBI file-private variables
-my %installed_rootclass;
-
 
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.3 $, 10);
+my $Revision = substr(q$Revision: 11.4 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -160,14 +158,62 @@ BEGIN {
 @EXPORT_OK = qw(%DBI %DBI_methods); # also populated by export_ok_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(
+	SQL_GUID
+	SQL_WLONGVARCHAR
+	SQL_WVARCHAR
+	SQL_WCHAR
+	SQL_TINYINT
+	SQL_BIGINT
+	SQL_LONGVARBINARY
+	SQL_VARBINARY
+	SQL_BINARY
+	SQL_LONGVARCHAR
+	SQL_UNKNOWN_TYPE
 	SQL_ALL_TYPES
-	SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
-	SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR
-	SQL_DATE SQL_TIME SQL_TIMESTAMP
-	SQL_LONGVARCHAR SQL_BINARY SQL_VARBINARY SQL_LONGVARBINARY
-	SQL_BIGINT SQL_TINYINT
-	SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR
-	SQL_BIT
+	SQL_CHAR
+	SQL_NUMERIC
+	SQL_DECIMAL
+	SQL_INTEGER
+	SQL_SMALLINT
+	SQL_FLOAT
+	SQL_REAL
+	SQL_DOUBLE
+	SQL_DATETIME
+	SQL_DATE
+	SQL_INTERVAL
+	SQL_TIME
+	SQL_TIMESTAMP
+	SQL_VARCHAR
+	SQL_BIT_VARYING
+	SQL_BOOLEAN
+	SQL_UDT
+	SQL_UDT_LOCATOR
+	SQL_ROW
+	SQL_REF
+	SQL_BLOB
+	SQL_BLOB_LOCATOR
+	SQL_CLOB
+	SQL_CLOB_LOCATOR
+	SQL_ARRAY
+	SQL_ARRAY_LOCATOR
+	SQL_TYPE_DATE
+	SQL_TYPE_TIME
+	SQL_TYPE_TIMESTAMP
+	SQL_TYPE_TIME_WITH_TIMEZONE
+	SQL_TYPE_TIMESTAMP_WITH_TIMEZONE
+	SQL_INTERVAL_YEAR
+	SQL_INTERVAL_MONTH
+	SQL_INTERVAL_DAY
+	SQL_INTERVAL_HOUR
+	SQL_INTERVAL_MINUTE
+	SQL_INTERVAL_SECOND
+	SQL_INTERVAL_YEAR_TO_MONTH
+	SQL_INTERVAL_DAY_TO_HOUR
+	SQL_INTERVAL_DAY_TO_MINUTE
+	SQL_INTERVAL_DAY_TO_SECOND
+	SQL_INTERVAL_HOUR_TO_MINUTE
+	SQL_INTERVAL_HOUR_TO_SECOND
+	SQL_INTERVAL_MINUTE_TO_SECOND
    ) ],
    preparse_flags => [ qw(
         DBIpp_cm_cs DBIpp_cm_hs DBIpp_cm_dd DBIpp_cm_br
@@ -276,6 +322,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
     db => {		# Database Session Class Interface
 	@Common_IF,
 	@TieHash_IF,
+	connected   	=> { O=>0x0100 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'] },
 	commit     	=> { U =>[1,1], O=>0x0080 },
 	rollback   	=> { U =>[1,1], O=>0x0080 },
@@ -286,18 +333,21 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectrow_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	selectall_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'] },
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	handler    	=> { U =>[2,2,'\&handler'] },
-	ping       	=> { U =>[1,1] },
+	ping       	=> { U =>[1,1], O=>0x04 },
 	disconnect 	=> { U =>[1,1] },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x30 },
+	quote_identifier=> { U =>[2,4, '$name [, ...]' ],	    O=>0x30 },
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
 	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
+	column_info     => { U =>[1,6,'$catalog, $schema, $table, $column [, \%attr ]' ] },
 	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
 	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
+	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ] },
 	type_info_all	=> { U =>[1,1] },
 	type_info	=> { U =>[1,2] },
 	get_info	=> { U =>[2,2] },
@@ -405,20 +455,18 @@ sub connect {
     }
 
     unless ($old_driver) { # new-style connect so new default semantics
-	$driver_attrib_spec = { split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec }
-	    if $driver_attrib_spec;
 	$attr = {
 	    PrintError=>1, AutoCommit=>1,
 	    ref $attr ? %$attr : (),
-	    ref $driver_attrib_spec ? %$driver_attrib_spec : (),
+	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec) : (),
 	};
 	# XXX to be enabled for DBI v2.0
-	#Carp::carp("AutoCommit attribute not specified in DBI->connect")
+	#Carp::carp("AutoCommit attribute not specified in $class->connect")
 	#    if $^W && !defined($attr->{AutoCommit});
     }
 
-    my $drh = $class->install_driver($driver)
-	|| die "panic: install_driver($driver) failed";
+    my $drh = $DBI::installed_drh{$driver} || $class->install_driver($driver)
+	or die "panic: $class->install_driver($driver) failed";
 
     ($user, $pass) = $drh->default_user($user, $pass, $attr)
 	if !(defined $user && defined $pass);
@@ -426,6 +474,7 @@ sub connect {
     unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
 	my $msg = "$class->connect($dsn) failed: ".$drh->errstr;
 	if (ref $attr) {
+	    # XXX add $attr->{HandleError} logic here?
 	    Carp::croak($msg) if $attr->{RaiseError};
 	    Carp::carp ($msg) if $attr->{PrintError};
 	}
@@ -434,30 +483,47 @@ sub connect {
 	return undef;
     }
 
-    # XXX this is inelegant but practical in the short term, sigh.
-    if ($installed_rootclass{$class}) {
-	$dbh->{RootClass} = $class;
-	bless $dbh => $class.'::db';
-	my ($outer, $inner) = DBI::_handles($dbh);
-	bless $inner => $class.'::db';
+
+    # handle basic RootClass subclassing:
+    my $rebless_class = delete($attr->{RootClass}) || ($class ne 'DBI' ? $class : '');
+    if ($rebless_class) {
+	DBI::_load_module($rebless_class) if $attr->{RootClass};
+        no strict 'refs';
+        unless (@{"$rebless_class\::db::ISA"}) {
+            Carp::carp("DBI subclass '$rebless_class\::db' isn't setup, ignored");
+            $rebless_class = undef;
+            $class = 'DBI';
+        }
+        else {
+            $dbh->{RootClass} = $rebless_class; # $dbh->STORE called via plain DBI::db
+            DBI::_set_isa([$rebless_class], 'DBI');     # sets up both '::db' and '::st'
+            DBI::_rebless($dbh, $rebless_class);        # appends '::db'
+        }
     }
 
+
     if (ref $attr) {
-	my %a = %$attr;
+	my %a = %$attr;	# take a copy we can delete from
+
+	DBI::_rebless_dbtype_subclass($dbh, $rebless_class||$class, delete $a{DbTypeSubclass}, \%a)
+	    if $a{DbTypeSubclass};
+
 	my $a;
-	# handle these attributes first
-	foreach $a (qw(RaiseError PrintError AutoCommit)) {
+	foreach $a (qw(RaiseError PrintError AutoCommit)) { # do these first
 	    next unless exists $a{$a};
-	    $dbh->{$a} = $a{$a};
-	    delete $a{$a};
+	    $dbh->{$a} = delete $a{$a};
 	}
 	foreach $a (keys %a) {
 	    $dbh->{$a} = $a{$a};
 	}
     }
+
+    # if we've been subclassed then let the subclass know that we're connected
+    $dbh->connected($dsn, $user, $pass, $attr) if ref $dbh ne 'DBI::db';
+
     DBI->trace_msg("    <- connect= $dbh\n") if $DBI::dbi_debug;
 
-    $dbh;
+    return $dbh;
 }
 
 
@@ -562,14 +628,130 @@ sub _setup_driver {
 }
 
 
-sub init_rootclass {
-    my $rootclass = shift;
-    no strict 'refs';
-    croak("Can't init '$rootclass' without '$rootclass\::db' class.")
-	unless defined ${"$rootclass\::db::"}{ISA};
+sub _rebless {
+    my $dbh = shift;
+    my ($outer, $inner) = DBI::_handles($dbh);
+    my $class = shift(@_).'::db';
+    bless $inner => $class;
+    bless $outer => $class; # outer last for return
+}
 
-    $installed_rootclass{$rootclass} = 1;
-    # may do checks on ::db and ::st classes later
+
+sub _set_isa {
+    my ($classes, $topclass) = @_;
+    my $trace = DBI->trace_msg("       _set_isa([@$classes])\n");
+    foreach my $suffix ('::db','::st') {
+	my $previous = $topclass || 'DBI'; # trees are rooted here
+	foreach my $class (@$classes) {
+	    my $base_class = $previous.$suffix;
+	    my $sub_class  = $class.$suffix;
+	    my $sub_class_isa  = "${sub_class}::ISA";
+	    no strict 'refs';
+	    if (@$sub_class_isa) {
+		DBI->trace_msg("       $sub_class_isa skipped (already set to @$sub_class_isa)\n")
+		    if $trace;
+	    }
+	    else {
+		@$sub_class_isa = ($base_class) unless @$sub_class_isa;
+		DBI->trace_msg("       $sub_class_isa = $base_class\n")
+		    if $trace;
+	    }
+	    $previous = $class;
+	}
+    }
+}
+
+
+sub _rebless_dbtype_subclass {
+    my ($dbh, $rootclass, $DbTypeSubclass, $attr) = @_;
+    # determine the db type names for class hierarchy
+    my @hierarchy = DBI::_dbtype_names($dbh, $DbTypeSubclass, $attr);
+    # add the rootclass prefix to each ('DBI::' or 'MyDBI::' etc)
+    $_ = $rootclass.'::'.$_ foreach (@hierarchy);
+    # load the modules from the 'top down'
+    DBI::_load_module($_) foreach (reverse @hierarchy);
+    # setup class hierarchy if needed, does both '::db' and '::st'
+    DBI::_set_isa(\@hierarchy, $rootclass);
+    # finally bless the handle into the subclass
+    DBI::_rebless($dbh, $hierarchy[0]);
+}
+
+
+sub _dbtype_names { # list dbtypes for hierarchy, ie Informix=>ADO=>ODBC
+    my ($dbh, $DbTypeSubclass, $attr) = @_;
+
+    if ($DbTypeSubclass && $DbTypeSubclass ne '1' && ref $DbTypeSubclass ne 'CODE') {
+	# treat $DbTypeSubclass as a comma separated list of names
+	my @dbtypes = split /\s*,\s*/, $DbTypeSubclass;
+	$dbh->trace_msg("    DbTypeSubclass($DbTypeSubclass)=@dbtypes (explicit)\n");
+	return @dbtypes;
+    }
+
+    # XXX will call $dbh->get_info(17) (=SQL_DBMS_NAME) in future?
+
+    my $driver = $dbh->{Driver}->{Name};
+    if ( $driver eq 'Proxy' ) {
+        # XXX Looking into the internals of DBD::Proxy is questionable!
+        ($driver) = $dbh->{proxy_client}->{application} =~ /^DBI:(.+?):/i
+		or die "Can't determine driver name from proxy";
+    }
+
+    my @dbtypes = (ucfirst($driver));
+    if ($driver eq 'ODBC' || $driver eq 'ADO') {
+	# XXX will move these out and make extensible later:
+	my $_dbtype_name_regexp = 'Oracle'; # eg 'Oracle|Foo|Bar'
+	my %_dbtype_name_map = (
+	     'Microsoft SQL Server'	=> 'MSSQL',
+	     'SQL Server'		=> 'Sybase',
+	     'Adaptive Server Anywhere'	=> 'ASAny',
+	     'ADABAS D'			=> 'AdabasD',
+	);
+
+        my $name;
+	$name = $dbh->func(17, 'GetInfo') # SQL_DBMS_NAME
+		if $driver eq 'ODBC';
+	$name = $dbh->{ado_conn}->Properties->Item('DBMS Name')->Value
+		if $driver eq 'ADO';
+	die "Can't determine driver name! ($DBI::errstr)\n"
+		unless $name;
+
+	my $dbtype;
+        if ($_dbtype_name_map{$name}) {
+            $dbtype = $_dbtype_name_map{$name};
+        }
+	else {
+	    if ($name =~ /($_dbtype_name_regexp)/) {
+		$dbtype = lc($1);
+	    }
+	    else { # generic mangling for other names:
+		$dbtype = lc($name);
+	    }
+	    $dbtype =~ s/\b(\w)/\U$1/g;
+	    $dbtype =~ s/\W+/_/g;
+	}
+	# add ODBC 'behind' ADO
+	push    @dbtypes, 'ODBC' if $driver eq 'ADO';
+	# add discovered dbtype in front of ADO/ODBC
+	unshift @dbtypes, $dbtype;
+    }
+    @dbtypes = &$DbTypeSubclass($dbh, \@dbtypes)
+	if (ref $DbTypeSubclass eq 'CODE');
+    $dbh->trace_msg("    DbTypeSubclass($DbTypeSubclass)=@dbtypes\n");
+    return @dbtypes;
+}
+
+sub _load_module {
+    (my $module = shift) =~ s!::!/!g;
+    eval {
+        require $module.'.pm';
+    };
+    return 1 unless $@;
+    return 0 if $@ =~ /^\b\@INC\b/;
+    die; # propagate $@;
+}
+
+
+sub init_rootclass {	# deprecated
     return 1;
 }
 
@@ -715,7 +897,7 @@ sub _new_handle {
     return $h unless wantarray;
     ($h, $i);
 }
-# minimum constructors for the tie's (alias to XS version)
+# XXX minimum constructors for the tie's (alias to XS version)
 sub DBI::st::TIEHASH { bless $_[1] => $_[0] };
 *DBI::dr::TIEHASH = \&DBI::st::TIEHASH;
 *DBI::db::TIEHASH = \&DBI::st::TIEHASH;
@@ -786,8 +968,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	($drh, $inner) = DBI::_new_drh('DBD::Switch::dr', {
 		'Name'    => 'Switch',
 		'Version' => $DBI::VERSION,
-		# the Attribution is defined as a sub as an example
-		'Attribution' => sub { "DBI $DBI::VERSION by Tim Bunce" },
+		'Attribution' => "DBI $DBI::VERSION by Tim Bunce",
 	    }, \$err);
 	Carp::croak("DBD::Switch init failed!") unless ($drh && $inner);
 	return $drh;
@@ -912,6 +1093,20 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     # Drivers are required to implement *::db::DESTROY to encourage tidy-up
     sub DESTROY  { Carp::croak("Driver has not implemented DESTROY for @_") }
+
+    sub quote_identifier {
+	my $dbh = shift;
+	my $id  = shift;
+	my $opt = shift;		# optional, quote only if needed
+	# ignore null elements (ie catalog, schema)
+	my @id  = (ref $id) ? grep { defined } @$id : ($id);
+	s/"/""/g foreach @id;		# escape embedded quotes
+	foreach (@id) {			# quote the elements
+	    next if $opt && /^[a-z_]\w*$/i;
+	    $_ = qq{"$_"};
+	}
+	return join '.', @id;		# ... and join the dots
+    }
 
     sub quote {
 	my ($dbh, $str, $data_type) = @_;
@@ -1068,6 +1263,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	shift->_not_impl('table_info');
     }
 
+    sub column_info {
+	shift->_not_impl('column_info');
+    }
+
     sub primary_key_info {
 	shift->_not_impl('primary_key_info');
     }
@@ -1080,6 +1279,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	croak("primary_key method not called in list context")
 		unless wantarray; # leave us some elbow room
 	return @col;
+    }
+
+    sub foreign_key_info {
+	shift->_not_impl('foreign_key_info');
     }
 
     sub tables {
@@ -1603,20 +1806,27 @@ and the dynamic attributes associated with generic DBI handles.
 
 =head2 DBI Constants
 
-The following SQL standard type constants can be imported individually
-or, by importing the special C<:sql_types> tag, all together:
+Constants representing the values of the SQL standard types can be
+imported individually by name, or all together by importing the
+special C<:sql_types> tag.
 
-  SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
-  SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR
-  SQL_DATE SQL_TIME SQL_TIMESTAMP
-  SQL_LONGVARCHAR SQL_BINARY SQL_VARBINARY SQL_LONGVARBINARY
-  SQL_BIGINT SQL_TINYINT
-  SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR
-  SQL_BIT
-  SQL_ALL_TYPES
+The names and values of all the defined SQL standard types can be
+produced like this:
+
+  foreach (@{ $DBI::EXPORT_TAGS{sql_types} }) {
+    printf "%s=%d\n", $_, &{"DBI::$_"};
+  }
+
+These constants are defined by SQL/CLI, ODBC or both.
+C<SQL_BIT> is (currently) omitted, because SQL/CLI and ODBC provide
+conflicting codes.
 
 See the L</type_info>, L</type_info_all>, and L</bind_param> methods
 for possible uses.
+
+Note that just because the DBI defines a named constant for a given
+data type doesn't mean that drivers will support that data type.
+
 
 =head2 DBI Class Methods
 
@@ -2016,8 +2226,8 @@ Further calls to trace without a C<$trace_filename> do not alter where
 the trace output is sent. If C<$trace_filename> is undefined, then
 trace output is sent to C<STDERR> and the previous trace file is closed.
 
-See also the C<DBI->E<gt>C<trace> method and L</DEBUGGING> for information
-about the C<DBI_TRACE> environment variable.
+See also the C<DBI->E<gt>C<trace> method, the C<$h->E<gt>C<{TraceLevel}> attribute,
+and L</DEBUGGING> for information about the C<DBI_TRACE> environment variable.
 
 
 =item C<trace_msg>
@@ -2121,6 +2331,10 @@ statement or disconnect from the database etc).
 For a database handle, this attribute does not disable an I<explicit>
 call to the disconnect method, only the implicit call from DESTROY.
 
+The default value, false, means that a handle will be automatically
+destroyed when it passes out of scope.  A true value disables automatic
+destruction. (Think of the name as meaning 'inactive the DESTROY method'.)
+
 This attribute is specifically designed for use in Unix applications
 that "fork" child processes. Either the parent or the child process,
 but not both, should set C<InactiveDestroy> on all their shared handles.
@@ -2179,6 +2393,26 @@ Even more sadly, for Perl 5.5 and 5.6.0 it does work but leaks memory!
 For backwards compatibility, you could just use C<eval { ... }> instead.
 
 
+=item C<HandleError> (code ref, inherited) I<NEW>
+
+This attribute can be used to provide your own alternative behaviour
+in case of errors. If set to a reference to a subroutine then that
+subroutine is called when an error is detected.
+
+The subroutine is called with three parameters: the error message
+string that C<RaiseError> and C<PrintError> would use (see above),
+the DBI handle being used, and the first value being returned by
+the method that failed (typically undef).
+
+If the subroutine returns a false value then the C<RaiseError>
+and/or C<PrintError> attributes are checked and acted upon as normal.
+
+For example, to get a full stack trace for any error:
+
+  use Carp;
+  $h->{HandleError} = sub { confess(shift) };
+
+
 =item C<ShowErrorStatement> (boolean, inherited) I<NEW>
 
 This attribute can be used to cause the relevant Statement text to be
@@ -2186,6 +2420,12 @@ appended to the error messages generated by the C<RaiseError> and
 C<PrintError> attributes. Only applies to errors on statement handles
 plus the prepare() and do() database handle methods.
 (The exact format of the appended text is subject to change.)
+
+
+=item C<TraceLevel> (integer, inherited) I<NEW>
+
+This attribute can be used as an alternative to the L</trace> method
+to set the DBI trace level for a specific handle.
 
 
 =item C<FetchHashKeyName> (string, inherited) I<NEW>
@@ -2280,13 +2520,13 @@ applications unless you take great care now. If you use DBI Taint mode,
 please report your experience and any suggestions for changes.
 
 
-=item C<private_*>
+=item C<private_your_module_name_*>
 
 The DBI provides a way to store extra information in a DBI handle as
 "private" attributes. The DBI will allow you to store and retreive any
-attribute which has a name starting with "C<private_>". It is strongly
+attribute which has a name starting with "C<private_>". It is I<strongly>
 recommended that you use just I<one> private attribute (e.g., use a
-hash ref) and give it a long and unambiguous name that includes the
+hash ref) I<and> give it a long and unambiguous name that includes the
 module or application name that the attribute relates to (e.g.,
 "C<private_YourFullModuleName_thingy>").
 
@@ -2369,6 +2609,36 @@ field. An C<undef> is returned if there are no matching rows or an error
 occurred. Since that C<undef> can't be distinguished from an C<undef> returned
 because the first field value was NULL, calling C<selectrow_array> in
 a scalar context should be used with caution.
+
+
+=item C<selectrow_arrayref>
+
+  $ary_ref = $dbh->selectrow_array($statement);
+  $ary_ref = $dbh->selectrow_array($statement, \%attr);
+  $ary_ref = $dbh->selectrow_array($statement, \%attr, @bind_values);
+
+This utility method combines L</prepare>, L</execute> and
+L</fetchrow_arrayref> into a single call. It returns the first row of
+data from the statement.  The C<$statement> parameter can be a previously
+prepared statement handle, in which case the C<prepare> is skipped.
+
+If any method fails, and L</RaiseError> is not set, C<selectrow_array>
+will return undef.
+
+
+=item C<selectrow_hashref>
+
+  $hash_ref = $dbh->selectrow_hashref($statement);
+  $hash_ref = $dbh->selectrow_hashref($statement, \%attr);
+  $hash_ref = $dbh->selectrow_hashref($statement, \%attr, @bind_values);
+
+This utility method combines L</prepare>, L</execute> and
+L</fetchrow_hashref> into a single call. It returns the first row of
+data from the statement.  The C<$statement> parameter can be a previously
+prepared statement handle, in which case the C<prepare> is skipped.
+
+If any method fails, and L</RaiseError> is not set, C<selectrow_hashref>
+will return undef.
 
 
 =item C<selectall_arrayref> I<NEW>
@@ -2650,7 +2920,7 @@ Note: The support for the selection criteria is driver specific. If the
 driver doesn't support one or more then them then you may get back more
 than you asked for and can do the filtering yourself.
 
-The arguments $table, $schema and $table may accept search patterns
+The arguments $catalog, $schema and $table may accept search patterns
 according to the database/driver, for example: $table = '%FOO%';
 
 The value of $type is a comma-separated list of one or more types of
@@ -2703,25 +2973,122 @@ B<REMARKS>: A description of the table. May be NULL (C<undef>).
 
 Note that C<table_info> might not return records for all tables.
 Applications can use any valid table regardless of whether it's
-returned by C<table_info>.  See also L</tables>.
+returned by C<table_info>.
+See also L</tables> and L</"Standards Reference Information">.
 
-For more detailed information about the fields and their meanings,
-you can refer to:
+=item C<column_info> I<NEW>
 
-  http://msdn.microsoft.com/library/psdk/dasdk/odch6wqb.htm
+B<Warning:> This method is experimental and may change.
 
-If that URL ceases to work then use the MSDN search facility at:
+  $sth = $dbh->column_info( $catalog, $schema, $table, $column );
 
-  http://search.microsoft.com/us/dev/
+Returns an active statement handle that can be used to fetch
+information about columns in specified tables.
 
-and search for C<SQLTables returns> using the exact phrase option.
-The link you want will probably just be called C<SQLTables> and will
-be part of the Data Access SDK.
+The arguments $schema, $table and $column may accept search patterns
+according to the database/driver, for example: $table = '%FOO%';
 
-See also page 306 of the (very large) SQL/CLI specification:
+Note: The support for the selection criteria is driver specific. If the
+driver doesn't support one or more of them then you may get back more
+than you asked for and can do the filtering yourself.
 
-  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
+The statement handle returned has at least the following fields in the
+order shown below. Other fields, after these, may also be present.
 
+B<TABLE_CAT>: The catalog identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+which is often the case.  This field is empty if not applicable to the
+table.
+
+B<TABLE_SCHEM>: The schema identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+and empty if not applicable to the table.
+
+B<TABLE_NAME>: The table identifier.
+Note: A driver may provide column metadata not only for base tables, but
+also for derived objects like SYNONYMS etc.
+
+B<COLUMN_NAME>: The column identifier.
+
+B<DATA_TYPE>: The concise data type code.
+
+B<TYPE_NAME>: A data source dependent data type name.
+
+B<COLUMN_SIZE>: The column size.
+This is the maximum length in characters for character data types,
+the number of digits or bits for numeric data types or the length
+in the representation of temporal types.
+See the relevant specifications for detailed information.
+
+B<BUFFER_LENGTH>: The length in bytes of transferred data.
+
+B<DECIMAL_DIGITS>: The total number of significant digits to the right of
+the decimal point.
+
+B<NUM_PREC_RADIX>: The radix for numeric precision.
+The value is 10 or 2 for numeric data types and NULL (C<undef>) if not
+applicable.
+
+B<NULLABLE>: Indicates if a column can accept NULLs.
+The following values are defined:
+
+  SQL_NO_NULLS          0
+  SQL_NULLABLE          1
+  SQL_NULLABLE_UNKNOWN  2
+
+B<REMARKS>: A description of the column.
+
+B<COLUMN_DEF>: The default value of the column.
+
+B<SQL_DATA_TYPE>: The SQL data type.
+
+B<SQL_DATETIME_SUB>: The subtype code for datetime and interval data types.
+
+B<CHAR_OCTET_LENGTH>: The maximum length in bytes of a character or binary
+data type column.
+
+B<ORDINAL_POSITION>: The column sequence number (starting with 1).
+
+B<IS_NULLABLE>: Indicates if the column can accept NULLs.
+Possible values are: 'NO', 'YES' and ''.
+
+SQL/CLI defines the following additional columns:
+
+  CHAR_SET_CAT
+  CHAR_SET_SCHEM
+  CHAR_SET_NAME
+  COLLATION_CAT
+  COLLATION_SCHEM
+  COLLATION_NAME
+  UDT_CAT
+  UDT_SCHEM
+  UDT_NAME
+  DOMAIN_CAT
+  DOMAIN_SCHEM
+  DOMAIN_NAME
+  SCOPE_CAT
+  SCOPE_SCHEM
+  SCOPE_NAME
+  MAX_CARDINALITY
+  DTD_IDENTIFIER
+  IS_SELF_REF
+
+Drivers capable of supplying any of those values should do so in
+the corresponding column and supply undef values for the others.
+
+Drivers wishing to provide extra database/driver specific information
+should do so in extra columns beyond all those listed above, and
+use lowercase field names with the driver-specific prefix (i.e.,
+'ora_...'). Applications accessing such fields should do so by name
+and not by column number.
+
+The result set is ordered by TABLE_CAT, TABLE_SCHEM, TABLE_NAME
+and ORDINAL_POSITION.
+
+Note: There is some overlap with statement attributes (in perl) and
+SQLDescribeCol (in ODBC). However, SQLColumns provides more metadata.
+
+See also L</"Standards Reference Information">.
 
 =item C<primary_key_info> I<NEW>
 
@@ -2764,23 +3131,7 @@ Note: This field is named B<ORDINAL_POSITION> in SQL/CLI.
 B<PK_NAME>: The primary key constraint identifier.
 This field is NULL (C<undef>) if not applicable to the data source.
 
-For more detailed information about the fields and their meanings,
-you can refer to:
-
-  http://msdn.microsoft.com/library/psdk/dasdk/odch6fn7.htm
-
-If that URL ceases to work then use the MSDN search facility at:
-
-  http://search.microsoft.com/us/dev/
-
-and search for C<SQLPrimaryKeys returns> using the exact phrase option.
-The link you want will probably just be called C<SQLPrimaryKeys> and will
-be part of the Data Access SDK.
-
-See also page 266 of the current SQL/CLI Working Draft:
-
-  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
-
+See also L</"Standards Reference Information">.
 
 =item C<primary_key> I<NEW>
 
@@ -2791,6 +3142,123 @@ B<Warning:> This method is experimental and may change.
 Simple interface to the primary_key_info() method. Returns a list of
 the column names that comprise the primary key of the specified table.
 The list is in primary key column sequence order.
+
+
+=item C<foreign_key_info> I<NEW>
+
+B<Warning:> This method is experimental and may change.
+
+  $sth = $dbh->foreign_key_info( $pk_catalog, $pk_schema, $pk_table
+                               , $fk_catalog, $fk_schema, $fk_table );
+
+Returns an active statement handle that can be used to fetch information
+about foreign keys in and/or referencing the specified table(s).
+The arguments don't accept search patterns (unlike table_info()).
+
+C<$pk_catalog>, C<$pk_schema>, C<$pk_table>
+identify the primary (unique) key table (B<PKT>).
+
+C<$fk_catalog>, C<$fk_schema>, C<$fk_table>
+identify the foreign key table (B<FKT>).
+
+If both B<PKT> and B<FKT> are given, the function returns the foreign key, if
+any, in table B<FKT> that refers to the primary (unique) key of table B<PKT>.
+(Note: In SQL/CLI, the result is implementation-defined.)
+
+If only B<PKT> is given, then the result set contains the primary key
+of that table and all foreign keys that refer to it.
+
+If only B<FKT> is given, then the result set contains all foreign keys
+in that table and the primary keys to which they refer.
+(Note: In SQL/CLI, the result includes unique keys too.)
+
+For example:
+
+  $sth = $dbh->foreign_key_info( undef, $user, 'master');
+  $sth = $dbh->foreign_key_info( undef, undef,   undef , undef, $user, 'detail');
+  $sth = $dbh->foreign_key_info( undef, $user, 'master', undef, $user, 'detail');
+
+Note: The support for the selection criteria, such as C<$catalog>, is
+driver specific.  If the driver doesn't support catalogs and/or
+schemas, it may ignore these criteria.
+
+The statement handle returned has the following fields in the order shown below.
+Because ODBC never includes unique keys, they define different columns in the
+result set than SQL/CLI. SQL/CLI column names are shown in parentheses.
+
+B<PKTABLE_CAT    ( UK_TABLE_CAT      )>:
+The primary (unique) key table catalog identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+which is often the case.  This field is empty if not applicable to the
+table.
+
+B<PKTABLE_SCHEM  ( UK_TABLE_SCHEM    )>:
+The primary (unique) key table schema identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+and empty if not applicable to the table.
+
+B<PKTABLE_NAME   ( UK_TABLE_NAME     )>:
+The primary (unique) key table identifier.
+
+B<PKCOLUMN_NAME  (UK_COLUMN_NAME    )>:
+The primary (unique) key column identifier.
+
+B<FKTABLE_CAT    ( FK_TABLE_CAT      )>:
+The foreign key table catalog identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+which is often the case.  This field is empty if not applicable to the
+table.
+
+B<FKTABLE_SCHEM  ( FK_TABLE_SCHEM    )>:
+The foreign key table schema identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+and empty if not applicable to the table.
+
+B<FKTABLE_NAME   ( FK_TABLE_NAME     )>:
+The foreign key table identifier.
+
+B<FKCOLUMN_NAME  ( FK_COLUMN_NAME    )>:
+The foreign key column identifier.
+
+B<KEY_SEQ        ( ORDINAL_POSITION  )>:
+The column sequence number (starting with 1).
+
+B<UPDATE_RULE    ( UPDATE_RULE       )>:
+The referential action for the UPDATE rule.
+The following codes are defined:
+
+  CASCADE              0
+  RESTRICT             1
+  SET NULL             2
+  NO ACTION            3
+  SET DEFAULT          4
+
+B<DELETE_RULE    ( DELETE_RULE       )>:
+The referential action for the DELETE rule.
+The codes are the same as for UPDATE_RULE.
+
+B<FK_NAME        ( FK_NAME           )>:
+The foreign key name.
+
+B<PK_NAME        ( UK_NAME           )>:
+The primary (unique) key name.
+
+B<DEFERRABILITY  ( DEFERABILITY      )>:
+The deferrability of the foreign key constraint.
+The following codes are defined:
+
+  INITIALLY DEFERRED   5
+  INITIALLY IMMEDIATE  6
+  NOT DEFERRABLE       7
+
+B<               ( UNIQUE_OR_PRIMARY )>:
+This column is necessary if a driver includes all candidate (i.e. primary and
+alternate) keys in the result set (as specified by SQL/CLI).
+The value of this column is UNIQUE if the foreign key references an alternate
+key and PRIMARY if the foreign key references a primary key, or it
+may be undefined if the driver doesn't have access to the information.
+
+See also L</"Standards Reference Information">.
 
 
 =item C<tables> I<NEW>
@@ -3046,25 +3514,8 @@ Here's an example looking for a usable type to store a date:
 Similarly, to more reliably find a type to store small integers, you could
 use a list starting with C<SQL_SMALLINT>, C<SQL_INTEGER>, C<SQL_DECIMAL>, etc.
 
-For more detailed information about these fields and their meanings, you
-can refer to:
+See also L</"Standards Reference Information">.
 
-  http://msdn.microsoft.com/library/psdk/dasdk/odch6yy7.htm
-
-If that URL ceases to work then use the MSDN search facility at 
- 
-    http://search.microsoft.com/us/dev/
- 
-and search the MSDN Library for C<SQLGetTypeInfo returns> using the exact phrase option.
-The link you want will probably just be called C<SQLGetTypeInfo> (there
-may be more than one). 
-
-The individual data types are currently described here:
-
-  http://msdn.microsoft.com/library/psdk/dasdk/odap8fcj.htm
-
-If that URL ceases to work, or to get more general information, use the
-MSDN search facility as described above and search for C<SQL Data Types>.
 
 =item C<quote>
 
@@ -3481,7 +3932,7 @@ then it is used as a slice to select individual columns by perl array
 index number (starting at 0, unlike column and parameter numbers which
 start at 1).
 
-With no parameters, C<fotchall_arrayref> acts as if passed an empty array ref.
+With no parameters, C<fetchall_arrayref> acts as if passed an empty array ref.
 
 When passed a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
 to fetch each row as a hash reference. If the parameter hash is empty then
@@ -3778,7 +4229,7 @@ the same values as an ODBC driver supplied by the makers of the
 database. That might include private type numbers in ranges the vendor
 has officially registered with the ISO working group:
 
-  ftp://jerry.ece.umassd.edu/isowg3/dbl/SQL_Registry
+  ftp://sqlstandards.org/SC32/SQL_Registry/
 
 Where there's no vendor-supplied ODBC driver to be compatible with, the
 DBI driver can use type numbers in the range that is now officially reserved
@@ -4011,6 +4462,116 @@ then C<cancel> failed. If it returns C<undef>, then the database
 engine does not have cancel implemented.
 
 
+=head2 Subclassing the DBI
+
+DBI can be subclassed and extended just like any other object
+oriented module.  Before we talk about how to do that, it's important
+to be clear about how the DBI classes work together.
+
+By default C<$dbh = DBI->E<gt>C<connect(...)> returns a $dbh blessed
+into the C<DBI::db> class.  And the C<$dbh->E<gt>C<prepare> method
+returns an $sth blessed into the C<DBI::st> class (actually it
+simply changes the last for characters of the calling handle class
+to be C<::st>).
+
+The leading 'C<DBI>' is known as the 'root class' and the extra
+'C<::db>' or 'C<::st>' are the 'handle type suffixes'. If you want
+to subclass the DBI you'll need to put your overriding methods into
+the appropriate classes.  For example, if you want to use a root class
+of C<MySubDBI> and override the do(), prepare() and execute() methods,
+then your do() and prepare() methods should be in the C<MySubDBI::db>
+class and the execute() method should be in the C<MySubDBI::st> class.
+
+To setup the inheritance hierarchy the @ISA variable in C<MySubDBI::db>
+should contain C<DBI::db> and the @ISA variable in C<MySubDBI::st>
+should contain C<DBI::st>.  The C<MySubDBI> root class itself isn't
+currently used and, apart from setting @ISA to include C<DBI>, it
+should be left empty.
+
+So, having put your overriding methods into the right classes, and
+setup the inheritance hierarchy, how do you get the DBI to use them?
+You have two choices, either a static method call using the name
+of your subclass:
+
+  $dbh = MySubDBI->connect(...);
+
+or specifying a C<RootClass> attribute:
+
+  $dbh = DBI->connect(..., { RootClass => 'MySubDBI' });
+
+The only difference between the two is that using an explicit
+RootClass attribute will make the DBI automatically attempt to load
+a module by that name (and not complain if such a module can't be
+found). If both forms are used then the attribute takes precedence.
+
+Here's a brief example of a DBI subclass.  A more thorough example
+can be found in t/subclass.t in the DBI distribution.
+
+  package MySubDBI;
+
+  use strict;
+
+  use DBI;
+  use vars qw(@ISA);
+  @ISA = qw(DBI);
+
+  package MySubDBI::db;
+  use vars qw(@ISA);
+  @ISA = qw(DBI::db);
+
+  sub prepare {
+    my ($dbh, @args) = @_;
+    my $sth = $dbh->SUPER::prepare(@args)
+        or return;
+    $sth->{private_mysubdbi_foo} = 'bar';
+    return $sth;
+  }
+
+  package MySubDBI::st;
+  use vars qw(@ISA);
+  @ISA = qw(DBI::st);
+
+  sub fetch {
+    my ($sth, @args) = @_;
+    my $row = $sth->SUPER::fetch(@args)
+        or return;
+    do_something_magical_with_row_data($row)
+        or return $sth->set_error(1234, "The magic failed");
+    return $row;
+  }
+
+You can stash private class data in a handle and carry it around
+via C<$h->E<gt>C<{private_..._*}>.  See the entry under L</ATTRIBUTES
+COMMON TO ALL HANDLES> for info and important caveats.
+
+When calling a supermethod that returns a handle, be careful to
+check the return value before trying to do other things with it in
+your overridden method. This is especially important if you want
+to set a hash attribute on the handle, as Perl's autovivification
+will bite you by (in)conveniently creating an unblessed hashref,
+which your method will then return with occasionally baffling results
+later on.
+
+It's best to check right after the supermethod call and return undef
+immediately on error, just like DBI would and just like the example
+above.
+
+If your method needs to record an error it should call the set_error()
+method with the error code and error string, as shown in the example
+above. The error code and error string will be recorded in the
+handle and available via C<$h->E<gt>C<err> and C<$DBI::errstr> etc.
+The set_error() method always returns an undef or empty list as
+approriate. Since your method should nearly always return an undef
+or empty list as soon as an error is detected it's handy to simply
+return what set_error() returns, as shown in the example above.
+
+If the handle has C<RaiseError>, C<PrintError>, or C<HandleError>
+etc. set then the set_error() method will honour them. This means
+that if C<RaiseError> is set then set_error() won't return in the
+normal way but will 'throw an exception' that can be caught with
+an C<eval> block.
+
+
 =head1 DEBUGGING
 
 In addition to the L</trace> method, you can enable the same trace
@@ -4119,6 +4680,39 @@ Refer to the documentation for the DBD driver that you are using.
 
 Refer to the SQL Language Reference Manual for the database engine that you are using.
 
+=head2 Standards Reference Information
+
+More detailed information about the semantics of certain DBI methods
+that are based on ODBC and SQL/CLI standards is available on-line
+via microsoft.com, for ODBC, and www.jtc1sc32.org for the SQL/CLI
+standard:
+
+ DBI method        ODBC function     SQL/CLI Working Draft
+ ----------        -------------     ---------------------
+ column_info       SQLColumns        Page 135
+ type_info         SQLGetTypeInfo    Page ???
+ table_info        SQLTables         Page 306
+ primary_key_info  SQLPrimaryKeys    Page 266
+ foreign_key_info  SQLForeignKeys    Page 174
+
+For example, for ODBC information on SQLColumns you'd visit:
+
+  http://msdn.microsoft.com/library/en-us/odbc/htm/odbcsqlcolumns.asp
+
+If that URL ceases to work then use the MSDN search facility at:
+ 
+  http://search.microsoft.com/us/dev/
+ 
+and search for C<SQLColumns returns> using the exact phrase option.
+The link you want will probably just be called C<SQLColumns> and will
+be part of the Data Access SDK.
+
+And for SQL/CLI standard information on SQLColumns you'd read page 135 of
+the (very large) SQL/CLI Working Draft available from:
+
+  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
+
+
 =head2 Books and Journals
 
  Programming the Perl DBI, by Alligator Descartes and Tim Bunce.
@@ -4130,6 +4724,20 @@ Refer to the SQL Language Reference Manual for the database engine that you are 
  Dr Dobb's Journal, November 1996.
 
  The Perl Journal, April 1997.
+
+=head2 Perl Modules
+
+Index of DBI related modules available from CPAN:
+
+ http://search.cpan.org/search?mode=module&query=DBIx%3A%3A
+ http://search.cpan.org/search?mode=doc&query=DBI
+
+For a good comparison of RDBMS-OO mappers and some OO-RDBMS mappers
+(including Class::DBI, Alzabo, and DBIx::RecordSet in the former
+category and Tangram and SPOPS in the latter) see the Perl
+Object-Oriented Persistence project pages at:
+
+ http://poop.sourceforge.net
 
 =head2 Manual Pages
 
@@ -4146,13 +4754,12 @@ There are typically between 700 and 900 messages per month.  You have
 to subscribe in order to be able to post. However you can opt for a
 'post-only' subscription.
 
-Mailing list archives are held at:
+Mailing list archives (of variable quality) are held at:
 
  http://www.xray.mpe.mpg.de/mailing-lists/dbi/
  http://groups.yahoo.com/group/dbi-users
  http://www.bitmechanic.com/mail-archives/dbi-users/
  http://marc.theaimsgroup.com/?l=perl-dbi&r=1&w=2
- http://www.mail-archive.com/dbi-users%40perl.org/
  http://www.mail-archive.com/dbi-users%40perl.org/
 
 =head2 Assorted Related WWW Links
@@ -4186,6 +4793,7 @@ Commercial and Data Warehouse Links
 Recommended Perl Programming Links
 
  http://language.perl.com/style/
+
 
 =head2 FAQ
 

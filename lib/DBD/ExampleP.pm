@@ -1,12 +1,14 @@
 {
     package DBD::ExampleP;
 
+    use Symbol;
+
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
+#   $Id: ExampleP.pm,v 11.3 2002/01/10 15:14:06 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -27,7 +29,7 @@
 
     $drh = undef;	# holds driver handle once initialised
     $err = 0;		# The $DBI::err value
-    $gensym = "SYM000"; # used by st::execute() for filehandles
+    #$gensym = "SYM000"; # used by st::execute() for filehandles
 
     sub driver{
 	return $drh if $drh;
@@ -116,7 +118,7 @@
 	my $dbh = shift;
 
 	# Return a list of all subdirectories
-	my $dh = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+	my $dh = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	my $haveFileSpec = eval { require File::Spec };
 	my $dir = $haveFileSpec ? File::Spec->curdir() : ".";
 	my @list;
@@ -270,10 +272,11 @@
 	}
 	else {
 	    $sth->{dbd_dir} = $dir;
-	    $sth->{dbd_datahandle} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+	    $sth->{dbd_datahandle} = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	    opendir($sth->{dbd_datahandle}, $dir)
 		or return $sth->DBI::set_err(2, "opendir($dir): $!");
 	}
+#return 1;
 	$sth->STORE(Active => 1);
 	1;
     }

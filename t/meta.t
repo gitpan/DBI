@@ -1,6 +1,8 @@
 #!../perl -w
 
 $|=1;
+$^W=1;
+
 print "1..$tests\n";
 
 sub ok ($$;$) {

@@ -1,6 +1,7 @@
 #!../../perl -w
 
 $|=1;
+$^W=1;
 
 BEGIN {
 	require Getopt::Long;

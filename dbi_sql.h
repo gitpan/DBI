@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 11.2 2001/08/24 22:10:44 timbo Exp $
+/* $Id: dbi_sql.h,v 11.3 2002/01/10 15:14:06 timbo Exp $
  *
  * Copyright (c) 1997,1998,1999  Tim Bunce  England
  *
@@ -9,34 +9,64 @@
 /* Some core SQL CLI standard (ODBC) declarations		*/
 #ifndef SQL_SUCCESS	/* don't clash with ODBC based drivers	*/
 
-/* Standard SQL datatypes (ANSI/ODBC type numbering)		*/
-#define	SQL_ALL_TYPES		0
-#define	SQL_CHAR		1
-#define	SQL_NUMERIC		2
-#define	SQL_DECIMAL		3
-#define	SQL_INTEGER		4
-#define	SQL_SMALLINT		5
-#define	SQL_FLOAT		6
-#define	SQL_REAL		7
-#define	SQL_DOUBLE		8
-#define SQL_DATE		9	/* SQL_DATETIME in CLI!	*/
-#define SQL_TIME		10
-#define SQL_TIMESTAMP		11
-#define	SQL_VARCHAR		12
-
-/* Other SQL datatypes (ODBC type numbering)			*/
-#define SQL_LONGVARCHAR		(-1)
-#define SQL_BINARY		(-2)
-#define SQL_VARBINARY		(-3)
-#define SQL_LONGVARBINARY	(-4)
-#define SQL_BIGINT		(-5)	/* too big for IV	*/
-#define SQL_TINYINT		(-6)
-
-/* Support for Unicode and SQL92 */
-#define SQL_BIT                 (-7)
-#define SQL_WCHAR               (-8)
-#define SQL_WVARCHAR            (-9)
-#define SQL_WLONGVARCHAR        (-10)
+/* SQL datatype codes */
+#define SQL_GUID                         (-11)
+#define SQL_WLONGVARCHAR                 (-10)
+#define SQL_WVARCHAR                      (-9)
+#define SQL_WCHAR                         (-8)
+#define SQL_TINYINT                       (-6)
+#define SQL_BIGINT                        (-5)
+#define SQL_LONGVARBINARY                 (-4)
+#define SQL_VARBINARY                     (-3)
+#define SQL_BINARY                        (-2)
+#define SQL_LONGVARCHAR                   (-1)
+#define SQL_UNKNOWN_TYPE                    0
+#define SQL_ALL_TYPES                       0
+#define SQL_CHAR                            1
+#define SQL_NUMERIC                         2
+#define SQL_DECIMAL                         3
+#define SQL_INTEGER                         4
+#define SQL_SMALLINT                        5
+#define SQL_FLOAT                           6
+#define SQL_REAL                            7
+#define SQL_DOUBLE                          8
+#define SQL_DATETIME                        9
+#define SQL_DATE                            9
+#define SQL_INTERVAL                       10
+#define SQL_TIME                           10
+#define SQL_TIMESTAMP                      11
+#define SQL_VARCHAR                        12
+#define SQL_BIT                            14
+#define SQL_BIT_VARYING                    15
+#define SQL_BOOLEAN                        16
+#define SQL_UDT                            17
+#define SQL_UDT_LOCATOR                    18
+#define SQL_ROW                            19
+#define SQL_REF                            20
+#define SQL_BLOB                           30
+#define SQL_BLOB_LOCATOR                   31
+#define SQL_CLOB                           40
+#define SQL_CLOB_LOCATOR                   41
+#define SQL_ARRAY                          50
+#define SQL_ARRAY_LOCATOR                  51
+#define SQL_TYPE_DATE                      91
+#define SQL_TYPE_TIME                      92
+#define SQL_TYPE_TIMESTAMP                 93
+#define SQL_TYPE_TIME_WITH_TIMEZONE        94
+#define SQL_TYPE_TIMESTAMP_WITH_TIMEZONE   95
+#define SQL_INTERVAL_YEAR                 101
+#define SQL_INTERVAL_MONTH                102
+#define SQL_INTERVAL_DAY                  103
+#define SQL_INTERVAL_HOUR                 104
+#define SQL_INTERVAL_MINUTE               105
+#define SQL_INTERVAL_SECOND               106
+#define SQL_INTERVAL_YEAR_TO_MONTH        107
+#define SQL_INTERVAL_DAY_TO_HOUR          108
+#define SQL_INTERVAL_DAY_TO_MINUTE        109
+#define SQL_INTERVAL_DAY_TO_SECOND        110
+#define SQL_INTERVAL_HOUR_TO_MINUTE       111
+#define SQL_INTERVAL_HOUR_TO_SECOND       112
+#define SQL_INTERVAL_MINUTE_TO_SECOND     113
 
 
 /* Main return codes						*/

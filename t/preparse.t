@@ -3,6 +3,8 @@
 use DBI qw(:preparse_flags);
 
 $|=1;
+$^W=1;
+
 *pp = \&DBI::preparse;
 sub ok($;$);
 

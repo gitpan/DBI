@@ -44,8 +44,6 @@ test shell /connect user etc
 
 document dbi_fetchall_arrayref_attr attr of selectall_arrayref().
 
-passing \$sql or \"...sql..." to $dbh->select methods to mean use prepare_cached?
-
 Count execute()s (and do's?) (in ima struct? not thread safe).
 Reset count in commit/rollback.
 In $dbh->DESTROY don't issue warning if count == 0.
@@ -183,8 +181,9 @@ Add problem reporting info to DBI.pm
 Metadata! (DBI::Metadata?)
 
 Add 'break handling' when field values change? Use two fbav's so 'previous
-record' is available. Defind break fields and handlers. Call them via
+record' is available. Define break fields and handlers. Call them via
 an alternate fetch_with_break method.
+Jan 2002: Also now see DBIx::FetchLoop (Brendan Fagan)
 
 Add mechanism to optimise
   $sth2->execute(@$row) while ($row = $sth1->fetchrow_arrayref);

@@ -1,3 +1,51 @@
+Changes in DBI 1.20_1,    10th January 2002
+
+  NOTE: This is a TEST RELEASE, not for production use.
+  : Please DO TEST THIS RELEASE, especially new features,
+  : and report any problems as soon as possible.
+  Things to be done before the full release (expected soon) include:
+  : Need to finalise get_info behaviour and docs
+  : Need to finalize quote_identifier behaviour and docs
+  : Need to add quote_identifier call to tables() and docs.
+  : Need to expand subclassing section in docs
+  : Need to add DbTypeSubclass (ala DBIx::AnyDBD) docs
+  : Need to update 'recent changes' section in docs
+  : Need to update DBI::Shell to v11.3 from Tom Lowery
+  : Need to clean up 'unused variable' warnings
+
+  Fixed DBD::Proxy support for AutoCommit thanks to Jochen Wiedmann.
+  Fixed DBI::ProxyServer bind_param(_inout) handing thanks to Oleg Mechtcheriakov.
+  Fixed DBI::ProxyServer fetch loop thanks to nobull@mail.com.
+  Fixed fetchrow_hashref to assign columns to the hash left-to-right
+    so later fields with the same name overwrite earlier ones
+    as per DBI < 1.15, thanks to Kay Roepke.
+  Changed ping() so it no longer triggers RaiseError/PrintError.
+  Changed connect() to not call $class->install_driver unless needed.
+  Added ISO SQL/CLI & ODBCv3 data type definitions thanks to Steffen Goeldner.
+  Removed the definition of SQL_BIT data type constant as the value is
+    inconsistent between standards (ODBC=-7, SQL/CLI=14).
+  Added $dbh->column_info(...) thanks to Steffen Goeldner.
+  Added $dbh->foreign_key_info(...) thanks to Steffen Goeldner.
+  Added $dbh->quote_identifier(...) insipred by Simon Oliver.
+  Added $h->{HandleError} = sub { ... } alternative to RaiseError/PrintError.
+  Added $h->{TraceLevel} = N attribute to set/get trace level of handle
+    thus can set trace level via an (eg externally specified) DSN
+    using the embedded attribute syntax:
+      $dsn = 'dbi:DB2(PrintError=1,TraceLevel=2):dbname';
+    Plus, you can also now do: local($h->{TraceLevel}) = N;
+    (but that leaks a little memory in some versions of perl).
+  Added some call tree information to trace output if trace level >= 3
+    eg "  <- prepare= undef at DBI.pm line 990 via t/examp.t line 371"
+    With thanks to Graham Barr for the stack walking code.
+  Documentation changes:
+  Added selectrow_arrayref & selectrow_hashref docs thanks to Doug Wilson.
+  Added 'Standards Reference Information' section to docs to gather
+    together all references to relevant on-line standards.
+  Added link to poop.sourceforge.net into the docs thanks to Dave Rolsky.
+  Added 'Subclassing the DBI' docs thanks to Stephen Clouse, and
+    then changed some of them to reflect the new approach to subclassing.
+  Added stronger wording to description of $h->{private_*} attributes.
+
 Changes in DBI 1.20,    24th August 2001
 
   WARNING: This release contains two changes that may affect your code.
@@ -7,6 +55,7 @@ Changes in DBI 1.20,    24th August 2001
   : See the change list below for more information about the changes.
   : See the DBI documentation for a description of current behaviour.
 
+  Fixed memory leak thanks to Toni Andjelkovic.
   Changed fetchall_arrayref({ foo=>1, ...}) specification again (sorry):
     The key names of the returned hashes is identical to the letter case of
     the names in the parameter hash, regardless of the L</FetchHashKeyName>

@@ -1,3 +1,4 @@
+#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.3 2002/01/10 15:14:06 timbo Exp $
 # -*- perl -*-
 #
 #   DBI::ProxyServer - a proxy server for DBI drivers
@@ -18,6 +19,8 @@
 #           Phone: +49 7123 14881
 #
 #
+##############################################################################
+
 
 require 5.004;
 use strict;
@@ -45,7 +48,7 @@ my $defaultPidFile = $haveFileSpec ?
 
 use vars qw($VERSION @ISA);
 
-$VERSION = "0.2004";
+$VERSION = "0.2005";
 @ISA = qw(RPC::PlServer DBI);
 
 
@@ -289,7 +292,7 @@ sub table_info {
     # DBI::st and not DBI::ProxyServer::st. We could fix this by permitting
     # the client to execute method DBI::st, but I don't like this.
     my @rows;
-    while (my $row = $sth->fetchrow_arrayref()) {
+    while (my $row = $sth->fetch()) {
 	push(@rows, [@$row]);
     }
     ($numFields, $names, $types, @rows);
@@ -303,18 +306,17 @@ package DBI::ProxyServer::st;
 sub execute {
     my $sth = shift; my $params = shift;
     my @outParams;
-
     if ($params) {
 	for (my $i = 0;  $i < @$params;) {
 	    my $param = $params->[$i++];
 	    if (!ref($param)) {
 		$sth->bind_param($i, $param);
-	    } else {
-		# value, type => bind_param,
-		# value, type, maxlen => bind_param_inout
-		if (@$param <= 2) {
+	    }
+	    else {	
+		if (!ref(@$param[0])) {#It's not a reference
 		    $sth->bind_param($i, @$param);
-		} else {
+		}
+		else {
 		    $sth->bind_param_inout($i, @$param);
 		    my $ref = shift @$param;
 		    push(@outParams, $ref);
@@ -330,7 +332,7 @@ sub execute {
 sub fetch {
     my $sth = shift; my $numRows = shift || 1;
     my($ref, @rows);
-    while ($numRows--  &&  ($ref = $sth->fetchrow_arrayref())) {
+    while ($numRows--  &&  ($ref = $sth->SUPER::fetch())) {
 	push(@rows, [@$ref]);
     }
     @rows;

@@ -1,4 +1,4 @@
-# -*- perl -*-
+#!perl -w                                         # -*- perl -*-
 
 require 5.004;
 use strict;
@@ -13,6 +13,8 @@ my $haveFileSpec = eval { require File::Spec };
 
 
 $| = 1;
+$^W = 1;
+
 # $\ = "\n"; # XXX Triggers bug, check this later (JW, 1998-12-28)
 
 
@@ -256,7 +258,7 @@ while (defined(my $file = readdir(DIR))) {
 }
 closedir(DIR);
 my $sth = $dbh->table_info();
-Test($sth) or print "table_info failed: ", $dbh->errstr(), "\n";
+Test($sth) or warn "table_info failed: ", $dbh->errstr(), "\n";
 %missing = %dirs;
 %unexpected = ();
 while (my $ref = $sth->fetchrow_hashref()) {

@@ -1,6 +1,9 @@
+#!perl -w
 
 use DBI;
+
 $|=1;
+$^W=1;
 
 print "1..$tests\n";
 
@@ -15,7 +18,7 @@ print "1..$tests\n";
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.2 $',
+		'Version' => '$Revision: 11.3 $',
 	    },
 	    77	# 'implementors data'
 	    );
