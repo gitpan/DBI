@@ -1,4 +1,14 @@
 
+Changes in DBI 0.88,	22nd July 1997
+
+  Fixed build for perl5.003 and Win32 with Borland.
+  Fixed documentation formatting.
+  Fixed DBI_DSN ignored for old-style connect (with explicit driver).
+  Fixed AutoCommit in DBD::ExampleP
+  Fixed $h->trace.
+  The DBI can now export SQL type values: use DBI ':sql_types';
+  Modified Driver.xst and renamed DBDI.h to dbd_xsh.h
+
 Changes in DBI 0.87,	18th July 1997
 
   Fixed minor type clashes.

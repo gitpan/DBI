@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.41 1997/07/18 12:44:09 timbo Exp $
+/* $Id: DBIXS.h,v 1.42 1997/07/22 23:17:50 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -9,10 +9,11 @@
 /* DBI Interface Definitions for DBD Modules */
 
 /* first pull in the standard Perl header files for extensions */
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include <EXTERN.h>
+#include <perl.h>
+#include <XSUB.h>
 
+#include "dbi_sql.h"
 
 /* The DBIXS_VERSION value will be incremented whenever new code is
  * added to the interface (this file) or significant changes are made.
@@ -31,46 +32,6 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver.
 #else
 #define NEED_DBIXS_VERSION DBIXS_VERSION
 #endif
-
-
-/* Some core SQL CLI standard (ODBC) declarations		*/
-#ifndef SQL_SUCCESS	/* don't clash with ODBC based drivers	*/
-
-/* Standard SQL datatypes (ANSI/ODBC type numbering)		*/
-#define	SQL_CHAR		1	/*	DBI_CHAR 	*/
-#define	SQL_NUMERIC		2
-#define	SQL_DECIMAL		3
-#define	SQL_INTEGER		4	/*	DBI_INTEGER	*/
-#define	SQL_SMALLINT		5
-#define	SQL_FLOAT		6	/*	DBI_FLOAT	*/
-#define	SQL_REAL		7
-#define	SQL_DOUBLE		8
-#define	SQL_VARCHAR		12	/*	DBI_VARCHAR	*/
-
-#ifdef just_for_pondering /* not used yet, just here for pondering */
-#define SQL_DATE           9
-#define SQL_TIME           10
-#define SQL_TIMESTAMP      11
-#define SQL_LONGVARCHAR    (-1)
-#define SQL_BINARY         (-2)
-#define SQL_VARBINARY      (-3)
-#define SQL_LONGVARBINARY  (-4)
-#define SQL_BIGINT         (-5)
-#define SQL_TINYINT        (-6)
-#endif
-
-/* Main return codes						*/
-#define	SQL_ERROR			(-1)
-#define	SQL_SUCCESS			0
-#define	SQL_SUCCESS_WITH_INFO		1
-#define	SQL_NO_DATA_FOUND		100
-
-#endif	/*	SQL_SUCCESS	*/
-
-/* Handy macro for testing for success and success with info.		*/
-/* BEWARE that this macro can have side effects since rc appears twice!	*/
-/* So DONT use it as if(SQL_ok(func(...))) { ... }			*/
-#define SQL_ok(rc)	((rc)==SQL_SUCCESS || (rc)==SQL_SUCCESS_WITH_INFO)
 
 
 /* forward declaration of 'DBI Handle Common Data', see below		*/
@@ -343,6 +304,7 @@ typedef struct {
     SV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
     int         (*bind_as_num)	_((int sql_type, int p, int s));
     U32         (*hash)		_((char *string, long i));
+    AV        * (*preparse)	_((SV *sth, char *statement, U32 flags, U32 spare));
 
     void *pad[10];
 } dbistate_t;

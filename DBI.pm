@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.87'; # ==> also update the version in the pod text below!
+$DBI::VERSION = '0.88'; # ==> ALSO update the version in the pod text below!
 
 =head1 NAME
 
@@ -24,6 +24,9 @@ DBI - Database independent interface for Perl
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare($statement, \%attr);
  
+  $rc = $sth->bind_col($col_num, \$col_variable);
+  $rc = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
+
   $rv = $sth->bind_param($param_num, $bind_value);
   $rv = $sth->bind_param($param_num, $bind_value, $bind_type);
   $rv = $sth->bind_param($param_num, $bind_value, \%attr);
@@ -39,6 +42,9 @@ DBI - Database independent interface for Perl
  
   $rv = $sth->rows;
  
+  $rc  = $dbh->commit;
+  $rc  = $dbh->rollback;
+
   $sql = $dbh->quote($string);
  
   $rc  = $h->err;
@@ -46,10 +52,10 @@ DBI - Database independent interface for Perl
   $rv  = $h->state;
 
 =head2 NOTE
- 
-This is the draft DBI specification that corresponds to the DBI version 0.87. 
-($Date: 1997/07/18 13:18:19 $) 
- 
+
+This is the draft DBI specification that corresponds to the DBI version 0.88
+($Date: 1997/07/22 23:17:50 $).
+
  * The DBI specification is currently evolving quite quickly so it is
  * important to check that you have the latest copy. The RECENT CHANGES
  * section below has a summary of user-visible changes and the F<Changes>
@@ -59,29 +65,29 @@ This is the draft DBI specification that corresponds to the DBI version 0.87.
  * catch up. Recent versions of the DBI have added many new features that
  * may not yet be supported by the drivers you use. Talk to the authors of
  * those drivers if you need the features.
- 
+
 Please also read the DBI FAQ which is installed as a DBI::FAQ module so
 you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
- 
+
 =head2 RECENT CHANGES 
-                                                                                
+
 A brief summary of significant user-visible changes in recent versions
 (if a recent version isn't mentioned it simply means that there were no
 significant user-visible changes in that version).
 
 =over 4 
 
-=item DBI 0.86
- 
+=item DBI 0.86 - 16th July 1997
+
 Added $h->{LongReadLen} and $h->{LongTruncOk} attributes for BLOBS.
 Added DBI_USER and DBI_PASS env vars. See L</connect> for usage.
 Added DBI->trace() to set global trace level (like per-handle $h->trace).
-PERL_DBI_DEBUG env var renamed DBI_DEBUG (old name still works for now).
+PERL_DBI_DEBUG env var renamed DBI_TRACE (old name still works for now).
 Updated docs, including commit, rollback, AutoCommit and Transactions sections.
 Added bind_param method and execute(@bind_values) to docs.
 
 =item DBI 0.85 - 25th June 1997
- 
+
 The 'new-style connect' (see below) now defaults to AutoCommit mode unless
 { AutoCommit => 0 } specified in connect attributes (see L</connect>).
 New DBI_DSN env var default for connect method (supersedes DBI_DRIVER).
@@ -98,14 +104,13 @@ added a trace filename arg.
 
 =item DBI 0.83 - 11th June 1997
 
-Added 'new-style' driver specification syntax to DBI->connect
-data_source parameter: DBI->connect('dbi:driver:...', $user, $passwd);
+Added 'new-style' driver specification syntax to the DBI->connect
+data_source parameter: DBI->connect( 'dbi:driver:...', $user, $passwd);
 The DBI->data_sources method should return data_source names with the
 appropriate 'dbi:driver:' prefix.  DBI->connect will warn if \%attr is
 true but not a hash ref.  Added new fetchrow methods (fetchrow_array,
 fetchrow_arrayref and fetchrow_hashref):  Added the DBI FAQ from
-Alligator Descartes in module form for easy reading via "perldoc
-DBI::FAQ".
+Alligator Descartes in module form for easy reading via "perldoc DBI::FAQ".
 
 =item DBI 0.82 - 23rd May 1997
 
@@ -123,9 +128,9 @@ Added DBI->data_sources($driver) method for implementation by drivers.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.80 $, 10);
+my $Revision = substr(q$Revision: 1.81 $, 10);
 
-# $Id: DBI.pm,v 1.80 1997/07/18 13:18:19 timbo Exp $
+# $Id: DBI.pm,v 1.81 1997/07/22 23:17:50 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -139,13 +144,14 @@ use Exporter ();
 @ISA = qw(Exporter DynaLoader);
 
 # Make some utility functions available if asked for
-@EXPORT_OK = qw(neat neat_list dump_results sql);
+@EXPORT_OK = qw();
 @EXPORT    = (); # populated by export_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
 		    SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR) ],
+   utils     => [ qw(neat neat_list dump_results sql) ],
 );
-#Exporter::export_tags('sql_types'); # not yet!
+Exporter::export_ok_tags('sql_types', 'utils');
 
 use strict;
 
@@ -209,7 +215,8 @@ my @TieHash_IF = (	# Generic Tied Hash Interface
 my @Common_IF = (	# Interface functions common to all DBI classes
 	func    =>	{				O=>0x06	},
 	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x04 },
-	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x04 },
+	trace   =>	{ U =>[1,2,'[$trace_level]'],	O=>0x04 },
+	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x04 }, # old name for trace
 	private_data =>	{ U =>[1,1],			O=>0x04 },
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
@@ -323,7 +330,7 @@ sub connect {
     }
     warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
 
-    if ($dsn_driver) {	# new-style connect so new default semantics
+    if ($dsn_driver && !$driver) { # new-style connect so new default semantics
 	$dbh->{PrintError} = 1;
 	$dbh->{AutoCommit} = 1;
     }
@@ -1008,7 +1015,8 @@ or the following, to select the description for a product:
 
 The C<?> characters are the placeholders.  The association of actual
 values with placeholders is known as binding and the values are
-referred to as bind values.
+referred to as bind values. Undefined values or C<undef> can be used
+to indicate null values.
 
 Without using placeholders, the insert statement above would have to
 contain the literal values to be inserted and it would have to be
@@ -1030,6 +1038,21 @@ typically many times faster! Here's an example:
 
 See L</execute> and L</bind_param> for more details.
 
+=head2 SQL - A Query Language
+
+Most DBI drivers require applications to use a dialect of SQL (the
+Structured Query Language) to interact with the database engine.  These
+links may provide some useful information about SQL:
+
+  http://www.jcc.com/sql_stnd.html
+  http://w3.one.net/~jhoffman/sqltut.htm
+  http://skpc10.rdg.ac.uk/misc/sqltut.htm
+
+The DBI itself does not mandate or require any particular language to
+be used.  It is language independant. In ODBC terms it is always in
+pass-thru mode. The only requirement is that queries and other
+statements must be expressed as a single string of letters passed
+as the first argument to the L</prepare> method.
 
 =head1 THE DBI CLASS
 
@@ -1419,12 +1442,13 @@ prematurely.)
 
 Prepare a single statement for execution by the database engine and
 return a  reference to a statement handle object which can be used to
-get attributes of the statement and invoke the $sth->execute method.
+get attributes of the statement and invoke the L</execute> method.
 
-Note that prepare I<never> executes a statement, even if it is not a
-select statement, it only prepares it for execution. It is not
-possible, for example, to know in advance how many rows will be
-returned from a select statement.
+Note that prepare should never execute a statement, even if it is not a
+select statement, it only prepares it for execution. Having said that,
+some drivers, notably Oracle, will execute data definition statements
+such as create/drop table when they are prepared. In practice this is
+rarely a problem.
 
 Drivers for engines which don't have the concept of preparing a
 statement will typically just store the statement in the returned
@@ -1652,7 +1676,7 @@ etc and C<:name> style placeholders in addition to C<?> but their use
 is not portable.
 
 Sadly, placeholders can only represent single scalar values, so this
-statement, for example, won't work as expected for ore than one value:
+statement, for example, won't work as expected for more than one value:
 
   "select name, age from people where name in (?)"    # wrong
 
@@ -1671,6 +1695,8 @@ equivalent to the one above:
 Perl only has string and number scalar data types. All database types
 that aren't numbers are bound as strings and must be in a format the
 database will understand.
+
+Undefined values or C<undef> can be used to indicate null values.
 
 
 =item B<execute>
@@ -1782,8 +1808,8 @@ appear to be incorrect while there are still more records to fetch.
 
 =item B<bind_col>
 
-  $rv = $sth->bind_col($column_number, \$var_to_bind);
-  $rv = $sth->bind_col($column_number, \$var_to_bind, \%attr);
+  $rc = $sth->bind_col($column_number, \$var_to_bind);
+  $rc = $sth->bind_col($column_number, \$var_to_bind, \%attr);
 
 Binds a column (field) of a select statement to a perl variable.
 Whenever a row is fetched from the database the corresponding perl
@@ -1799,7 +1825,7 @@ it will automatically support column binding.
 
 =item B<bind_columns>
 
-  $rv = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
+  $rc = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
 
 e.g.
 

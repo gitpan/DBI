@@ -4,6 +4,8 @@
 
 void    dbd_init _((dbistate_t *dbistate));
 
+int      dbd_discon_all _((SV *drh, imp_drh_t *imp_drh));
+
 int      dbd_db_login _((SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd));
 int      dbd_db_do _((SV *sv, char *statement));
 int      dbd_db_commit     _((SV *dbh, imp_dbh_t *imp_dbh));
@@ -27,5 +29,7 @@ SV      *dbd_st_FETCH_attrib _((SV *sth, imp_sth_t *imp_sth, SV *keysv));
  
 int      dbd_describe _((SV *sth, imp_sth_t *imp_sth));
 int      dbd_bind_ph  _((SV *sth, imp_sth_t *imp_sth,
-                SV *param, SV *value, SV *attribs, int is_inout, IV maxlen));
+                SV *param, SV *value, IV sql_type, SV *attribs,
+				int is_inout, IV maxlen));
 
+/* end of dbd_xsh.h */

@@ -1,11 +1,11 @@
-#  $Id: Driver.xst,v 1.1 1997/07/16 18:17:58 timbo Exp $
+#  $Id: Driver.xst,v 1.2 1997/07/22 23:17:50 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
 #  License or the Artistic License, as specified in the Perl README file.
 
 
-MODULE = DBD::{DRIVER}	PACKAGE = DBD::{DRIVER}
+MODULE = DBD::~DRIVER~	PACKAGE = DBD::~DRIVER~
 
 REQUIRE:    1.929
 PROTOTYPES: DISABLE
@@ -14,43 +14,34 @@ BOOT:
     items = 0;  /* avoid 'unused variable' warning */
     DBISTATE_INIT;
     /* XXX this interface will change: */
-    DBI_IMP_SIZE("DBD::{DRIVER}::dr::imp_data_size", sizeof(imp_drh_t));
-    DBI_IMP_SIZE("DBD::{DRIVER}::db::imp_data_size", sizeof(imp_dbh_t));
-    DBI_IMP_SIZE("DBD::{DRIVER}::st::imp_data_size", sizeof(imp_sth_t));
+    DBI_IMP_SIZE("DBD::~DRIVER~::dr::imp_data_size", sizeof(imp_drh_t));
+    DBI_IMP_SIZE("DBD::~DRIVER~::db::imp_data_size", sizeof(imp_dbh_t));
+    DBI_IMP_SIZE("DBD::~DRIVER~::st::imp_data_size", sizeof(imp_sth_t));
     dbd_init(DBIS);
 
 
-MODULE = DBD::{DRIVER}	PACKAGE = DBD::{DRIVER}::dr
+
+# ------------------------------------------------------------
+# driver level interface
+# ------------------------------------------------------------
+MODULE = DBD::~DRIVER~	PACKAGE = DBD::~DRIVER~::dr
 
 # disconnect_all renamed and ALIAS'd to avoid length clash on VMS :-(
 void
 discon_all_(drh)
     SV *	drh
-	ALIAS:
+    ALIAS:
 	disconnect_all = 1
     CODE:
-    /* The disconnect_all concept is flawed and needs more work */
-    if (!dirty && !SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) {
-	D_imp_drh(drh);
-	sv_setiv(DBIc_ERR(imp_drh), (IV)1);
-	sv_setpv(DBIc_ERRSTR(imp_drh),
-		(char*)"disconnect_all not implemented");
-	DBIh_EVENT2(drh, ERROR_event,
-		DBIc_ERR(imp_drh), DBIc_ERRSTR(imp_drh));
-	XSRETURN(0);
-    }
-    /* perl_destruct with perl_destruct_level and $SIG{__WARN__} set	*/
-    /* to a code ref core dumps when sv_2cv triggers warn loop.		*/
-    if (perl_destruct_level)
-	perl_destruct_level = 0;
-    XST_mIV(0, 1);
+    D_imp_drh(drh);
+    ST(0) = dbd_discon_all(drh, imp_drh) ? &sv_yes : &sv_no;
 
 
 
 # ------------------------------------------------------------
 # database level interface
 # ------------------------------------------------------------
-MODULE = DBD::{DRIVER}    PACKAGE = DBD::{DRIVER}::db
+MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::db
 
 void
 _login(dbh, dbname, uid, pwd)
@@ -159,13 +150,13 @@ DESTROY(dbh)
     }
 
 
-# -- end of DBD::{DRIVER}::db
+# -- end of DBD::~DRIVER~::db
 
 
 # ------------------------------------------------------------
 # statement interface
 # ------------------------------------------------------------
-MODULE = DBD::{DRIVER}    PACKAGE = DBD::{DRIVER}::st
+MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::st
 
 
 void
@@ -197,9 +188,22 @@ bind_param(sth, param, value, attribs=Nullsv)
     SV *	attribs
     CODE:
     {
+    IV sql_type = 0;
     D_imp_sth(sth);
-    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-    ST(0) = dbd_bind_ph(sth, imp_sth, param, value, attribs, FALSE, 0) ? &sv_yes : &sv_no;
+    if (attribs) {
+	if (SvIOK(attribs)) {
+	    sql_type = SvIV(attribs);
+	    attribs = Nullsv;
+	}
+	else {
+	    SV **svp;
+	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
+	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL)
+		sql_type = SvIV(*svp);
+	}
+    }
+    ST(0) = dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, FALSE, 0)
+		? &sv_yes : &sv_no;
     }
 
 
@@ -212,13 +216,25 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
     SV *	attribs
     CODE:
     {
+    IV sql_type = 0;
     D_imp_sth(sth);
-    DBD_ATTRIBS_CHECK("bind_param_inout", sth, attribs);
     if (!SvROK(value_ref) || SvTYPE(SvRV(value_ref)) > SVt_PVMG)
 	croak("bind_param_inout needs a reference to a scalar value");
     if (SvREADONLY(SvRV(value_ref)))
 	croak(no_modify);
-    ST(0) = dbd_bind_ph(sth, imp_sth, param, SvRV(value_ref), attribs, TRUE, maxlen)
+    if (attribs) {
+	if (SvIOK(attribs)) {
+	    sql_type = SvIV(attribs);
+	    attribs = Nullsv;
+	}
+	else {
+	    SV **svp;
+	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
+	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL)
+		sql_type = SvIV(*svp);
+	}
+    }
+    ST(0) = dbd_bind_ph(sth, imp_sth, param, SvRV(value_ref), sql_type, attribs, TRUE, maxlen)
 		? &sv_yes : &sv_no;
     }
 
@@ -241,7 +257,7 @@ execute(sth, ...)
         idx = sv_2mortal(newSViv(0));
 	for(i=1; i < items ; ++i) {
 	    sv_setiv(idx, i);
-	    if (!dbd_bind_ph(sth, imp_sth, idx, ST(i), Nullsv, FALSE, 0))
+	    if (!dbd_bind_ph(sth, imp_sth, idx, ST(i), 0, Nullsv, FALSE, 0))
 		++error;
 	}
 	if (error) {
@@ -372,4 +388,4 @@ DESTROY(sth)
 
 
 
-# end of {DRIVER}.xs
+# end of ~DRIVER~.xs

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 1.4 1997/07/18 13:18:19 timbo Exp $
+# $Id: DBD.pm,v 1.5 1997/07/22 23:17:50 timbo Exp $
 #
 # Copyright (c) 1997 Jonathan Leffler and Tim Bunce
 #
@@ -21,8 +21,8 @@ DBI::DBD - DBD Driver Writer's Guide (draft)
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 1.4 $
-	$Date: 1997/07/18 13:18:19 $
+	$Revision: 1.5 $
+	$Date: 1997/07/22 23:17:50 $
 
 This document is very much a minimal draft which will need to be revised
 frequently (and extensively).
@@ -186,7 +186,7 @@ Driver.h should look like this:
 
   #include "dbdimp.h"
 
-  #include <DBDXSI.h>     /* installed by the DBI module  */
+  #include <dbd_xsh.h>     /* installed by the DBI module  */
 
 
 =head2 Implementation header dbdimp.h
@@ -457,7 +457,7 @@ $(BASEEXT).xs: $(BASEEXT).xsi
 $(BASEEXT).c: $(BASEEXT).xsi
 
 $(BASEEXT).xsi: $(INSTALLSITEARCH)/auto/DBI/Driver.xst
-	perl -p -e "s/{DRIVER}/$(BASEEXT)/g" < $(DBI_DRIVER_XST) > $(BASEEXT).xsi
+	perl -p -e "s/~DRIVER~/$(BASEEXT)/g" < $(DBI_DRIVER_XST) > $(BASEEXT).xsi
 ';
 }
 

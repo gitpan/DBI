@@ -17,6 +17,7 @@ sub ok ($$) {
 }
 	
 my $dbh = DBI->connect('', '', '', 'ExampleP');
+$dbh->{AutoCommit} = 1;
 ok(0, $dbh);
 
 ok(0, $dbh->ping);

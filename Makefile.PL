@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.61 1997/07/16 18:17:58 timbo Exp $
+# $Id: Makefile.PL,v 1.62 1997/07/22 23:17:50 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -79,11 +79,12 @@ directories you MUST delete old DBI files and directories from your
 	}
     }
 
-    # get DBIXS.h installed for access by DBD's
-	# (was '$(INST_ARCHLIBDIR)/DBI/DBIXS.h')
-    $self->{PM}->{'DBIXS.h'}    = '$(INST_ARCHAUTODIR)/DBIXS.h';
-    $self->{PM}->{'DBDXSI.h'}   = '$(INST_ARCHAUTODIR)/DBDXSI.h';
-    $self->{PM}->{'Driver.xst'} = '$(INST_ARCHAUTODIR)/Driver.xst';
+    # install files that DBD's need
+	my $file;
+	foreach $file (qw(DBIXS.h dbi_sql.h dbd_xsh.h Driver.xst)) {
+		$self->{PM}->{$file} = '$(INST_ARCHAUTODIR)/'.$file;
+	}
+
     '';
 }
 

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.75 1997/07/18 12:44:09 timbo Exp $
+/* $Id: DBI.xs,v 1.76 1997/07/22 23:17:50 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -760,7 +760,7 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     }
     else if (strEQ(key, "LongReadLen")) {
 	if (SvNV(valuesv) < 0 || SvNV(valuesv) > MAX_LongReadLen)
-	    croak("Can't set LongReadLen < 0 or > %d",IV_MAX);
+	    croak("Can't set LongReadLen < 0 or > %d",MAX_LongReadLen);
 	DBIc_LongReadLen(imp_xxh) = SvIV(valuesv);
     }
     else if (strEQ(key, "LongTruncOk")) {
