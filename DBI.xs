@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.12 2002/06/14 13:11:26 timbo Exp $
+/* $Id: DBI.xs,v 11.13 2002/07/15 11:18:57 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -36,25 +36,21 @@ static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 #endif
 #endif
 
-#ifndef PerlIO
-x x x x
-#  define PerlIO FILE
-#  define PerlIO_printf fprintf
-#  define PerlIO_stderr() stderr
-#  define PerlIO_close(f) fclose(f)
-#  define PerlIO_open(f,m) fopen(f,m)
-#  define PerlIO_flush(f) Fflush(f)
-#  define PerlIO_puts(f,s) fputs(s,f)
-#endif
-
-#ifndef aTHX_
-#  define aTHX_
-#  define aTHXo_
+#ifndef CopFILEGV
 #  define CopFILEGV(cop) cop->cop_filegv
 #  define CopLINE(cop)   cop->cop_line
-#  define get_sv perl_get_sv
 #  define CopSTASH(cop)           cop->cop_stash
 #  define CopSTASHPV(cop)           (CopSTASH(cop) ? HvNAME(CopSTASH(cop)) : Nullch)
+#endif
+#ifndef PERL_GET_THX
+#define PERL_GET_THX ((void*)0)
+#endif
+#ifndef PerlProc_getpid
+#define PerlProc_getpid() getpid()
+extern Pid_t getpid (void);
+#endif
+#ifndef aTHXo_
+#define aTHXo_
 #endif
 
 
@@ -94,6 +90,7 @@ typedef struct dbi_ima_st {
     U16   trace_level;
 } dbi_ima_t;
 
+/* These values are embedded in the data passed to install_method	*/
 #define IMA_HAS_USAGE		0x0001	/* check parameter usage	*/
 #define IMA_FUNC_REDIRECT	0x0002	/* is $h->func(..., "method")	*/
 #define IMA_KEEP_ERR		0x0004	/* don't reset err & errstr	*/
@@ -103,6 +100,8 @@ typedef struct dbi_ima_st {
 #define IMA_COPY_STMT   	0x0040	/* copy sth Statement to dbh	*/
 #define IMA_END_WORK	   	0x0080	/* set on commit & rollback	*/
 #define IMA_STUB		0x0100	/* donothing eg $dbh->connected */
+#define IMA_CLEAR_STMT   	0x0200	/* clear Statement before call	*/
+#define IMA_PROF_EMPTY_STMT   	0x0400	/* profile as empty Statement	*/
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -112,12 +111,11 @@ typedef struct dbi_ima_st {
 	    : &sv_no)			/* Success ("00000")	*/	 \
     )
 
-#define DBI_LAST_HANDLE		g_dbi_last_h /* special fake inner handle	*/
-#define DBI_LAST_HANDLE_PARENT	((SV*)DBIc_PARENT_H(DBIh_COM(DBI_LAST_HANDLE)))
-#define DBI_IS_LAST_HANDLE(h)	(SvRVx(DBI_LAST_HANDLE) == SvRV(h))
-#define DBI_SET_LAST_HANDLE(h)	(SvRVx(DBI_LAST_HANDLE) =  SvRV(h))
-#define DBI_UNSET_LAST_HANDLE	(SvRVx(DBI_LAST_HANDLE) =  &sv_undef)
-#define DBI_LAST_HANDLE_OK	(SvRVx(DBI_LAST_HANDLE) != &sv_undef )
+#define DBI_LAST_HANDLE		g_dbi_last_h /* special fake inner handle */
+#define DBI_IS_LAST_HANDLE(h)	((DBI_LAST_HANDLE) == SvRV(h))
+#define DBI_SET_LAST_HANDLE(h)	((DBI_LAST_HANDLE) =  SvRV(h))
+#define DBI_UNSET_LAST_HANDLE	((DBI_LAST_HANDLE) =  &sv_undef)
+#define DBI_LAST_HANDLE_OK	((DBI_LAST_HANDLE) != &sv_undef )
 
 #ifdef PERL_LONG_MAX
 #define MAX_LongReadLen PERL_LONG_MAX
@@ -126,7 +124,7 @@ typedef struct dbi_ima_st {
 #endif
 
 #ifdef DBI_USE_THREADS
-static char *dbi_build_opt = "-thread";
+static char *dbi_build_opt = "-ithread";
 #else
 static char *dbi_build_opt = "-nothread";
 #endif
@@ -203,16 +201,11 @@ check_version(name, dbis_cv, dbis_cs, need_dbixs_cv, drc_s, dbc_s, stc_s, fdc_s)
 }
 
 static void
-dbi_bootinit()
+dbi_bootinit(dbistate_t * parent_dbis)
 {
 INIT_PERINTERP;
 
     Newz(dummy, DBIS, 1, dbistate_t);
-
-#ifdef DBI_USE_THREADS
-    Newz(1, DBIS->mutex, 1, dbi_mutex);
-    MUTEX_INIT(DBIS->mutex);
-#endif
 
     /* store version and size so we can spot DBI/DBD version mismatch	*/
     DBIS->check_version = check_version;
@@ -220,15 +213,22 @@ INIT_PERINTERP;
     DBIS->size    = sizeof(*DBIS);
     DBIS->xs_version = DBIXS_VERSION;
 
-	/* store some other critical values */
-    DBIS->debug	 = 0;
+    DBIS->debug	 = parent_dbis ? parent_dbis->debug : 0;
     DBIS->logmsg = dbih_logmsg;
     DBIS->logfp	 = PerlIO_stderr();
-    DBIS->neatsvpvlen = get_sv("DBI::neat_maxlen", GV_ADDMULTI);
-    sv_setiv(DBIS->neatsvpvlen, 400);
+#ifdef DBI_USE_THREADS
+    /* XXX the fp_dup type param is a fudge, but fp_dup doesn't use it anyway */
+    DBIS->logfp	 = parent_dbis ? fp_dup(parent_dbis->logfp,'>',0) : PerlIO_stderr();
+#endif
+    DBIS->neatsvpvlen = perl_get_sv("DBI::neat_maxlen", GV_ADDMULTI);
+    if (!parent_dbis)
+	sv_setiv(DBIS->neatsvpvlen, 400);
+#ifdef DBI_USE_THREADS
+    DBIS->thr_owner = PERL_GET_THX;
+#endif
 
     /* publish address of dbistate so dynaloaded DBD's can find it	*/
-    sv_setiv(get_sv(DBISTATE_PERLNAME,1), (IV)DBIS);
+    sv_setiv(perl_get_sv(DBISTATE_PERLNAME,1), (IV)DBIS);
 
     DBISTATE_INIT; /* check DBD code to set DBIS from DBISTATE_PERLNAME	*/
 
@@ -248,8 +248,6 @@ INIT_PERINTERP;
     /* We want a handle reference but we don't want to increment	*/
     /* the handle's reference count and we don't want perl to try	*/
     /* to destroy it during global destruction. Take care!		*/
-    g_dbi_last_h  = newRV(&sv_undef);
-    SvROK_off(g_dbi_last_h);	/* so sv_clean_objs() won't destroy it	*/
     DBI_UNSET_LAST_HANDLE;	/* ensure setup the correct way		*/
 
     /* trick to avoid 'possible typo' warnings	*/
@@ -263,6 +261,19 @@ INIT_PERINTERP;
 
 /* ----------------------------------------------------------------- */
 /* Utility functions                                                 */
+
+
+static char *
+dbih_htype_name(int htype)
+{
+    switch(htype) {
+    case DBIt_DR: return "dr";
+    case DBIt_DB: return "db";
+    case DBIt_ST: return "st";
+    case DBIt_FD: return "fd";
+    default:      return "??";
+    }
+}
 
 
 char *
@@ -444,7 +455,7 @@ dbi_hash(char *key, long type)
 	}
 	return hash;
     }
-    croak("bad hash type %d", type);
+    croak("DBI::hash(%d): invalid type", type);
     return 0; /* NOT REACHED */
 }
 
@@ -481,15 +492,23 @@ set_trace_file(file)
     STRLEN lna;
     char *filename;
     PerlIO *fp;
-    if (!file)			/* no arg == no change			*/
+    if (!file)		/* no arg == no change */
 	return 0;
-    if (!SvOK(file)) {		/* undef arg == reset back to stderr	*/
-	if (DBILOGFP != PerlIO_stderr())
+    /* XXX need to support file being a filehandle object */
+    filename = (SvOK(file)) ? SvPV(file, lna) : Nullch;
+    /* undef arg == reset back to stderr */
+    if (!filename || strEQ(filename,"STDERR")) {
+	if (DBILOGFP != PerlIO_stderr() && DBILOGFP != PerlIO_stdout())
 	    PerlIO_close(DBILOGFP);
 	DBILOGFP = PerlIO_stderr();
 	return 1;
     }
-    filename = SvPV(file, lna);
+    if (strEQ(filename,"STDOUT")) {
+	if (DBILOGFP != PerlIO_stderr() && DBILOGFP != PerlIO_stdout())
+	    PerlIO_close(DBILOGFP);
+	DBILOGFP = PerlIO_stdout();
+	return 1;
+    }
     fp = PerlIO_open(filename, "a+");
     if (fp == Nullfp) {
 	warn("Can't open trace file %s: %s", filename, Strerror(errno));
@@ -549,6 +568,8 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     if (!ohv || SvTYPE(ohv) != SVt_PVHV) {
 	if (!what)
 	    return NULL;
+	if (DBIS->debug)
+	    sv_dump(orv);
 	if (!SvOK(orv))
 	    croak("%s given an undefined handle %s",
 		what, "(perhaps returned from a previous call which failed)");
@@ -565,6 +586,7 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
 	if (mg_find(ohv, DBI_MAGIC) == NULL) {
 	    if (!what)
 		return NULL;
+	    sv_dump(orv);
 	    croak("%s handle %s is not a valid DBI handle",
 		what, neatsvpv(orv,0));
 	}
@@ -578,30 +600,12 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
     if (DBIS->debug && (!SvROK(hrv) || SvTYPE(SvRV(hrv)) != SVt_PVHV)) {
 	if (!what)
 	    return NULL;
+	sv_dump(orv);
 	croak("panic: %s inner handle %s is not a hash ref",
 		what, neatsvpv(hrv,0));
     }
     return hrv;
 }
-
-
-#ifdef DBI_USE_THREADS
-static void
-dbi_cond_signal(imp_xxh)
-    imp_xxh_t *imp_xxh;
-{
-    if (!imp_xxh || !DBIc_THR_COND(imp_xxh))
-	return;
-    DBI_LOCK;
-    if (DBIS->debug >= 4)
-	PerlIO_printf(DBILOGFP,"    .. thread %lu leaving %s\n",
-		DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
-    DBIc_THR_USER(imp_xxh) = DBIc_THR_USER_NONE; /* free for other thread to enter */
-    COND_SIGNAL(DBIc_THR_COND(imp_xxh));
-    DBI_UNLOCK;
-}
-#endif
-
 
 
 
@@ -617,13 +621,15 @@ dbih_getcom(hrv)	/* Get com struct for handle. Must be fast.	*/
     SV *sv;
 
     /* important and quick sanity check (esp non-'safe' Oraperl)	*/
-    if (!SvROK(hrv)			/* must at least be a ref */
-	&& hrv != DBI_LAST_HANDLE	/* special for var::FETCH */) {
+    if (SvROK(hrv)) 			/* must at least be a ref */
+	sv = SvRV(hrv);
+    else if (hrv == DBI_LAST_HANDLE)	/* special for var::FETCH */
+	sv = DBI_LAST_HANDLE;
+    else {
 	sv_dump(hrv);
 	croak("Invalid DBI handle %s", neatsvpv(hrv,0));
     }
 
-    sv = SvRV(hrv);
 
     /* Short cut for common case. We assume that a magic var always	*/
     /* has magic and that DBI_MAGIC, if present, will be the first.	*/
@@ -734,7 +740,7 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
     if (imp_size == 0) {
 	/* get size of structure to allocate for common and imp specific data   */
 	char *imp_size_name = mkvname(imp_stash, "imp_data_size", 0);
-	imp_size = SvIV(get_sv(imp_size_name, 0x05));
+	imp_size = SvIV(perl_get_sv(imp_size_name, 0x05));
 	if (imp_size == 0) {
 	    imp_size = sizeof(imp_sth_t);
 	    if (sizeof(imp_dbh_t) > imp_size)
@@ -746,8 +752,8 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
     }
 
     if (DBIS->debug >= 3)
-	PerlIO_printf(DBILOGFP,"    dbih_make_com(%s, %s, %d)\n",
-		neatsvpv(parent_h,0), imp_class, imp_size);
+	PerlIO_printf(DBILOGFP,"    dbih_make_com(%s, %s, %d) thr#%p\n",
+		neatsvpv(parent_h,0), imp_class, imp_size, PERL_GET_THX);
 
     dbih_imp_sv = newSV(imp_size);
 
@@ -765,23 +771,17 @@ dbih_make_com(parent_h, imp_class, imp_size, extra)
 		   |DBIcf_ACTIVE	/* drivers are 'Active' by default	*/
 		   |DBIcf_AutoCommit	/* advisory, driver must manage this	*/
 	);
-#ifdef DBI_USE_THREADS
-	Newz(1, DBIc_THR_COND(imp), 1, dbi_cond);
-	COND_INIT(DBIc_THR_COND(imp));
-#endif
     } else {		
 	imp_xxh_t *parent_com = DBIh_COM(parent_h);
 	DBIc_PARENT_H(imp)    = (SV*)SvREFCNT_inc(parent_h); /* ensure it lives	*/
 	DBIc_PARENT_COM(imp)  = parent_com;	 	/* shortcut for speed	*/
 	DBIc_TYPE(imp)	      = DBIc_TYPE(parent_com) + 1;
 	DBIc_FLAGS(imp)       = DBIc_FLAGS(parent_com) & ~DBIcf_INHERITMASK;
-	DBIc_THR_COND(imp)    = DBIc_THR_COND(parent_com);
 	++DBIc_KIDS(parent_com);
     }
-    /* handles come into life with DBIc_THR_USER set to DBIc_THR_USER_NONE	*/
-    /* because DBIc_THR_USER indicates which thread has 'entered the DBI'	*/
-    /* on this handle and, at this point, none has.				*/
-    DBIc_THR_USER(imp) = DBIc_THR_USER_NONE;
+#ifdef DBI_USE_THREADS
+    DBIc_THR_USER(imp) = PERL_GET_THX ;
+#endif
 
     if (DBIc_TYPE(imp) == DBIt_ST) {
 	imp_sth_t *imp_sth = (imp_sth_t*)imp;
@@ -912,8 +912,10 @@ dbih_dumpcom(imp_xxh, msg, level)
     char *pad = "      ";
     if (!msg)
 	msg = "dbih_dumpcom";
-    PerlIO_printf(DBILOGFP,"    %s (h 0x%lx, com 0x%lx):\n",
-	msg, (IV)DBIc_MY_H(imp_xxh), (IV)imp_xxh);
+    PerlIO_printf(DBILOGFP,"    %s (%sh 0x%lx 0x%lx, com 0x%lx, imp %s):\n",
+	msg, dbih_htype_name(DBIc_TYPE(imp_xxh)),
+	(IV)DBIc_MY_H(imp_xxh), (IV)SvRVx(DBIc_MY_H(imp_xxh)),
+	(IV)imp_xxh, HvNAME(DBIc_IMP_STASH(imp_xxh)));
     if (DBIc_COMSET(imp_xxh))			sv_catpv(flags,"COMSET ");
     if (DBIc_IMPSET(imp_xxh))			sv_catpv(flags,"IMPSET ");
     if (DBIc_ACTIVE(imp_xxh))			sv_catpv(flags,"Active ");
@@ -931,20 +933,12 @@ dbih_dumpcom(imp_xxh, msg, level)
     if (DBIc_is(imp_xxh, DBIcf_Taint))		sv_catpv(flags,"Taint ");
     if (DBIc_is(imp_xxh, DBIcf_Profile))	sv_catpv(flags,"Profile ");
     PerlIO_printf(DBILOGFP,"%s FLAGS 0x%lx: %s\n", pad, (long)DBIc_FLAGS(imp_xxh), SvPV(flags,lna));
-    PerlIO_printf(DBILOGFP,"%s TYPE %d\n",	pad, DBIc_TYPE(imp_xxh));
     PerlIO_printf(DBILOGFP,"%s PARENT %s\n",	pad, neatsvpv((SV*)DBIc_PARENT_H(imp_xxh),0));
     PerlIO_printf(DBILOGFP,"%s KIDS %ld (%ld Active)\n", pad,
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
-    PerlIO_printf(DBILOGFP,"%s IMP_DATA %s in '%s'\n", pad,
-	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
+    PerlIO_printf(DBILOGFP,"%s IMP_DATA %s\n", pad, neatsvpv(DBIc_IMP_DATA(imp_xxh),0));
     if (DBIc_LongReadLen(imp_xxh) != DBIc_LongReadLen_init)
 	PerlIO_printf(DBILOGFP,"%s LongReadLen %ld\n", pad, (long)DBIc_LongReadLen(imp_xxh));
-#ifdef DBI_USE_THREADS
-    if (DBIc_THR_COND(imp_xxh)) {
-	PerlIO_printf(DBILOGFP,"%s thread cond var 0x%lx", pad, (long)DBIc_THR_COND(imp_xxh));
-	PerlIO_printf(DBILOGFP,", tid %lu\n", (unsigned long)DBIc_THR_USER(imp_xxh));
-    }
-#endif
 
     if (DBIc_TYPE(imp_xxh) <= DBIt_DB) {
 	imp_dbh_t *imp_dbh = (imp_dbh_t*)imp_xxh;
@@ -975,6 +969,7 @@ dbih_clearcom(imp_xxh)
 {
     dPERINTERP;
     dTHR;
+    dTHX;
     int dump = FALSE;
     int auto_dump = (DBIS->debug >= 6);
 
@@ -982,6 +977,17 @@ dbih_clearcom(imp_xxh)
     /* certainly points to memory which has been freed. Don't use it!		*/
 
     /* --- pre-clearing sanity checks --- */
+
+#ifdef DBI_USE_THREADS
+    if (DBIc_THR_USER(imp_xxh) != my_perl) { /* don't clear handle that belongs to another thread */
+	if (DBIS->debug >= 3) {
+	    PerlIO_printf(DBILOGFP,"    skipped dbih_clearcom: DBI handle (type=%d, %s) is owned by thread %p not current thread %p\n", 
+		  DBIc_TYPE(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)), DBIc_THR_USER(imp_xxh), my_perl) ;
+	    PerlIO_flush(DBILOGFP);
+	}
+	return;
+    }
+#endif
 
     if (!DBIc_COMSET(imp_xxh)) {	/* should never happen	*/
 	dbih_dumpcom(imp_xxh, "dbih_clearcom: DBI handle already cleared", 0);
@@ -1047,12 +1053,6 @@ dbih_clearcom(imp_xxh)
 	sv_free(_imp2com(imp_xxh, attr.FetchHashKeyName));
     }
 
-#ifdef DBI_USE_THREADS
-    if (DBIc_TYPE(imp_xxh) == DBIt_DR && DBIc_THR_COND(imp_xxh)) {
-	COND_DESTROY(DBIc_THR_COND(imp_xxh));
-	Safefree(DBIc_THR_COND(imp_xxh));
-    }
-#endif
 
     sv_free((SV*)DBIc_PARENT_H(imp_xxh));	/* do this last		*/
 
@@ -1469,14 +1469,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	valuesv = &sv_undef;
     }
     else if (keylen==4 && strEQ(key, "Type")) {
-	char *type;
-	switch(htype) {
-	case DBIt_DR: type = "dr"; break;
-	case DBIt_DB: type = "db"; break;
-	case DBIt_ST: type = "st"; break;
-	case DBIt_FD: type = "fd"; break;
-	default:      type = "??";
-	}
+	char *type = dbih_htype_name(htype);
 	valuesv = newSVpv(type,0);
 	cacheit = TRUE;	/* can't change */
     }
@@ -2028,64 +2021,23 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     if (debug >= 9) {
 	PerlIO *logfp = DBILOGFP;
-        PerlIO_printf(logfp,"    >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x a%lx)",
+        PerlIO_printf(logfp,"    >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x ima%lx thr#%p pid#%ld)",
 	    meth_name, neatsvpv(h,0),
 	    (long)SvREFCNT(h), (SvROK(h) ? (long)SvREFCNT(SvRV(h)) : (long)-1),
-	    (long)items, (int)gimme, (long)ima);
+	    (long)items, (int)gimme, (long)ima,
+	    DBIc_THR_USER(imp_xxh), (long)PerlProc_getpid());
 	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n"));
 	PerlIO_flush(logfp);
+    }
+
+    if (!SvROK(h) || SvTYPE(SvRV(h)) != SVt_PVHV) {
+        croak("%s: handle %s is not a hash reference",meth_name,neatsvpv(h,0));
     }
 
     if (*meth_name=='D' && strEQ(meth_name,"DESTROY")) {
 	/* note that croak()'s won't propagate, only append to $@ */
 	is_DESTROY = TRUE;
 	keep_error = TRUE;
-    }
-
-    /* Check method call against Internal Method Attributes */
-    if (ima) {
-
-	if (ima->flags & (IMA_STUB|IMA_FUNC_REDIRECT|IMA_KEEP_ERR)) {
-
-	    if (ima->flags & IMA_STUB) {
-		XSRETURN(0);
-	    }
-	    if (ima->flags & IMA_FUNC_REDIRECT) {
-		SV *meth_name_sv = POPs;
-		PUTBACK;
-		--items;
-		if (!SvPOK(meth_name_sv) || SvNIOK(meth_name_sv))
-		    croak("%s->%s() invalid redirect method name %s",
-			    neatsvpv(h,0), meth_name, neatsvpv(meth_name_sv,0));
-		meth_name = SvPV(meth_name_sv, lna);
-	    }
-	    if (ima->flags & IMA_KEEP_ERR)
-		keep_error = TRUE;
-	}
-
-	if (ima->flags & IMA_HAS_USAGE) {
-	    char *err = NULL;
-	    char msg[200];
-
-	    if (ima->minargs && (items < ima->minargs
-				|| (ima->maxargs>0 && items > ima->maxargs))) {
-		/* the error reporting is a little tacky here */
-		sprintf(msg,
-		    "DBI %s: invalid number of parameters: handle + %ld\n",
-		    meth_name, (long)items-1);
-		err = msg;
-	    }
-	    /* arg type checking could be added here later */
-	    if (err) {
-		croak("%sUsage: %s->%s(%s)", err, "$h", meth_name,
-		    (ima->usage_msg) ? ima->usage_msg : "...?");
-	    }
-	}
-
-    }
-
-    if (!SvROK(h) || SvTYPE(SvRV(h)) != SVt_PVHV) {
-        croak("%s: handle %s is not a hash reference",meth_name,neatsvpv(h,0));
     }
 
     /* If h is a tied hash ref, switch to the inner ref 'behind' the tie.
@@ -2127,6 +2079,68 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	profile_t1 = dbi_time(); /* just get start time here */
     }
 
+#ifdef DBI_USE_THREADS
+{
+    PerlInterpreter * h_perl = DBIc_THR_USER(imp_xxh) ;
+    if (h_perl != my_perl) {
+	if (is_DESTROY) {
+	    if (debug >= 2) {
+		PerlIO_printf(DBILOGFP,"    DESTROY ignored because DBI handle (type=%d) is owned thread %p not current thread %p\n",
+		      DBIc_TYPE(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name, h_perl, my_perl) ;
+		PerlIO_flush(DBILOGFP);
+	    }
+	    XSRETURN(0); /* don't DESTROY handle, if it is not our's !*/
+	}
+	croak("%s %s failed: handle %d is owned by thread %x not current thread %x (%s)",
+	    HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name, DBIc_TYPE(imp_xxh), h_perl, my_perl,
+	    "handles can't be shared between threads and your driver may need a CLONE method added");
+    }
+}
+#endif
+
+    /* Check method call against Internal Method Attributes */
+    if (ima) {
+
+	if (ima->flags & (IMA_STUB|IMA_FUNC_REDIRECT|IMA_KEEP_ERR|IMA_CLEAR_STMT)) {
+
+	    if (ima->flags & IMA_STUB) {
+		XSRETURN(0);
+	    }
+	    if (ima->flags & IMA_FUNC_REDIRECT) {
+		SV *meth_name_sv = POPs;
+		PUTBACK;
+		--items;
+		if (!SvPOK(meth_name_sv) || SvNIOK(meth_name_sv))
+		    croak("%s->%s() invalid redirect method name %s",
+			    neatsvpv(h,0), meth_name, neatsvpv(meth_name_sv,0));
+		meth_name = SvPV(meth_name_sv, lna);
+	    }
+	    if (ima->flags & IMA_KEEP_ERR)
+		keep_error = TRUE;
+	    if (ima->flags & IMA_CLEAR_STMT)
+		hv_store((HV*)SvRV(h), "Statement", 9, &sv_undef, 0);
+	}
+
+	if (ima->flags & IMA_HAS_USAGE) {
+	    char *err = NULL;
+	    char msg[200];
+
+	    if (ima->minargs && (items < ima->minargs
+				|| (ima->maxargs>0 && items > ima->maxargs))) {
+		/* the error reporting is a little tacky here */
+		sprintf(msg,
+		    "DBI %s: invalid number of parameters: handle + %ld\n",
+		    meth_name, (long)items-1);
+		err = msg;
+	    }
+	    /* arg type checking could be added here later */
+	    if (err) {
+		croak("%sUsage: %s->%s(%s)", err, "$h", meth_name,
+		    (ima->usage_msg) ? ima->usage_msg : "...?");
+	    }
+	}
+    }
+
     if (tainting && items > 1		      /* method call has args	*/
 	&& DBIc_is(imp_xxh, DBIcf_Taint)      /* taint checks requested	*/
 	&& !(ima && ima->flags & IMA_NO_TAINT_IN)
@@ -2154,8 +2168,14 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    clear_cached_kids(h, imp_xxh, meth_name, debug);
 
 	if (DBI_IS_LAST_HANDLE(h)) {	/* if destroying _this_ handle */
-	    SV *lhp = DBI_LAST_HANDLE_PARENT;
-	    (SvROK(lhp)) ? DBI_SET_LAST_HANDLE(lhp) : DBI_UNSET_LAST_HANDLE;
+	    SV *lhp = DBIc_PARENT_H(imp_xxh);
+	    if (lhp && SvROK(lhp)) {
+		DBI_SET_LAST_HANDLE(lhp);
+	    }
+	    else {
+		DBI_UNSET_LAST_HANDLE;
+	    }
+	
 	} /* otherwise don't alter last handle */
 
 	if (DBIc_IADESTROY(imp_xxh)) { /* want's ineffective destroy	*/
@@ -2217,26 +2237,6 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    }
 	}
 
-#ifdef DBI_USE_THREADS		/* only pay the cost with threaded perl	*/
-	DBI_LOCK;
-	while(DBIc_THR_USER(imp_xxh) != DBIc_THR_USER_NONE && DBIc_THR_USER(imp_xxh) != thr->tid) {
-	    if (debug >= 4) {
-		PerlIO_printf(DBILOGFP,"    .. %s: thread %lu waiting for thread %lu to leave %s\n",
-			meth_name, thr->tid, DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
-		PerlIO_flush(DBILOGFP);
-	    }
-	    COND_WAIT(DBIc_THR_COND(imp_xxh), DBIS->mutex);
-	}
-	DBIc_THR_USER(imp_xxh) = thr->tid;
-	if (debug >= 4) {
-	    PerlIO_printf(DBILOGFP,"    .. %s: thread %lu entering %s\n",
-		    meth_name, thr->tid, HvNAME(DBIc_IMP_STASH(imp_xxh)));
-	    PerlIO_flush(DBILOGFP);
-	}
-	SAVEDESTRUCTOR(dbi_cond_signal, imp_xxh);  /* arrange later cond signal	*/
-	DBI_UNLOCK;
-#endif
-
 	if (!imp_msv) {
 	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
 	    if (!imp_msv) {
@@ -2269,7 +2269,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    (ima && i==ima->hidearg) ? "****" : neatsvpv(ST(i),0));
 	    }
 #ifdef DBI_USE_THREADS
-	    PerlIO_printf(logfp, ") thr%lu\n", thr->tid);
+	    PerlIO_printf(logfp, ") thr#%p\n", DBIc_THR_USER(imp_xxh));
 #else
 	    PerlIO_printf(logfp, ")\n");
 #endif
@@ -2540,7 +2540,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
 
 	if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines below */
-	    dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
+	    char *Statement = (ima && ima->flags & IMA_PROF_EMPTY_STMT) ? "" : Nullch;
+	    dbi_profile(h, imp_xxh, Statement, imp_msv ? imp_msv : (SV*)cv,
 		profile_t1, dbi_time());
 	}
 	if (!hook_svp) {
@@ -2551,7 +2552,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
     }
     else if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines above */
-	dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
+	char *Statement = (ima && ima->flags & IMA_PROF_EMPTY_STMT) ? "" : Nullch;
+	dbi_profile(h, imp_xxh, Statement, imp_msv ? imp_msv : (SV*)cv,
 		profile_t1, dbi_time());
     }
 
@@ -2897,7 +2899,7 @@ PROTOTYPES: DISABLE
 
 BOOT:
     items = items;		/* avoid 'unused variable' warning	*/
-    dbi_bootinit();
+    dbi_bootinit(NULL);
 
 
 I32
@@ -2979,6 +2981,13 @@ constant()
     RETVAL = ix;
     OUTPUT:
     RETVAL
+
+
+void
+_clone_dbis()
+    CODE:
+    dPERINTERP;
+    dbi_bootinit(DBIS);
 
 
 void
@@ -3134,7 +3143,7 @@ trace(sv, level=-1, file=Nullsv)
 	    PerlIO_flush(DBILOGFP);
 	}
 	DBIS->debug = level;
-	sv_setiv(get_sv("DBI::dbi_debug",0x5), level);
+	sv_setiv(perl_get_sv("DBI::dbi_debug",0x5), level);
     }
     }
     OUTPUT:
@@ -3226,14 +3235,8 @@ FETCH(sv)
 
     if (DBIS->debug >= 2 || (ok && DBIc_DEBUGIV(imp_xxh) >= 2)) {
 	trace = 2;
-	PerlIO_printf(DBILOGFP,"    -> $DBI::%s (%c) FETCH from lasth=", meth, type);
-	if (ok) {
-	    SvROK_on(DBI_LAST_HANDLE);
-	    PerlIO_printf(DBILOGFP,"%s\n", neatsvpv(DBI_LAST_HANDLE,0));
-	    SvROK_off(DBI_LAST_HANDLE);
-	} else {
-	    PerlIO_printf(DBILOGFP,"none\n");
-	}
+	PerlIO_printf(DBILOGFP,"    -> $DBI::%s (%c) FETCH from lasth=%s\n", meth, type,
+		(ok) ? neatsvpv(DBI_LAST_HANDLE,0): "none");
     }
 
     if (type == '!') {	/* special case for $DBI::lasth */
@@ -3242,12 +3245,10 @@ FETCH(sv)
 	}
 	/* Currently we can only return the INNER handle.	*/
 	/* This handle should only be used for true/false tests	*/
-	SvROK_on(DBI_LAST_HANDLE);
-	ST(0) = sv_mortalcopy(DBI_LAST_HANDLE);
+	ST(0) = sv_2mortal(newRV(DBI_LAST_HANDLE));
 	if (trace)
 	    PerlIO_printf(DBILOGFP,"    <- $DBI::%s= %s (inner)\n",
 				meth, neatsvpv(DBI_LAST_HANDLE,0));
-	SvROK_off(DBI_LAST_HANDLE);
 	XSRETURN(1);
     }
     if ( !ok ) {		/* warn() may be changed to a debug later */
@@ -3271,7 +3272,7 @@ FETCH(sv)
     }
     if (type == '$') { /* lookup scalar variable in implementors stash */
 	char *vname = mkvname(DBIc_IMP_STASH(imp_xxh), meth, 0);
-	SV *vsv = get_sv(vname, 1);
+	SV *vsv = perl_get_sv(vname, 1);
 	if (trace)
 	    PerlIO_printf(DBILOGFP,"    <- %s = %s\n", vname, neatsvpv(vsv,0));
 	ST(0) = sv_mortalcopy(vsv);
@@ -3281,7 +3282,7 @@ FETCH(sv)
     imp_stash = DBIc_IMP_STASH(imp_xxh);
     if (DBIS->debug >= 2)
         PerlIO_printf(DBILOGFP,"    >> %s::%s\n", HvNAME(imp_stash), meth);
-    ST(0) = DBI_LAST_HANDLE;
+    ST(0) = sv_2mortal(newRV(DBI_LAST_HANDLE));
     if ((imp_gv = gv_fetchmethod(imp_stash,meth)) == NULL) {
         croak("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",
             meth, meth, HvNAME(imp_stash));

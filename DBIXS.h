@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.7 2002/06/05 22:39:41 timbo Exp $
+/* $Id: DBIXS.h,v 11.8 2002/07/15 11:18:57 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -49,18 +49,14 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver
 #endif
 
 
-#if defined(USE_THREADS) && !defined(DBI_NO_THREADS)
-#define DBI_USE_THREADS
-#define DBI_LOCK	MUTEX_LOCK(DBIS->mutex)
-#define DBI_UNLOCK	MUTEX_UNLOCK(DBIS->mutex)
-#define dbi_mutex perl_mutex
-#define dbi_cond  perl_cond
-#else
 #define DBI_LOCK
 #define DBI_UNLOCK
-#define dbi_mutex void
-#define dbi_cond  void
-#endif
+
+#ifndef DBI_NO_THREADS
+#ifdef USE_ITHREADS
+#define DBI_USE_THREADS
+#endif /* USE_ITHREADS */
+#endif /* DBI_NO_THREADS */
 
 
 /* forward struct declarations						*/
@@ -92,14 +88,14 @@ typedef struct dbih_com_std_st {
     HV   *my_h;		/* copy of outer handle HV (not refcounted)	*/
     SV   *parent_h;	/* parent inner handle (ref to hv) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
-    dbi_cond  *thr_cond;/* condition for thread access (see dispatch)	*/
+    PerlInterpreter * thr_user;  /* thread that owns the handle         */
 
     HV   *imp_stash;	/* who is the implementor for this handle	*/
     SV   *imp_data;	/* optional implementors data (for perl imp's)	*/
 
     I32  kids;		/* count of db's for dr's, st's for db's etc	*/
     I32  active_kids;	/* kids which are currently DBIc_ACTIVE		*/
-    U32  thr_user;	/* thread id currently using the handle		*/
+    U32 pad;		/* keep binary compat */
     dbistate_t *dbistate;
 } dbih_com_std_t;
 
@@ -381,13 +377,14 @@ struct dbistate_st {
     int         (*hash)		_((char *string, long i));
     SV        * (*preparse)	_((SV *sth, char *statement, IV ps_return, IV ps_accept, void *foo));
 
-    SV *neatsvpvlen;	/* only show dbgpvlen chars when debugging pv's	*/
+    SV *neatsvpvlen;		/* only show dbgpvlen chars when debugging pv's	*/
 
-    dbi_mutex	*mutex;
+    PerlInterpreter * thr_owner;	/* thread that owns this dbistate	*/
 
     int         (*logmsg)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
     int         (*set_err)	_((imp_xxh_t *imp_xxh, char *fmt, ...));
-    void *pad[7];
+
+    void *pad2[7];
 };
 
 /* macros for backwards compatibility */
@@ -458,6 +455,10 @@ static dbistate_t **get_dbistate() {
 #define DBD_ATTRIB_GET_BOOL(attribs, key,klen, svp, var)		\
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvTRUE(*svp)
+
+#define DBD_ATTRIB_TRUE(attribs, key,klen, svp)				\
+	(  ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
+	    ? SvTRUE(*svp) : 0 )
 
 #define DBD_ATTRIB_GET_IV(attribs, key,klen, svp, var)			\
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\

@@ -1,10 +1,30 @@
 /*
-#  $Id: Driver_xst.h,v 1.1 2002/06/13 12:25:54 timbo Exp $
+#  $Id: Driver_xst.h,v 1.2 2002/07/15 11:18:57 timbo Exp $
 #  Copyright (c) 2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
 #  License or the Artistic License, as specified in the Perl README file.
 */
+
+static SV *
+dbixst_bounce_method(char *methname, int params)
+{
+    dXSARGS; /* declares sp, ax, mark, items */
+    int i;
+    SV *sv;
+    EXTEND(SP, params);
+    PUSHMARK(SP);
+    for (i=0; i < params; ++i) {
+	sv = (i >= items) ? &sv_undef : ST(i);
+        PUSHs(sv);
+    }
+    PUTBACK;
+    i = perl_call_method(methname, G_SCALAR);
+    SPAGAIN;
+    sv = (i) ? POPs : &sv_undef;
+    PUTBACK;
+    return sv;
+}
 
 
 static int
@@ -37,3 +57,34 @@ dbdxst_bind_params(SV *sth, imp_sth_t *imp_sth, I32 items, I32 ax)
     }
     return 1;
 }
+
+#ifndef dbd_fetchall_arrayref
+static SV *
+dbdxst_fetchall_arrayref(SV *sth, SV *slice, SV *batch_row_count)
+{
+    D_imp_sth(sth);
+    SV *rows_rvav;
+    if (SvOK(slice)) {  /* should never get here */
+	char errmsg[99];
+	sprintf(errmsg,"slice param not supported by XS version of fetchall_arrayref");
+	sv_setpv(DBIc_ERRSTR(imp_sth), errmsg);
+	sv_setiv(DBIc_ERR(imp_sth), (IV)-1);
+	return &sv_undef;
+    }
+    else {
+	IV maxrows = SvOK(batch_row_count) ? SvIV(batch_row_count) : -1;
+	AV *fetched_av;
+	AV *rows_av = newAV();
+	av_extend(rows_av, (maxrows>0) ? maxrows : 31);
+	while ( (maxrows < 0 || maxrows-- > 0)
+	    && (fetched_av = dbd_st_fetch(sth, imp_sth))
+	) {
+	    AV *copy_row_av = av_make(AvFILL(fetched_av)+1, AvARRAY(fetched_av));
+	    av_push(rows_av, newRV_noinc((SV*)copy_row_av));
+	}
+	rows_rvav = sv_2mortal(newRV_noinc((SV *)rows_av));
+    }
+    return rows_rvav;
+}
+#endif
+

@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.6 2002/06/13 15:16:31 timbo Exp $
+#  $Id: Driver.xst,v 11.7 2002/07/15 11:18:57 timbo Exp $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -69,30 +69,65 @@ _login(dbh, dbname, username, password, attribs=Nullsv)
 
 
 void
-_selectrow_arrayref(dbh, stmt_h, attr=&sv_undef, ...)
-    SV *	dbh
-    SV *	stmt_h
-    SV *	attr
-    CODE:
-    {
+selectall_arrayref(...)
+    PREINIT:
+    SV *sth;
+    SV **maxrows_svp;
+    SV **tmp_svp;
+    SV *attr = &sv_undef;
     imp_sth_t *imp_sth;
-    IV tmp_iv;
+    CODE:
+    if (items > 2) {
+	attr = ST(2);
+	if (SvROK(attr) &&
+		(DBD_ATTRIB_TRUE(attr,"Slice",5,tmp_svp) || DBD_ATTRIB_TRUE(attr,"Columns",7,tmp_svp))
+	) {
+	    /* fallback to perl implementation */
+	    ST(0) = dbixst_bounce_method("DBD::~DRIVER~::db::SUPER::selectall_arrayref", items);
+	    XSRETURN(1);
+	}
+    }
+    /* --- prepare --- */
+    if (SvROK(ST(1))) {
+	sth = ST(1);
+    }
+    else {
+	sth = dbixst_bounce_method("prepare", 3);
+	if (!SvROK(sth))
+	    XSRETURN_UNDEF;
+    }
+    imp_sth = (imp_sth_t*)(DBIh_COM(sth));
+    /* --- bind_param --- */
+    if (items > 3) {    /* need to bind params before execute */
+        if (!dbdxst_bind_params(sth, imp_sth, items-2, ax+2) ) {
+            XSRETURN_UNDEF;
+        }
+    }
+    /* --- execute --- */
+    DBIc_ROW_COUNT(imp_sth) = 0;
+    if ( dbd_st_execute(sth, imp_sth) <= -2 ) { /* -2 == error */
+        XSRETURN_UNDEF;
+    }
+    /* --- fetchall --- */
+    maxrows_svp = DBD_ATTRIB_GET_SVP(attr, "MaxRows", 7);
+    ST(0) = dbdxst_fetchall_arrayref(sth, &sv_undef, (maxrows_svp) ? *maxrows_svp : &sv_undef);
+
+
+void
+selectrow_arrayref(...)
+    ALIAS:
+	selectrow_array = 1
+    PREINIT:
+    imp_sth_t *imp_sth;
     SV *sth;
     AV *row_av;
-    if (SvROK(stmt_h)) {
-	sth = stmt_h;
+    PPCODE:
+    if (SvROK(ST(1))) {
+	sth = ST(1);
     }
     else {
 	/* --- prepare --- */
-	PUSHMARK(SP);
-	XPUSHs(dbh);
-	XPUSHs(stmt_h);
-	XPUSHs(attr);
-	PUTBACK;
-	tmp_iv = perl_call_method("prepare", G_SCALAR);
-	SPAGAIN;
-	sth = (tmp_iv) ? POPs : &sv_undef;
-	PUTBACK;
+	sth = dbixst_bounce_method("prepare", 3);
 	if (!SvROK(sth))
 	    XSRETURN_UNDEF;
     }
@@ -110,14 +145,29 @@ _selectrow_arrayref(dbh, stmt_h, attr=&sv_undef, ...)
     }
     /* --- fetchrow_arrayref --- */
     row_av = dbd_st_fetch(sth, imp_sth);
-    ST(0) = (row_av) ? sv_2mortal(newRV((SV *)row_av)) : &sv_undef;
+    if (!row_av) {
+	if (GIMME == G_SCALAR)
+	    PUSHs(&sv_undef);
+    }
+    else if (ix == 1) { /* selectrow_array */
+	int i;
+	int num_fields = AvFILL(row_av)+1;
+	if (GIMME == G_SCALAR)
+	    num_fields = 1; /* return just first field */
+	EXTEND(sp, num_fields);
+	for(i=0; i < num_fields; ++i) {
+	    PUSHs(AvARRAY(row_av)[i]);
+	}
+    }
+    else {
+	PUSHs( sv_2mortal(newRV((SV *)row_av)) );
+    }
     /* --- finish --- */
 #ifdef dbd_db_finish3
     dbd_st_finish3(sth, imp_sth, 0);
 #else
     dbd_st_finish(sth, imp_sth);
 #endif
-    }
 
 
 
@@ -376,15 +426,15 @@ fetchrow_array(sth)
     PPCODE:
     D_imp_sth(sth);
     AV *av;
-    if (0) ix = ix;	/* avoid unused variable warning */
     av = dbd_st_fetch(sth, imp_sth);
     if (av) {
-	int num_fields = AvFILL(av)+1;
 	int i;
+	int num_fields = AvFILL(av)+1;
 	EXTEND(sp, num_fields);
 	for(i=0; i < num_fields; ++i) {
 	    PUSHs(AvARRAY(av)[i]);
 	}
+	if (0) ix = ix;	/* avoid unused variable warning */
     }
 
 
@@ -394,34 +444,11 @@ fetchall_arrayref(sth, slice=&sv_undef, batch_row_count=&sv_undef)
     SV *	slice
     SV *	batch_row_count
     CODE:
-    if (SvOK(slice)) {	/* fallback to perl implementation */
-	PUSHMARK(SP);
-	XPUSHs(sth);
-	XPUSHs(slice);
-	XPUSHs(batch_row_count);
-	PUTBACK;
-	/* XXX using SUPER:: here doesn't work for $dbh->selectall_arrayref */
-	/* probably needs PUSHBLOCK & PUSHSUB perl internals magic stuff */
-	/*perl_call_method("DBD::_::st::fetchall_arrayref", G_SCALAR) ;*/
-	perl_call_method("DBD::~DRIVER~::st::SUPER::fetchall_arrayref", G_SCALAR) ;
-	/*perl_call_method("SUPER::fetchall_arrayref", G_SCALAR) ;*/
-	SPAGAIN;
-	ST(0) = POPs;
-	PUTBACK;
+    if (SvOK(slice)) {  /* fallback to perl implementation */
+        ST(0) = dbixst_bounce_method("DBD::~DRIVER~::st::SUPER::fetchall_arrayref", 3);
     }
     else {
-	D_imp_sth(sth);
-	IV maxrows = SvOK(batch_row_count) ? SvIV(batch_row_count) : -1;
-	AV *fetched_av;
-	AV *rows_av = newAV();
-	av_extend(rows_av, (maxrows>0) ? maxrows : 60);
-	while ( (maxrows < 0 || maxrows-- > 0)
-	    && (fetched_av = dbd_st_fetch(sth, imp_sth))
-	) {
-	    AV *copy_row_av = av_make(AvFILL(fetched_av)+1, AvARRAY(fetched_av));
-	    av_push(rows_av, newRV_noinc((SV*)copy_row_av));
-	}
-	ST(0) = sv_2mortal(newRV_noinc((SV *)rows_av));
+	ST(0) = dbdxst_fetchall_arrayref(sth, slice, batch_row_count);
     }
 
 

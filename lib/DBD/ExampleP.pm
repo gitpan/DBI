@@ -6,9 +6,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.5 2002/06/14 13:11:26 timbo Exp $
+#   $Id: ExampleP.pm,v 11.6 2002/07/15 11:18:57 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -39,7 +39,7 @@
 	    'Name' => 'ExampleP',
 	    'Version' => $VERSION,
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
-	    }, ['example implementors private data']);
+	    }, ['example implementors private data '.__PACKAGE__]);
 	$drh;
     }
 
@@ -89,7 +89,7 @@
 
 	my ($outer, $inner) = DBI::_new_sth($dbh, {
 	    'Statement'     => $statement,
-	}, ['example implementors private data']);
+	}, ['example implementors private data '.__PACKAGE__]);
 
 	my @fields = ($fields eq '*')
 			? keys %DBD::ExampleP::statnames

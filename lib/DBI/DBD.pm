@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 11.6 2002/06/13 12:25:54 timbo Exp $
+# $Id: DBD.pm,v 11.7 2002/07/15 11:18:57 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 11.6 $
-  $Date: 2002/06/13 12:25:54 $
+  $Revision: 11.7 $
+  $Date: 2002/07/15 11:18:57 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -1737,7 +1737,7 @@ For example, consider this STORE method from the I<DBD::CSV> class:
 package DBI::DBD;
 
 use Exporter ();
-use Config;
+use Config qw(%Config);
 use Carp;
 use strict;
 use vars qw(
@@ -1756,7 +1756,7 @@ use DBI::Const::GetInfoType qw(%GetInfoType);
 
 @ISA = qw(Exporter);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.7 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
@@ -1791,12 +1791,15 @@ sub dbd_edit_mm_attribs {
 	foreach my $test (sort @tests) {
 	    next if $test =~ /^zz_.*_pp\.t$/;
 	    $test =~ s/\.t$//;
-	    my $pp_test = ":t:zz_${test}_pp.t";
-	    print "Creating extra DBI::PurePerl test: $pp_test\n";
+	    my $pp_test = "t/zz_${test}_pp.t";
+	    my $usethr = ($test =~ /(\d+|\b)thr/ && $] >= 5.008 && $Config{useithreads});
+	    printf "Creating extra DBI::PurePerl test: $pp_test %s\n",
+		($usethr) ? "(use threads)" : "";
 	    open PPT, ">$pp_test" or warn "Can't create $pp_test: $!";
 	    print PPT "#!perl -w\n";
+	    print PPT "use threads;\n" if $usethr;
 	    print PPT "\$ENV{DBI_PUREPERL}=2;\n";
-	    print PPT "do '$test.t';\n";
+	    print PPT "do 't/$test.t';\n";
 	    print PPT "exit 0\n";
 	    close PPT or warn "Error writing $pp_test: $!";
 	}

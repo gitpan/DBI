@@ -39,7 +39,7 @@ ok(ref $profile->{Path}, 'ARRAY');
 #warn Dumper($profile);
 
 my $sth = $dbh->prepare("select mode,size,name from ?");
-$sth->execute(":");
+$sth->execute(".");
 #$profile->{Path} = [ "foo", DBIprofile_Statement, DBIprofile_MethodName ];
 while ( my $hash = $sth->fetchrow_hashref ) {
 }

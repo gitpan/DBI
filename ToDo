@@ -1,15 +1,25 @@
 
-*** Assorted to-do items and random thoughts *** in no particular order ***
+*** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
+
+The DBI needs some standard way to handle the 'success with info' concept:
+	$h->{HandleEvent}
+
+Maybe have fetchrow_arrayref return not a new reference to the same
+array each time, but the same reference to the same array each time.
+That would save a new/mortal/free for each row. Need to consider
+safety in case application assigns to the ref etc. Could sanity
+check in get_fbav that SvRV still points to the row array.
+But maybe it's not worth it if perl's "tmp stealing" works for refs.
 
 Define install_method so apps using things like DBD::AnyData can
 avoid using func() so much. Especially as func is marked as 'keep error'
 so RaiseError doesn't work.
 
-Sort out DBIcDBISTATE() and DBIS mess
+DBI::Profile: add simple way to normalise the sql (convert constants
+to placeholders) so profiling is more effective for drivers/applications
+which don't use placeholders.
 
-Add ima flags to force profile to not use Statement for dbh on some methods
-that obviously have little or nothing to do with the current $dbh Statement:
-	disconnect begin_work ping get_info table_info quote quote_identifier
+Sort out DBIcDBISTATE() and DBIS mess
 
 fetchall_hashref: may be better to call fetchall_arrayref then convert to hashes
 
@@ -40,6 +50,7 @@ So if SvNVOK is true but the value is 0 then should also do looks_like_number()
 to be sure.
 
 Rename finish to discard_pending_rows :-) [or just add an alias and docs :-]
+Or maybe to 'close' (the ODBC equiv)
 
 add details of the DBI book to the docs
 test shell /connect user etc

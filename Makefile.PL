@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.7 2002/06/13 12:25:54 timbo Exp $
+# $Id: Makefile.PL,v 11.8 2002/07/15 11:18:57 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -30,7 +30,7 @@ $osvers =~ s/^\s*(\d+\.\d+).*/$1/;  # drop sub-sub-version: 2.5.1 -> 2.5
 my $ext_pl = $^O eq 'VMS' ? '.pl' : '';
 
 $::opt_v = 0;
-$::opt_thread = 1;	# unset later if not a threaded perl
+$::opt_thread = 1;	# thread if we can, use "-nothread" to disable
 $::opt_g = 0;
 $::opt_g = 1 if -d 'RCS' && $ENV{LOGNAME} eq 'timbo'; # it's me!
 
@@ -39,17 +39,36 @@ GetOptions(qw(v! g! thread!))
 
 $::opt_g &&= '-g';  # convert to actual string
 
-if ($Config{archname} =~ /-thread\b/i) {
+if ($Config{useithreads}) {
     print "\n";
-    print "*** You are using a perl with experimental threading enabled!\a\n";
-    print "*** You should be aware that using multiple threads is unstable\n";
-    print "*** are should NOT be done in production environments.\n";
-    print "DBI 5.005-style thread mutex protection is ", $::opt_thread ? "enabled\n" : "disabled!\n";
-    print "DBI hs not been tested with new perl iThreads\n";
+    print "*** You are using a perl configured with threading enabled.\a\n";
+    print "*** You should be aware that using multiple threads is\n";
+    print "*** not recommended for production environments.\n";
     print "\n";
-    sleep 5;
+    sleep 4;
+    $::opt_thread = 1;
 }
 else {
+
+    if ($Config{archname} =~ /thread/ && $::opt_thread) {
+	# oh dear... tell it like it is:
+	print "\n";
+	print "DBI versions from 1.29 onwards no longer support the old style\n";
+	print "of perl threading (now known as '5005 threads'). It is badly flawed\n";
+	print "and could never be safe to use in production environments.\n\n";
+	print "If you are using multiple threads you are *strongly* encouraged to\n";
+	print "upgrade to perl 5.8.x or later.\n";
+	print "If you are not using multiple threads you are *strongly* encouraged to\n";
+	print "upgrade to at least 5.6.x (preferably perl 5.8.x or later.)\n";
+	print "or at the very least rebuild this version with threading disabled.\n";
+	print "If you have stick with your current build of perl...\n";
+	print "then you also have to stick with DBI 1.28 for safety.\n";
+	print "Or if *desparate* you may be able to build this DBI using 'perl Makefile.PL -nothread' but\n";
+	print "but but, that will have *no* logic to handle threads because the logic\n";
+	print "that was there for 5005 threads has now been removed! You have been warned.\n";
+	die "*** ABORTED.\n";
+    }
+
     $::opt_thread = 0;
 }
 

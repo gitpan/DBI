@@ -10,12 +10,16 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %GetInfoReturnTypes %GetInfoReturnValues);
 @EXPORT = qw(%GetInfoReturnTypes %GetInfoReturnValues);
 
 =head1 NAME
- 
-DBI::Const::GetInfoReturn - Data and functions for describing GetInfo results
- 
+
+ DBI::Const::GetInfoReturn - Data and functions for describing GetInfo results
+
 =head1 SYNOPSIS
 
 The interface to this module is undocumented and liable to change.
+
+=head1 DESCRIPTION
+
+Data and functions for describing GetInfo results
 
 =cut
 

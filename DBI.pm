@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.16 2002/06/14 13:11:26 timbo Exp $
+# $Id: DBI.pm,v 11.17 2002/07/15 11:18:57 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.28; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.29; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -85,7 +85,7 @@ I<This synopsis above only lists the major methods.>
 
 If you have questions about DBI, you can get help from
 the I<dbi-users@perl.org> mailing list.
-You can subscribe to the list by emailing:
+You can get help on subscribing and using the list by emailing:
 
   dbi-users-help@perl.org
 
@@ -99,30 +99,37 @@ at the end of this document and on the DBI home page.
 The FAQ is installed as a L<DBI::FAQ> module so
 you can read it by executing C<perldoc DBI::FAQ>.
 
+This document often uses terms like I<references>, I<objects>,
+I<methods>.  If you're not familar with those terms then it would
+be a good idea to read at least the following perl manuals first:
+L<perlreftut>, L<perldsc>, L<perllol>, and L<perlboot>.
+
 Please note that Tim Bunce does not maintain the mailing lists or the
 web page (generous volunteers do that).  So please don't send mail
 directly to him; he just doesn't have the time to answer questions
 personally. The I<dbi-users> mailing list has lots of experienced
-people who should be able to help you if you need it.
+people who should be able to help you if you need it. If you do email
+Tim he's very likely to just forward it to the mailing list.
 
-=head2 NOTE
+=head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.28
-(C<$Date: 2002/06/14 13:11:26 $>).
+This is the DBI specification that corresponds to the DBI version 1.29
+(C<$Date: 2002/07/15 11:18:57 $>).
 
-The DBI specification is evolving at a steady pace, so it's
-important to check that you have the latest copy.
+The DBI is evolving at a steady pace, so it's good to check that
+you have the latest copy.
 
 The significant user-visible changes in each release are documented
 in the L<DBI::Changes> module so you can read them by executing
 C<perldoc DBI::Changes>.
 
-Note also that whenever the DBI changes, the drivers take some time to
-catch up. Recent versions of the DBI have added new features
-(generally marked I<NEW> in the text) that may not yet be supported by the drivers
-you use. Talk to the authors of those drivers if you need the new features.
+Some DBI changes require changes in the drivers, but the drivers
+can take some time to catch up. Recent versions of the DBI have
+added new features (generally marked I<NEW> in the text) that may
+not yet be supported by the drivers you use. Talk to the authors
+of those drivers if you need the new features.
 
-Extensions to the DBI often use the C<DBIx::*> namespace.
+Extensions to the DBI API often use the C<DBIx::*> namespace.
 See L</Naming Conventions and Name Space> and:
 
   http://search.cpan.org/search?mode=module&query=DBIx%3A%3A
@@ -135,7 +142,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.16 $, 10);
+my $Revision = substr(q$Revision: 11.17 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -287,12 +294,11 @@ tie %DBI::DBI => 'DBI::DBI_tie';
 
 # --- Dynamically create the DBI Standard Interface
 
-my $std = undef;
-my $keeperr = { O=>0x04 };
+my $keeperr = { O=>0x0004 };
 
 my @TieHash_IF = (	# Generic Tied Hash Interface
-	'STORE'   => { O=>0x10 },
-	'FETCH'   => $keeperr,
+	'STORE'   => { O=>0x0410 },
+	'FETCH'   => { O=>0x0400 },
 	'FIRSTKEY'=> $keeperr,
 	'NEXTKEY' => $keeperr,
 	'EXISTS'  => $keeperr,
@@ -300,17 +306,17 @@ my @TieHash_IF = (	# Generic Tied Hash Interface
 	'DESTROY' => undef,	# hardwired internally
 );
 my @Common_IF = (	# Interface functions common to all DBI classes
-	func    =>	{				O=>0x06	},
-	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x04 },
-	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x04 },
-	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x04, T=>8 },
-	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x04 }, # old name for trace
-	private_data =>	{ U =>[1,1],			O=>0x04 },
+	func    =>	{				O=>0x0006	},
+	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x0004 },
+	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
+	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
+	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
+	private_data =>	{ U =>[1,1],			O=>0x0004 },
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
-	state   =>	{ U =>[1,1], O=>0x04 },
+	state   =>	{ U =>[1,1], O=>0x0004 },
 	set_err =>	{ },
-	_not_impl => $std,
+	_not_impl =>	undef,
 );
 
 %DBI::DBI_methods = ( # Define the DBI interface methods per class:
@@ -328,9 +334,9 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	@Common_IF,
 	@TieHash_IF,
 	connected   	=> { O=>0x0100 },
-	begin_work   	=> { U =>[1,2,'[ \%attr ]'] },
-	commit     	=> { U =>[1,1], O=>0x0080 },
-	rollback   	=> { U =>[1,1], O=>0x0080 },
+	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
+	commit     	=> { U =>[1,1], O=>0x0480 },
+	rollback   	=> { U =>[1,1], O=>0x0480 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	preparse    	=> {  }, # XXX
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
@@ -341,22 +347,21 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'] },
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
-	handler    	=> { U =>[2,2,'\&handler'] },
-	ping       	=> { U =>[1,1], O=>0x04 },
-	disconnect 	=> { U =>[1,1] },
-	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x30 },
-	quote_identifier=> { U =>[2,5, '$name [, ...]' ],	    O=>0x30 },
+	ping       	=> { U =>[1,1], O=>0x0404 },
+	disconnect 	=> { U =>[1,1], O=>0x0400 },
+	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
+	quote_identifier=> { U =>[2,5, '$name [, ...]' ],	    O=>0x0430 },
 	rows       	=> $keeperr,
 
-	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
-	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ] },
-	column_info     => { U =>[1,6,'$catalog, $schema, $table, $column [, \%attr ]' ] },
-	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
-	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ] },
-	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ] },
-	type_info_all	=> { U =>[1,1] },
-	type_info	=> { U =>[1,2,'$data_type'] },
-	get_info	=> { U =>[2,2,'$info_type'] },
+	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x0200 },
+	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x0200 },
+	column_info     => { U =>[1,6,'$catalog, $schema, $table, $column [, \%attr ]' ], O=>0x0200 },
+	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200 },
+	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200 },
+	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ], O=>0x0200 },
+	type_info_all	=> { U =>[1,1], O=>0x0200 },
+	type_info	=> { U =>[1,2,'$data_type'], O=>0x0200 },
+	get_info	=> { U =>[2,2,'$info_type'], O=>0x0200 },
     },
     st => {		# Statement Class Interface
 	@Common_IF,
@@ -415,6 +420,14 @@ END {
 }
 
 
+sub CLONE {
+    my $olddbis = $DBI::_dbistate;
+    _clone_dbis() unless $DBI::PurePerl; # clone the DBIS structure
+    %DBI::installed_drh = ();	# clear loaded drivers so they have a chance to reinitialize
+    DBI->trace_msg(sprintf "CONE DBI for new thread %s\n",
+	$DBI::PurePerl ? "" : sprintf("(dbis %x -> %x)",$olddbis, $DBI::_dbistate));
+}
+	
 
 # --- The DBI->connect Front Door methods
 
@@ -640,7 +653,7 @@ sub _setup_driver {
 	my $class = $driver_class."::$type";
 	no strict 'refs';
 	push @{"${class}::ISA"},     "DBD::_::$type";
-	push @{"${class}_mem::ISA"}, "DBD::_mem::$type";
+	push @{"${class}_mem::ISA"}, "DBD::_mem::$type" unless $DBI::PurePerl;
     }
 }
 
@@ -1204,30 +1217,31 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub _do_selectrow {
 	my ($method, $dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt
-			      : $dbh->prepare($stmt, $attr);
-	return unless $sth;
-	$sth->execute(@bind) || return;
-	my $row = $sth->$method();
-	$sth->finish if $row;
+	my $sth = ((ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr))
+	    or return;
+	$sth->execute(@bind)
+	    or return;
+	my $row = $sth->$method()
+	    and $sth->finish;
 	return $row;
     }
 
-    # selectrow_arrayref also has C implementation in Driver.xst
-    sub selectrow_arrayref { return _do_selectrow('fetchrow_arrayref', @_); }
     sub selectrow_hashref {  return _do_selectrow('fetchrow_hashref',  @_); }
 
+    # XXX selectrow_array/ref also have C implementations in Driver.xst
+    sub selectrow_arrayref { return _do_selectrow('fetchrow_arrayref', @_); }
     sub selectrow_array {
-	my $row = _do_selectrow('fetchrow_arrayref', @_)
-	    or return;
+	my $row = _do_selectrow('fetchrow_arrayref', @_) or return;
 	return $row->[0] unless wantarray;
 	return @$row;
     }
 
+    # XXX selectall_arrayref also has C implementation in Driver.xst
+    # which fallsback to this if a slice is given
     sub selectall_arrayref {
 	my ($dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr);
-	return unless $sth;
+	my $sth = (ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr)
+	    or return;
 	$sth->execute(@bind) || return;
 	my $slice = $attr->{Slice}; # typically undef, else hash or array ref
 	if (!$slice and $slice=$attr->{Columns}) {
@@ -1536,7 +1550,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     }
 
 
-    sub fetchall_arrayref {
+    sub fetchall_arrayref {	# ALSO IN Driver.xst
 	my ($sth, $slice, $max_rows) = @_;
 	$max_rows = -1 unless defined $max_rows;
 	my $mode = ref($slice) || 'ARRAY';
@@ -1627,7 +1641,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     sub DESTROY  { Carp::croak("Driver has not implemented DESTROY for @_") }
 }
 
-{   # See install_driver
+unless ($DBI::PurePerl) {   # See install_driver
     { package DBD::_mem::dr; @ISA = qw(DBD::_mem::common);	}
     { package DBD::_mem::db; @ISA = qw(DBD::_mem::common);	}
     { package DBD::_mem::st; @ISA = qw(DBD::_mem::common);	}
@@ -2216,7 +2230,6 @@ Trace levels are as follows:
   3 - As above, adding some high-level information from the driver
       and some internal information from the DBI.
   4 - As above, adding more detailed information from the driver.
-      Also includes DBI mutex information when using threaded Perl.
   5 and above - As above but with more and more obscure information.
 
 Trace level 1 is best for a simple overview of what's happening.
@@ -2885,16 +2898,15 @@ See L<perlop/"Quote and Quote-like Operators"> for more details.
 
 This utility method combines L</prepare>, L</execute> and
 L</fetchrow_array> into a single call. If called in a list context, it
-returns the first row of data from the statement. If called in a scalar
-context, it returns the first field of the first row. The C<$statement>
+returns the first row of data from the statement.  The C<$statement>
 parameter can be a previously prepared statement handle, in which case
 the C<prepare> is skipped.
 
 If any method fails, and L</RaiseError> is not set, C<selectrow_array>
 will return an empty list.
 
-In a scalar context, C<selectrow_array> returns the value of the first
-field. An C<undef> is returned if there are no matching rows or an error
+In a scalar context, C<selectrow_array> returns the value of the I<first> field.
+An C<undef> is returned if there are no matching rows or an error
 occurred. Since that C<undef> can't be distinguished from an C<undef> returned
 because the first field value was NULL, calling C<selectrow_array> in
 a scalar context should be used with caution.
@@ -4394,11 +4406,15 @@ returns an empty list. You should check C<$sth->E<gt>C<err> afterwards (or use
 the C<RaiseError> attribute) to discover if the empty list returned was
 due to an error.
 
-In a scalar context, C<fetchrow_array> returns the value of the first
-field. An C<undef> is returned if there are no more rows or if an error
-occurred. Since that C<undef> can't be distinguished from an C<undef> returned
-because the first field value was NULL, you should exercise some
-caution if you use C<fetchrow_array> in a scalar context.
+If called in a scalar context for a statement handle that has more
+than one column, it is I<undefined> whether the driver will return
+the value of the first column of the last. So don't do that.
+
+An C<undef> is returned if there are no more rows or if an error
+occurred. That C<undef> can't be distinguished from an C<undef>
+returned because the first field value was NULL. For these reasons
+you should exercise some caution if you use C<fetchrow_array> in a
+scalar context.
 
 =item C<fetchrow_hashref>
 
@@ -5028,24 +5044,38 @@ See L<perlop/"Quote and Quote-like Operators"> for more details.
 
 =head2 Threads and Thread Safety
 
-If the DBI is built using a Perl that has perl 5.005 style threads
-enabled then it will use a per-driver mutex to ensure that only one
-thread is with a driver at any one time. However perl 5.005 style
-threads are unstable and shoud not be used in production.
+Perl 5.7 and later support a new threading model called iThreads.
+(The old and fatally flawed "5.005 style" threads are not supported
+by the DBI.)
 
-Perl 5.7 and later support a new threading model called iThreads
-which is much more stable. However the DBI has not yet had any extra
-code added or testing done to make sure it works properly with
-iThreads. So at this time the DBI should not be used with iThreads
-in situations where more than one thread may enter a cloned instance
-of the DBI. It is I<possibly> safe to have multiple threads load
-the DBI module I<after> they have been created, but the DBI probably
-won't be providing any protection against multiple threads entering a
-databases own library code. As many databases don't have thread
-safe libraries that is likely to cause problems.
+In the iThreads model each thread has it's own copy of the perl
+interpreter.  When a new thread is created the original perl
+interpreter is 'cloned' to create a new copy for the new thread.
 
-Summary: Using DBI with perl threads of any kind is not recommended
-for production environments.
+If the DBI and drivers are loaded and handles created before the
+thread is created then it will get a cloned copy of the DBI, the
+drivers and the handles.
+
+However, the internal pointer data within the handles will refer
+to the DBI and drivers in the original interpreter. Using those
+handles in the new interpreter thread is not safe, so the DBI detects
+this and croaks on any method call using handles that don't belong
+to the current thread (except for DESTROY).
+
+Because of this (possibly temporary) restriction, newly created
+threads must make their own connctions to the database. Handles
+can't be shared across threads.
+
+But BEWARE, some underlying database APIs (the code the DBD driver
+uses to talk to the database, often supplied by the database vendor)
+are not thread safe. If it's not thread safe, then allowing more
+than one thread to enter the code at the same time may cause
+subtle/serious problems. In some cases allowing more than
+one thread to enter the code, even if I<not> at the same time,
+can cause problems. You have been warned.
+
+Using DBI with perl threads is not yet recommended for production
+environments.
 
 
 =head2 Signal Handling and Canceling Operations

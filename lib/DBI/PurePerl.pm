@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.11 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.12 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -345,8 +345,12 @@ sub trace {
 sub _set_trace_file {
     my ($file) = @_;
     return unless defined $file;
-    unless ($file) {
+    if (!$file || $file eq 'STDERR') {
 	open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
+	return 1;
+    }
+    if ($file eq 'STDOUT') {
+	open $DBI::tfh, ">&STDOUT" or warn "Can't dup STDOUT: $!";
 	return 1;
     }
     open $DBI::tfh, ">>$file" or carp "Can't open $file: $!";

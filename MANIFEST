@@ -36,6 +36,7 @@ t/01basics.t
 t/02dbidrv.t
 t/03hleak.t
 t/04mods.t
+t/05thrclone.t
 t/10examp.t
 t/15array.t
 t/20meta.t

@@ -10,12 +10,14 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %GetInfoType);
 @EXPORT = qw(%GetInfoType);
 
 =head1 NAME
- 
-DBI::Const::GetInfoType - Data describing GetInfo type codes
- 
+
+  DBI::Const::GetInfoType - Data describing GetInfo type codes
+
 =head1 SYNOPSIS
 
   use DBI::Const::GetInfoType;
+
+=head1 DESCRIPTION
 
 Imports a %GetInfoType hash which maps names for GetInfo Type Codes
 into their corresponding numeric values. For example:

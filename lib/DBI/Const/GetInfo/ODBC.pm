@@ -1,5 +1,19 @@
 package DBI::Const::GetInfo::ODBC;
 
+=head1 NAME
+
+ DBI::Const::GetInfo::ODBC - ODBC Constants for GetInfo
+
+=head1 SYNOPSIS
+
+ The API for this module is private and subject to change.
+
+=head1 DESCRIPTION
+
+Information requested by GetInfo().
+
+The API for this module is private and subject to change.   
+
 =head1 REFERENCES
 
   MDAC SDK 2.6
@@ -7,12 +21,6 @@ package DBI::Const::GetInfo::ODBC;
 
   sql.h
   sqlext.h
-
-=head1 Constants
-
-=head2 %InfoTypes
-
-Information requested by GetInfo().
 
 =cut
 
