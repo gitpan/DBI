@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.44 1997/12/10 16:50:14 timbo Exp $
+/* $Id: DBIXS.h,v 1.45 1998/02/04 17:35:24 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
@@ -36,7 +36,7 @@
  * DBISTATE_VERSION macro below. You can think of DBIXS_VERSION as
  * being a compile time check and DBISTATE_VERSION as a runtime check.
  */
-#define DBIXS_VERSION 9
+#define DBIXS_VERSION 10
 
 #ifdef NEED_DBIXS_VERSION
 #if NEED_DBIXS_VERSION > DBIXS_VERSION
@@ -69,8 +69,8 @@ typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
 /* component structures */
 
 typedef struct dbih_com_std_st {
-    U32  flags;		/* XXX will change to U32 at some point		*/
-    int  call_depth;/* used by DBI to track nested calls (int)	*/
+    U32  flags;
+    int  call_depth;	/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
     SV   *my_h_obj;	/* copy of own SvRV(inner handle) (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
@@ -108,13 +108,16 @@ struct imp_xxh_st { struct dbih_com_st com; };
 /* Define handle-type specific structures for implementors to include	*/
 /* at the start of their private structures.				*/
 
-typedef struct			/* -- DRIVER --				*/
-    dbih_com_st			/* standard structure only		*/
-dbih_drc_t;
+typedef struct {		/* -- DRIVER --				*/
+    dbih_com_std_t	std;
+    dbih_com_attr_t	attr;
+    HV          *cached_kids;	/* $drh->connect_cached(...)		*/
+} dbih_drc_t;
 
 typedef struct {		/* -- DATABASE --			*/
     dbih_com_std_t	std;	/* \__ standard structure		*/
     dbih_com_attr_t	attr;	/* /   plus... (nothing else right now)	*/
+    HV          *cached_kids;	/* $dbh->prepare_cached(...)		*/
 } dbih_dbc_t;
 
 typedef struct {		/* -- STATEMENT --			*/
@@ -170,7 +173,10 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
 #define DBIc_LongReadLen_init	80
 
-/* sub-type specific fields						*/
+/* handle sub-type specific fields						*/
+/*	dbh	*/
+#define DBIc_CACHED_KIDS(imp)  	_imp2com(imp, cached_kids)
+/*	sth	*/
 #define DBIc_NUM_FIELDS(imp)  	_imp2com(imp, num_fields)
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
 #define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_svav)

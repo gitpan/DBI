@@ -1,23 +1,27 @@
 #!/usr/local/bin/perl -w
 
-use blib;
-
-# $Id: test.pl,v 1.23 1997/12/10 16:50:14 timbo Exp $
+# $Id: test.pl,v 1.24 1998/02/04 17:35:24 timbo Exp $
 #
-# Copyright (c) 1994, Tim Bunce
+# Copyright (c) 1994-1998 Tim Bunce
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
-# This is now mostly an empty shell. The tests have moved to t/*.t
+
+# This is now mostly an empty shell I experiment with.
+# The real tests have moved to t/*.t
 # See t/*.t for more detailed tests.
 
+
 BEGIN {
-	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.23 $}."\n";
-	$| = 1;
+    print "$0 @ARGV\n";
+    print q{DBI test application $Revision: 1.24 $}."\n";
+    $| = 1;
+    eval "require blib;"	# wasn't in 5.003, hence the eval
 }
 
 use DBI;
+
+use DBI::DBD;	# simple test to make sure it's okay
 
 use Config;
 use Getopt::Long;
@@ -59,21 +63,25 @@ if ($::opt_m) {
 
 } else {
 
-	# new experimental connect_test_perf method
+    # new experimental connect_test_perf method
     DBI->connect_test_perf("dbi:$driver:", '', '', {
-	    dbi_loops=>10, dbi_par=>10, dbi_verb=>1
+	dbi_loops=>10, dbi_par=>10, dbi_verb=>1
     });
 
-	print "Testing handle creation speed...\n";
-	my $null_dbh = DBI->connect('dbi:NullP:');
-	my $null_sth = $null_dbh->prepare('');	# create one to warm up
-	$count = 5000;
-	my $i = $count;
-	my $t1 = time;
-	$null_sth = $null_dbh->prepare('') while $i--;
-	my $dur = time - $t1 or 1;
-	printf "$count NullP statement handles cycled in %d secs. Approx %d per second.\n\n",
-		$dur, $count / $dur;
+    require Benchmark;
+    print "Testing handle creation speed...\n";
+    my $null_dbh = DBI->connect('dbi:NullP:');
+    my $null_sth = $null_dbh->prepare('');	# create one to warm up
+    $count = 5000;
+    my $i = $count;
+    my $t1 = new Benchmark;
+    $null_dbh->prepare('') while $i--;
+    my $td = Benchmark::timediff(Benchmark->new, $t1);
+    my $tds= Benchmark::timestr($td);
+    my $dur = $td->cpu_a;
+    printf "$count NullP statement handles cycled in %.1f cpu+sys seconds (%d per sec)\n\n",
+	    $dur, $count / $dur;
+
 }
 
 #DBI->trace(4);

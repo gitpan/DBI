@@ -1,4 +1,22 @@
 
+Changes in DBI 0.92,	3rd December 1998
+
+  Fixed per-handle memory leak (with many thanks to Irving Reid).
+  Added $dbh->prepare_cached() caching variant of $dbh->prepare.
+  Added some attributes:
+    $h->{Active}       is the handle 'Active' (vague concept) (boolean)
+    $h->{Kids}         e.g. number of sth's associated with a dbh
+    $h->{ActiveKids}   number of the above which are 'Active'
+    $dbh->{CachedKids} ref to prepare_cached sth cache
+  Added support for general-purpose 'private_' attributes.
+  Added experimental support for subclassing the DBI: see t/subclass.t
+  Added SQL_ALL_TYPES to exported :sql_types.
+  Added dbd_dbi_dir() and dbd_dbi_arch_dir() to DBI::DBD module so that
+  DBD Makefile.PLs can work with the DBI installed in non-standard locations.
+  Fixed 'Undefined value' warning and &sv_no output from neatsvpv/trace.
+  Fixed small 'once per interpreter' leak.
+  Assorted minor documentation fixes.
+
 Changes in DBI 0.91,	10th December 1997
 
   NOTE: This fix may break some existing scripts:

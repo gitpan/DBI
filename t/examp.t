@@ -12,7 +12,7 @@ sub ok ($$) {
     my($n, $ok) = @_;
     ++$t;
     die "sequence error, expected $n but actually $t"
-	if $n and $n != $t;
+		if $n and $n != $t;
     ($ok) ? print "ok $t\n" : print "not ok $t\n";
 }
 	

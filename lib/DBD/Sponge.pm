@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: Sponge.pm,v 1.1 1995/11/11 18:17:57 timbo Exp $
+#   $Id: Sponge.pm,v 1.2 1998/02/04 17:35:24 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -21,7 +21,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 1.1 $',
+	    'Version' => '$Revision: 1.2 $',
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;
@@ -45,7 +45,6 @@
 
     sub prepare {
 	my($dbh, $statement, $attribs) = @_;
-
 	my($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'   => $statement,
 	    'rows'        => $attribs->{'rows'},
@@ -55,6 +54,27 @@
     }
 
     sub DESTROY { }
+
+    sub FETCH {
+        my ($dbh, $attrib) = @_;
+        # In reality this would interrogate the database engine to
+        # either return dynamic values that cannot be precomputed
+        # or fetch and cache attribute values too expensive to prefetch.
+        return 1 if $attrib eq 'AutoCommit';
+        # else pass up to DBI to handle
+        return $dbh->DBD::_::db::FETCH($attrib);
+    }
+
+    sub STORE {
+        my ($dbh, $attrib, $value) = @_;
+        # would normally validate and only store known attributes
+        # else pass up to DBI to handle
+        if ($attrib eq 'AutoCommit') {
+            return 1 if $value; # is already set
+            croak("Can't disable AutoCommit");
+        }
+        return $dbh->DBD::_::db::STORE($attrib, $value);
+    }
 }
 
 

@@ -1,10 +1,17 @@
 sql shell
 
+generic dbd_preparse
+
 SQL Parser
   CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
 
 $dbh->quote($value, [ $field_type_num_to_quote_for ]) ? (int=none, date=?)
 
+Shared error codes between all handles!
+
+Metadata
+
+For DBD's in perl allow write access to some attrs if CALL_DEPTH > 1
 
 
 -----------

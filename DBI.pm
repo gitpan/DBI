@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 1.84 1997/12/10 16:50:14 timbo Exp $
+# $Id: DBI.pm,v 1.85 1998/02/04 17:35:24 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -7,7 +7,7 @@
 
 require 5.003;
 
-$DBI::VERSION = '0.91'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '0.92'; # ==> ALSO update the version in the pod text below!
 
 =head1 NAME
 
@@ -60,8 +60,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the draft DBI specification that corresponds to the DBI version 0.91
-($Date: 1997/12/10 16:50:14 $).
+This is the DBI specification that corresponds to the DBI version 0.92
+($Date: 1998/02/04 17:35:24 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -83,6 +83,12 @@ A brief summary of significant user-visible changes in recent versions
 significant user-visible changes in that version).
 
 =over 4 
+
+=item DBI 0.92 - 4th February 1998
+
+Added $dbh->prepare_cached() caching variant of $dbh->prepare.
+Added new attributes: Active, Kids, ActiveKids, CachedKids.
+Added support for general-purpose 'private_' attributes.
 
 =item DBI 0.91 - 10th December 1997
 
@@ -129,10 +135,14 @@ Alligator Descartes in module form for easy reading via "perldoc DBI::FAQ".
 
 # The POD text continues at the end of the file.
 
+# DBI file-private variables
+my %installed_rootclass;
+
+
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.84 $, 10);
+my $Revision = substr(q$Revision: 1.85 $, 10);
 
 
 use Carp;
@@ -146,6 +156,7 @@ use Exporter ();
 @EXPORT_OK = (); # populated by export_ok_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(
+    SQL_ALL_TYPES
 	SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
 	SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR
 	SQL_DATE SQL_TIME SQL_TIMESTAMP
@@ -153,7 +164,7 @@ use Exporter ();
 	SQL_BIGINT SQL_TINYINT
    ) ],
    utils     => [ qw(
-	neat neat_list dump_results sql
+	neat neat_list dump_results
    ) ],
 );
 Exporter::export_ok_tags('sql_types', 'utils');
@@ -240,8 +251,9 @@ my %DBI_IF = (	# Define the DBI Interface:
     db => {		# Database Session Class Interface
 	commit     =>	{ U =>[1,1] },
 	rollback   =>	{ U =>[1,1] },
-	'do'       =>	{ U =>[2,0,'$statement [, \%attribs [, @bind_params ] ]'] },
-	prepare    =>	{ U =>[2,3,'$statement [, \%attribs]'] },
+	'do'       =>	{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	prepare    =>	{ U =>[2,3,'$statement [, \%attr]'] },
+	prepare_cached=>{ U =>[2,3,'$statement [, \%attr]'] },
 	handler    =>	{ U =>[2,2,'\&handler'] },
 	ping       =>	{ U =>[1,1] },
 	disconnect =>	{ U =>[1,1] },
@@ -252,10 +264,10 @@ my %DBI_IF = (	# Define the DBI Interface:
 	@TieHash_IF,
     },
     st => {		# Statement Class Interface
-	bind_col   =>	{ U =>[3,4,'$column, \\$var [, \%attribs]'] },
-	bind_columns =>	{ U =>[3,0,'\%attribs, \\$var1 [, \\$var2, ...]'] },
-	bind_param =>	{ U =>[3,4,'$parameter, $var [, \%attribs]'] },
-	bind_param_inout => { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attribs]'] },
+	bind_col   =>	{ U =>[3,4,'$column, \\$var [, \%attr]'] },
+	bind_columns =>	{ U =>[3,0,'\%attr, \\$var1 [, \\$var2, ...]'] },
+	bind_param =>	{ U =>[3,4,'$parameter, $var [, \%attr]'] },
+	bind_param_inout => { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attr]'] },
 	execute    =>	{ U =>[1,0,'[@args]'] },
 
 	fetch    	  =>	undef, # alias for fetchrow_arrayref
@@ -332,11 +344,19 @@ sub connect {
 
     unless ($dbh = $drh->$connect_via($dsn, $user, $pass, $attr)) {
 	# need to fake RaiseError here if $attr->{RaiseError}
-	die $drh->errstr if ref $attr and $attr->{RaiseError};
+	Carp::croak $drh->errstr if ref $attr and $attr->{RaiseError};
 	warn "$class->connect failed: ".($drh->errstr)."\n" if $DBI::dbi_debug;
 	return undef;
     }
     warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
+
+    # XXX this is inelegant but practical in the short term, sigh.
+    if ($installed_rootclass{$class}) {
+	$dbh->{RootClass} = $class;
+	bless $dbh => $class.'::db';
+	my $inner = DBI::_inner($dbh);
+	bless $inner => $class.'::db';
+    }
 
     unless ($old_driver) { # new-style connect so new default semantics
 	$attr = { PrintError=>1, AutoCommit=>1, $attr ? %$attr : () };
@@ -365,7 +385,7 @@ sub disconnect_all {
 
 sub install_driver {		# croaks on failure
     my $class = shift;
-    my($driver, $attribs) = @_;
+    my($driver, $attr) = @_;
     my $drh;
 
     $driver ||= $ENV{DBI_DRIVER} || '';
@@ -380,7 +400,7 @@ sub install_driver {		# croaks on failure
     return $drh if $drh = $DBI::installed_drh{$driver};
 
     Carp::carp "$class->install_driver($driver)\n" if $DBI::dbi_debug;
-    Carp::croak "usage $class->install_driver(\$driver [, \%attribs])"
+    Carp::croak "usage $class->install_driver(\$driver [, \%attr])"
 		unless ($driver and @_<=3);
 
     # --- load the code
@@ -399,7 +419,7 @@ sub install_driver {		# croaks on failure
 
     # --- run the driver function
     my $driver_class = "DBD::$driver";
-    $drh = eval { $driver_class->driver($attribs || {}) };
+    $drh = eval { $driver_class->driver($attr || {}) };
     croak "$driver_class initialisation failed: $@"
 	unless $drh && ref $drh && !$@;
 
@@ -408,15 +428,30 @@ sub install_driver {		# croaks on failure
     $drh;
 }
 
+*driver = \&install_driver;	# currently an alias, may change
+
+
 sub _setup_driver {
     my $driver = shift;
     my $type;
     foreach $type (qw(dr db st)){
 	my $class = "DBD::${driver}::$type";
 	no strict 'refs';
-	push(@{"${class}::ISA"},     "DBD::_::$type");
-	push(@{"${class}_mem::ISA"}, "DBD::_mem::$type");
+	push @{"${class}::ISA"},     "DBD::_::$type";
+	push @{"${class}_mem::ISA"}, "DBD::_mem::$type";
     }
+}
+
+
+sub init_rootclass {
+    my $rootclass = shift;
+    no strict 'refs';
+    croak "Can't init '$rootclass' without '$rootclass\::db' class."
+	unless defined ${"$rootclass\::db::"}{ISA};
+
+    $installed_rootclass{$rootclass} = 1;
+    # may do checks on ::db and ::st classes later
+    return 1;
 }
 
 
@@ -474,14 +509,15 @@ sub dump_results {
     my $ref;
     while($ref = $sth->fetch) {
 	print $fh $lsep if $rows++ and $lsep;
-	print $fh neat_list($ref,$maxlen,$fsep);
+	my $str = neat_list($ref,$maxlen,$fsep);
+	print $fh $str;	# done on two lines to avoid 5.003 errors
     }
     print $fh "\n$rows rows".($DBI::err ? " ($DBI::err: $DBI::errstr)" : "")."\n";
     $rows;
 }
 
 
-sub sql {		# a simple sql shell
+sub sql {		# a simple (broken) sql shell: will be removed later
     my $prompt = "dbi> ";
     my $dbh;
     $| = 1;
@@ -519,7 +555,7 @@ sub connect_test_perf {
     require FileHandle;
     $| = 1;
     my $t0 = new Benchmark;		# not currently used
-    my $drh = $class->install_driver($dsn) or die "Can't install $dsn driver\n";
+    my $drh = $class->install_driver($dsn) or Carp::croak "Can't install $dsn driver\n";
     my $t1 = new Benchmark;
     my $loop;
     for $loop (1..$loops) {
@@ -528,7 +564,7 @@ sub connect_test_perf {
 	for (1..$par) {
 	    print "$_ ";
 	    push @cons, ($drh->connect($dsn,$dbuser,$dbpass)
-		    or die "Can't connect # $_: $DBI::errstr\n");
+		    or Carp::croak "Can't connect # $_: $DBI::errstr\n");
 	}
 	print "\nDisconnecting...\n" if $verb;
 	for (@cons) {
@@ -550,19 +586,17 @@ sub _new_handle {
     my($class, $parent, $attr, $imp_data) = @_;
 
     confess 'Usage: DBI::_new_handle'
-	.'($class_name, parent_handle, \%attribs, $imp_data)'."\n"
-	.'got: ('.join(", ",$class, $parent, $attr, $imp_data).")\n"
-	unless(@_ == 4
-		and (!$parent or ref $parent)
-		and ref $attr eq 'HASH'
-		);
+	    .'($class_name, parent_handle, \%attr, $imp_data)'."\n"
+	    .'got: ('.join(", ",$class, $parent, $attr, $imp_data).")\n"
+	unless(@_ == 4	and (!$parent or ref $parent)
+			and ref $attr eq 'HASH');
 
     my $imp_class = $attr->{ImplementorClass} or
 	croak "_new_handle($class): 'ImplementorClass' attribute not given";
 
     printf(STDERR "    New $class (for $imp_class, parent=$parent, id=%s)\n",
 	    ($imp_data||''))
-	if ($DBI::dbi_debug >= 2);
+	if $DBI::dbi_debug >= 2;
 
     # This is how we create a DBI style Object:
     my(%hash, $i, $h);
@@ -575,21 +609,21 @@ sub _new_handle {
     return $h unless wantarray;
     ($h, $i);
 }
-{   # implement minimum constructors for the tie's (could be moved to xs)
-    package DBI::dr; sub TIEHASH { bless $_[1] };
-    package DBI::db; sub TIEHASH { bless $_[1] };
-    package DBI::st; sub TIEHASH { bless $_[1] };
-}
+# minimum constructors for the tie's (alias to XS version)
+sub DBI::st::TIEHASH { bless $_[1] => $_[0] };
+*DBI::dr::TIEHASH = \&DBI::st::TIEHASH;
+*DBI::db::TIEHASH = \&DBI::st::TIEHASH;
 
 
 # These three special constructors are called by the drivers
+# The way they are called is likey to change.
 
 sub _new_drh {	# called by DBD::<drivername>::driver()
-    my($class, $initial_attr, $imp_data) = @_;
+    my ($class, $initial_attr, $imp_data) = @_;
     # Provide default storage for State,Err and Errstr.
-    # Note that this is shared by all child handles by default! XXX
+    # Note that these are shared by all child handles by default! XXX
     # State must be undef to get automatic faking in DBI::var::FETCH
-    my($h_state_store, $h_err_store, $h_errstr_store) = (undef, 0, '');
+    my ($h_state_store, $h_err_store, $h_errstr_store) = (undef, 0, '');
     my $attr = {
 	'ImplementorClass' => $class,
 	# these attributes get copied down to child handles by default
@@ -605,34 +639,35 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 }
 
 sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
-    my($drh, $initial_attr, $imp_data) = @_;
-    my($imp_class) = $drh->{ImplementorClass};
-    $imp_class =~ s/::dr$/::db/;
-    confess "new db($drh, $imp_class): not given an driver handle"
-	unless ref $drh eq 'DBI::dr';
+    my ($drh, $initial_attr, $imp_data) = @_;
+    my $imp_class = $drh->{ImplementorClass}
+	|| croak "DBI _new_dbh: $drh has no ImplementorClass";
+    substr($imp_class,-4,4) = '::db';
+    my $app_class  = ref $drh;
+    substr($app_class,-4,4) = '::db';
     my $attr = {
 	'ImplementorClass' => $imp_class,
 	%$initial_attr,
 	'Type'   => 'db',
 	'Driver' => $drh,
     };
-    _new_handle('DBI::db', $drh, $attr, $imp_data);
+    _new_handle($app_class, $drh, $attr, $imp_data);
 }
 
-sub _new_sth {	# called by DBD::<drivername>::db::prepare()
-    my($dbh, $initial_attr, $imp_data) = @_;
-    my($imp_class) = $dbh->{ImplementorClass};
-    #$imp_class =~ s/::db$/::st/;
+sub _new_sth {	# called by DBD::<drivername>::db::prepare)
+    my ($dbh, $initial_attr, $imp_data) = @_;
+    my $imp_class = $dbh->{ImplementorClass}
+	|| croak "DBI _new_sth: $dbh has no ImplementorClass";
     substr($imp_class,-4,4) = '::st';
-    confess "new st($dbh, $imp_class): not given a database handle"
-	unless ref $dbh eq 'DBI::db';
+    my $app_class  = ref $dbh;
+    substr($app_class,-4,4) = '::st';
     my $attr = {
 	'ImplementorClass' => $imp_class,
 	%$initial_attr,
 	'Type'     => 'st',
 	'Database' => $dbh,
     };
-    _new_handle('DBI::st', $dbh, $attr, $imp_data);
+    _new_handle($app_class, $dbh, $attr, $imp_data);
 }
 
 } # end of DBI package scope
@@ -661,7 +696,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 		'Attribution' => sub { "DBI-$DBI::VERSION Switch by Tim Bunce" },
 	    }, \$err);
 	Carp::confess("DBD::Switch init failed!") unless ($drh && $inner);
-	$DBD::Switch::dr::drh;
+	return $drh;
     }
 
     sub FETCH {
@@ -696,9 +731,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     # methods common to all handle types:
 
     # generic TIEHASH default methods:
-    sub FIRSTKEY { undef }
-    sub NEXTKEY  { undef }
-    sub EXISTS   { defined($_[0]->FETCH($_[1])) } # to be sure
+    sub FIRSTKEY { }
+    sub NEXTKEY  { }
+    sub EXISTS   { defined($_[0]->FETCH($_[1])) } # XXX undef?
     sub CLEAR    { Carp::carp "Can't CLEAR $_[0] (DBI)" }
 }
 
@@ -716,10 +751,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	$this;
     }
     sub disconnect_all {	# Driver must take responsibility for this
+	# XXX Umm, may change later.
 	Carp::confess "Driver has not implemented the disconnect_all method.";
     }
     sub data_sources {
-	Carp::confess "Driver has not implemented the data_sources method.";
     }
 }
 
@@ -736,15 +771,33 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	"'$str'";
     }
 
-    sub rows { -1 }
+    sub rows { -1 }	# here to $DBI::rows 'works' after using $dbh
 
     sub do {
-	my($dbh, $statement, $attribs, @params) = @_;
-	my $sth = $dbh->prepare($statement, $attribs) or return undef;
+	my($dbh, $statement, $attr, @params) = @_;
+	my $sth = $dbh->prepare($statement, $attr) or return undef;
 	$sth->execute(@params) or return undef;
 	my $rows = $sth->rows;
 	($rows == 0) ? "0E0" : $rows;
     }
+
+    sub prepare_cached {
+	# Needs support at dbh level to clear cache before complaining about
+	# active children. The XS template code does this. Drivers not using
+	# the template must handle clearing the cache themselves.
+	my($dbh, $statement, $attr, @params) = @_;
+	my $cache = $dbh->FETCH('CachedKids');
+	$dbh->STORE('CachedKids', $cache = {}) unless $cache;
+	my $key = join " | ", $statement, $attr ? %$attr : ();
+	my $sth = $cache->{$key};
+	return $sth if $sth;
+	$sth = $cache->{$key} = $dbh->prepare($statement, $attr);
+	Croak::carp("prepare_cached($statement) statement handle $sth still active")
+	    if $sth->FETCH('Active');
+	return $sth;
+    }
+
+    sub ping { 1 }
 
     sub commit	{
 	Carp::carp "commit: not supported by $_[0]\n" if $DBI::dbi_debug;
@@ -754,8 +807,8 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	Carp::carp "rollback: not supported by $_[0]\n" if $DBI::dbi_debug;
 	undef;
     }
-    sub ping        { 1 }		# we assume that all is well
-    sub disconnect  { undef }
+
+    sub disconnect  { }
 
     # Drivers are required to implement *::db::DESTROY to encourage tidy-up
     sub DESTROY  { Carp::confess "Driver has not implemented DESTROY for @_" }
@@ -891,7 +944,7 @@ functions need be concerned with Drivers.
   $rc    General Return Code  (boolean: true=ok, false=error)
   $rv    General Return Value (typically an integer)
   @ary   List of values returned from the database, typically a row of data
-  $rows  Number of rows processed by a function (if available, else -1)
+  $rows  Number of rows processed (if available, else -1)
   $fh    A filehandle
   undef  NULL values are represented by undefined values in perl
 
@@ -954,7 +1007,7 @@ flag to get that behaviour then it should do so. It should not require
 the application to do that.
 
 
-=head2 Naming Conventions
+=head2 Naming Conventions and Name Space
 
 The DBI package and all packages below it (DBI::*) are reserved for
 use by the DBI. Package names beginning with DBD:: are reserved for use
@@ -975,7 +1028,7 @@ and its values.
 It is of the utmost importance that Driver developers only use
 lowercase attribute names when defining private attributes. Private
 attribute names must be prefixed with the driver name or suitable
-abbreviation (e.g., ora_type, solid_charset etc).
+abbreviation (e.g., ora_ for Oracle, ing_ for Ingres etc).
 
 
 =head2 Data Query Methods
@@ -1097,10 +1150,10 @@ Examples of $data_source values:
 There is I<no standard> for the text following the driver name. Each
 driver is free to use whatever syntax it wants. The only requirement the
 DBI makes is that all the information is supplied in a single string.
-See the documentation for the drivers you are using for a description
-of the syntax it uses.  Where a driver needs to define it's own syntax
-for the data_source it is recommended that they follow the ODBC style
-(the last example above).
+You must consult the documentation for the drivers you are using for a
+description of the syntax they require.  (Where a driver author needs
+to define a syntax for the data_source it is recommended that
+they follow the ODBC style, the last example above.)
 
 If $username or $password are I<undefined> (rather than empty) then the
 DBI will substitute the values of the DBI_USER and DBI_PASS environment
@@ -1258,13 +1311,13 @@ transfer applications.
 
 These attributes are always associated with the last handle used.
 
-Where an attribute is Equivalent to a method call, then refer to
+Where an attribute is equivalent to a method call, then refer to
 the method call for all related documentation.
 
 B<Warning:> these attributes are provided as a convenience but they
 do have limitations. Specifically, because they are associated with
 the last handle used, they should only be used I<immediately> after
-calling the method which 'sets' them. they have a 'short lifespan'.
+calling the method which 'sets' them. They have a 'short lifespan'.
 There may also be problems with the multi-threading in 5.005.
 
 If in any doubt, use the corresponding method call.
@@ -1383,6 +1436,35 @@ Example:
 Enables useful warnings for certain bad practices. Enabled by default. Some
 emulation layers, especially those for perl4 interfaces, disable warnings.
 
+=item B<Active> (boolean, read-only)
+
+True if the handle object is 'active'. This is rarely used in
+applications. The exact meaning of active is somewhat vague at the
+moment. For a database handle it typically means that the handle is
+connected to a database ($dbh->disconnect should set Active off).  For
+a statement handle it I<typically> means that the handle is a select
+that may have more data to fetch ($dbh->finish or fetching all the data
+should set Active off).
+
+=item B<Kids> (integer, read-only)
+
+For a driver handle, Kids is the number of currently existing database
+handles that were created from that driver handle.  For a database
+handle, Kids is the number of currently existing statement handles that
+were created from that database handle.
+
+=item B<ActiveKids> (integer, read-only)
+
+Like Kids (above), but only counting those that are Active (as above).
+
+=item B<CachedKids> (hash ref)
+
+For a database handle, returns a reference to the cache (hash) of
+statement handles created by the L</prepare_cached> method.  For a
+driver handle, it would return a reference to the cache (hash) of
+statement handles created by the (not yet implemented) connect_cached
+method.
+
 =item B<CompatMode> (boolean, inherited)
 
 Used by emulation layers (such as Oraperl) to enable compatible behaviour
@@ -1395,7 +1477,8 @@ This attribute can be used to disable the effect of destroying a handle
 (which would normally close a prepared statement or disconnect from the
 database etc). It is specifically designed for use in unix applications
 which 'fork' child processes. Either the parent or the child process,
-but not both, should set InactiveDestroy on all their handles.
+but not both, should set InactiveDestroy on all their handles. This
+attribute does not disable an explicit call to the disconnect method.
 
 =item B<PrintError> (boolean, inherited)
 
@@ -1456,6 +1539,9 @@ Changing the value of LongReadLen for a statement handle after it's
 been prepare()'d will typically have no effect so it's usual to
 set LongReadLen on the $dbh before calling prepare.
 
+The LongReadLen attribute only relates to fetching/reading long values
+it is I<not> involved in inserting/updating them.
+
 See L</LongTruncOk> about truncation behaviour.
 
 =item B<LongTruncOk> (boolean, inherited)
@@ -1473,6 +1559,16 @@ prematurely.)
 If a fetch fails due to a long field truncation when LongTruncOk is
 false, many drivers will allow you to continue fetching further rows.
 
+
+=item B<private_*>
+
+The DBI provides a way to store extra information in a DBI handle as
+'private' attributes. The DBI will allow you to store and retreive any
+attribute which has a name starting with 'private_'. It is I<strongly>
+recommended that you use just once private attribute (e.g., use a hash
+ref) and give it a name that includes the module or application that
+the attribute relates to (e.g., 'private_DBD_Foo_thingy').
+
 =back
 
 
@@ -1484,8 +1580,8 @@ false, many drivers will allow you to continue fetching further rows.
 
 =item B<prepare>
 
-  $sth = $dbh->prepare($statement)           || die $dbh->errstr;
-  $sth = $dbh->prepare($statement, \%attr)   || die $dbh->errstr;
+  $sth = $dbh->prepare($statement)          || die $dbh->errstr;
+  $sth = $dbh->prepare($statement, \%attr)  || die $dbh->errstr;
 
 Prepare a single statement for execution by the database engine and
 return a reference to a statement handle object which can be used to
@@ -1503,6 +1599,24 @@ handle and process it when $sth->execute is called. Such drivers are
 likely to be unable to give much useful information about the
 statement, such as $sth->{NUM_OF_FIELDS}, until after $sth->execute
 has been called. Portable applications should take this into account.
+
+
+=item B<prepare_cached>
+
+  $sth = $dbh->prepare_cached($statement)          || die $dbh->errstr;
+  $sth = $dbh->prepare_cached($statement, \%attr)  || die $dbh->errstr;
+
+Like L</prepare> except that the statement handled returned will be stored
+in a hash associated with the $dbh. If another call is made to prepare_cached
+with the I<same parameter values> then the corresponding cached $sth
+will be returned (and the database server will not be contacted).
+
+This cacheing can be useful in some applications but it can also cause
+problems and should be used with care. Currently a warning will be
+generated if the cached $sth being returned is active (L</finish> has
+not been called on it).
+
+The cache can be accessed (and cleared) via the L</CachedKids> attribute.
 
 
 =item B<do>
@@ -1838,6 +1952,9 @@ holding the field values. If there are no more rows fetchrow_arrayref
 returns undef.  Null values are returned as undef. This is the fastest
 way to fetch data, particularly if used with $sth->bind_columns.
 
+Note that the I<same> hash ref will be returned for each fetch so don't
+store the ref and then use it after a later fetch.
+
 =item B<fetchrow_array>
 
  @ary = $sth->fetchrow_array;
@@ -1918,7 +2035,7 @@ may return -1 until all rows have been fetched.
   $rc = $sth->bind_col($column_number, \$var_to_bind);
   $rc = $sth->bind_col($column_number, \$var_to_bind, \%attr);
 
-Binds a column (field) of a select statement to a perl variable.
+Binds an output column (field) of a select statement to a perl variable.
 Whenever a row is fetched from the database the corresponding perl
 variable is automatically updated. There is no need to fetch and assign
 the values manually. This makes using bound variables very efficient.
@@ -1931,7 +2048,7 @@ correct internal DBI call to get the array the fetch function returns,
 it will automatically support column binding.
 
 The L</bind_param> method performs a similar function for input variables.
-See L</"Placeholders and Bind Values"> for more information.
+See also L</"Placeholders and Bind Values"> for more information.
 
 =item B<bind_columns>
 
@@ -2018,7 +2135,9 @@ C<"where current of ..."> SQL syntax then it returns undef.
 =back
 
 
-=head1 TRANSACTIONS
+=head1 FURTHER INFORMATION
+
+=head2 Transactions
 
 Transactions are a fundamental part of any robust database system. They
 protect against errors and database corruption by ensuring that sets of
@@ -2027,8 +2146,6 @@ all-or-nothing) units.
 
 See L</AutoCommit> for details of using AutoCommit with various types of
 database.
-
-=head2 Robust Applications
 
 This section applies to databases which support transactions and where
 AutoCommit is off.
@@ -2066,7 +2183,7 @@ attribute is that all DBI calls will be checked automatically. Both
 techniques are recommended.
 
 
-=head1 HANDLING BLOB / LONG FIELDS
+=head2 Handling BLOB / Long / Memo Fields
 
 Many databases support 'blob' (binary large objects), 'long' or similar
 datatypes for holding very long strings or large amounts of binary
@@ -2084,7 +2201,7 @@ The $h->{LongTruncOk} attribute is used to determine how to behave
 if a fetched value can't fit into the buffer.
 
 
-=head1 SIMPLE EXAMPLE
+=head2 Simple Example
 
   my $dbh = DBI->connect("dbi:Oracle:$data_source", $user, $password)
       || die "Can't connect to $data_source: $DBI::errstr";
@@ -2211,9 +2328,9 @@ Steve Baumgarten, Randal Schwartz, and a whole lot more.
 
 The DBI is free software. IT COMES WITHOUT WARRANTY OF ANY KIND.
 
-Commercial support agreements for Perl and the DBI, DBD::Oracle and
+Commercial support for Perl and the DBI, DBD::Oracle and
 Oraperl modules can be arranged via The Perl Clinic. See
-http://www.perl.co.uk/tpc for more details.
+http://www.perlclinic.com for more details.
 
 =head1 OUTSTANDING ISSUES TO DO
 
@@ -2229,6 +2346,64 @@ http://www.perl.co.uk/tpc for more details.
 
 See the DBI FAQ for a more comprehensive list of FAQs. Use the
 C<perldoc DBI::FAQ> command to read it.
+
+=head2 How fast is the DBI?
+
+To measure the speed of the DBI and DBD::Oracle code I modified
+DBD::Oracle such that you can set an attribute which will cause the
+same row to be fetched from the row cache over and over again (without
+involving Oracle code but exercising *all* the DBI and DBD::Oracle code
+in the code path for a fetch).
+
+The results (on my lightly loaded Sparc 10) fetching 50000 rows using:
+
+	1 while $csr->fetch;
+
+were:
+	one field:   5300 fetches per cpu second (approx)
+	ten fields:  4000 fetches per cpu second (approx)
+
+Obviously results will vary between platforms but it does give a feel
+for the current theoretical maximum performance.  By way of comparison,
+using the code:
+
+	1 while @row = $csr->fetchrow_array;
+
+(fetchrow_array is roughly the same as ora_fetch) gives:
+
+	one field:   3100 fetches per cpu second (approx)
+	ten fields:  1000 fetches per cpu second (approx)
+
+Notice the slowdown and the more dramatic impact of extra fields.
+(The fields were all one char long. The impact would be even bigger for
+longer strings.)
+
+Changing that slightly to represent actually _doing_ something in perl
+with the fetched data:
+
+    while(@row = $csr->fetchrow_array) {
+        $hash{++$i} = [ @row ];
+    }
+
+gives:	ten fields:  500 fetches per cpu second (approx)
+
+That simple addition has *halved* the performance.
+
+I therefore conclude that DBI and DBD::Oracle overheads are small
+compared with Perl language overheads (and probably database overheads).
+
+So, if you think the DBI or your driver is slow, try replacing your
+fetch loop with just:
+
+	1 while $csr->fetch;
+
+and time that. If that doesn't help much then point the finger at the
+database, the platform, the network etc. But think carefully before
+pointing it at the DBI or your driver.
+
+(Having said all that, if anyone can show me how to make the DBI or
+drivers even more efficient, I'm all ears.)
+
 
 =head2 Why doesn't my CGI script work right?
 
@@ -2330,6 +2505,11 @@ See also the "Does Perl have a year 2000 problem?" section of the Perl FAQ:
 
  Author:  Edmund Mergl
  Email:   E.Mergl@bawue.de, dbi-users@fugue.com
+
+=item Illustra - DBD::Illustra
+
+ Author:  Peter Haworth
+ Email:   pmh@edison.ioppublishing.com, dbi-users@fugue.com
 
 =item Fulcrum SearchServer - DBD::Fulcrum
 

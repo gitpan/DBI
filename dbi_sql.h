@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 1.3 1997/12/10 16:50:14 timbo Exp $
+/* $Id: dbi_sql.h,v 1.4 1998/02/04 17:35:24 timbo Exp $
  *
  * Copyright (c) 1997  Tim Bunce  England
  *
@@ -10,6 +10,7 @@
 #ifndef SQL_SUCCESS	/* don't clash with ODBC based drivers	*/
 
 /* Standard SQL datatypes (ANSI/ODBC type numbering)		*/
+#define	SQL_ALL_TYPES		0
 #define	SQL_CHAR		1
 #define	SQL_NUMERIC		2
 #define	SQL_DECIMAL		3
@@ -18,7 +19,7 @@
 #define	SQL_FLOAT		6
 #define	SQL_REAL		7
 #define	SQL_DOUBLE		8
-#define SQL_DATE		9
+#define SQL_DATE		9	/* SQL_DATETIME in CLI!	*/
 #define SQL_TIME		10
 #define SQL_TIMESTAMP		11
 #define	SQL_VARCHAR		12
