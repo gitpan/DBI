@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.55 1996/06/16 22:58:05 timbo Exp $
+/* $Id: DBI.xs,v 1.56 1996/07/10 02:20:56 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -232,7 +232,6 @@ dbih_getcom(hrv)	/* Get com struct for handle. Must be fast.	*/
     if (!SvROK(hrv)			/* must at least be a ref */
 	&& hrv != DBI_LAST_HANDLE	/* special for var::FETCH */) {
 	sv_dump(hrv);
-	abort();
 	croak("Invalid DBI handle %s", SvPV(hrv,na));
     }
 

@@ -1,7 +1,7 @@
 #!/usr/local/bin/perl -w
-# $Id: Makefile.PL,v 1.53 1996/06/16 22:58:05 timbo Exp $
+# $Id: Makefile.PL,v 1.54 1996/07/10 02:20:56 timbo Exp $
 
-require 5.002;
+BEGIN { require 5.003 }
 
 use ExtUtils::MakeMaker 5.16, qw(WriteMakefile $Verbose);
 use Config;
@@ -14,7 +14,7 @@ use Config;
 				PREOP => '$(MAKE) -f Makefile.old distdir' },
 );
 
-$opts{'DEFINE'} = '-Wall -pedantic -Wno-comment'
+$opts{'DEFINE'} = '-Wall -Wno-comment'
     if $Config{cc} eq 'gcc';	# ask gcc to be mildly pedantic
 
 # Set some private WriteMakefile options if this is 'me' :-)

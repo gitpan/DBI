@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.14 1996/03/05 00:50:37 timbo Exp $
+# $Id: test.pl,v 1.15 1996/07/10 02:20:56 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,7 +11,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.14 $}."\n";
+	print q{DBI test application $Revision: 1.15 $}."\n";
 	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
 }
 
@@ -123,6 +123,9 @@ sub run_test{
     print "Expect a 'DBI ... invalid' error and a 'Usage: ...' message:\n";
     eval { $dbh->commit('dummy') };
     warn "$@\n";
+
+	my $quoted = $dbh->quote("quote's");
+	die "Quoting failed ($quoted)" if $quoted ne "'quote''s'";
 
     print "Preparing new \$cursor_a to replace current \$cursor_a.\n";
     print "We enable debugging on current to watch it's destruction.\n";

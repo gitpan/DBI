@@ -1,13 +1,13 @@
-require 5.002;	# 5.002beta2 or later
+require 5.003;
 
 {
 package DBI;
 
-$VERSION = '0.70';
+$VERSION = '0.71';
 
-my $Revision = substr(q$Revision: 1.56 $, 10);
+my $Revision = substr(q$Revision: 1.57 $, 10);
 
-# $Id: DBI.pm,v 1.56 1996/06/16 23:01:32 timbo Exp $
+# $Id: DBI.pm,v 1.57 1996/07/10 02:20:56 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -89,6 +89,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	errmsg     =>	{ U =>[1,1], O=>0x04 },
 	disconnect =>	{ U =>[1,1] },
 	tables     =>	{ U =>[1,1] },
+	quote      =>	{ U =>[2,2, '$str'] },
 	@Common_IF,
 	@TieHash_IF,
     },
@@ -642,9 +643,9 @@ $dbh->{ROW_COUNT}  normally use $db_rows
 ---------------------------------------------------------------
 STATEMENT OBJECTS
 
-$rc  = $sth->execute(@bind_values);     	undef or 1
+$rc  = $sth->execute(@bind_values);    	undef, 0E0, 1, 2, ...
 @ary = $sth->fetchrow;
-$rc  = $sth->finish;				undef or 1
+$rc  = $sth->finish;                    undef or 1
 
 $sth->{Type}       "st"
 $sth->{Name}

@@ -9,6 +9,11 @@ Current DBI Implementation Notes:
     *** MANY THINGS MAY CHANGE *** See README file ***
 
 
+Changes in DBI 0.71,	10 July 1996
+
+	Removed spurious abort() from invalid handle check.
+	Added quote method to DBI interface.
+
 Changes in DBI 0.70,	16 June 1996
 
 	Added extra invalid handle check (dbih_getcom)
