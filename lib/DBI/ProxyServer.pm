@@ -129,6 +129,7 @@ sub ClientConnect ($$$$$) {
 	return (0, $con->{'error'});
     }
 
+    local $ENV{DBI_AUTOPROXY} = ''; # :-)
     if (!defined($dbh = DBI->connect($dsn, $uid, $pwd,
 				     { 'PrintError' => 0 }))) {
 	my $errMsg = $DBI::errstr;

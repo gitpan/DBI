@@ -17,6 +17,7 @@ sub ok ($$;$) {
 use DBI qw(:sql_types);
 
 $dbh = DBI->connect("dbi:ExampleP:.","","");
+die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 ok(0, $dbh);
 #$dbh->trace(3);
 

@@ -1,3 +1,5 @@
+CleanNames
+
 Test with threaded perl (re dTHR etc).
 Make thread safe.
 

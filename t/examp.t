@@ -17,8 +17,10 @@ sub ok ($$) {
     warn "# failed test $t at line ".(caller)[2]."\n" unless $ok;
 }
 	
-my $dbh = DBI->connect('', '', '', 'ExampleP');
+my $dbh = DBI->connect('dbi:ExampleP:', '', '');
+die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 $dbh->{AutoCommit} = 1;
+$dbh->{PrintError} = 0;
 ok(0, $dbh);
 #$dbh->trace(2);
 

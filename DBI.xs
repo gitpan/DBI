@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.83 1998/08/09 20:48:38 timbo Exp $
+/* $Id: DBI.xs,v 1.84 1998/08/10 23:48:07 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -376,12 +376,14 @@ dbih_inner(orv, what)	/* convert outer to inner handle else croak */
 }
 
 
+#ifdef DBI_USE_THREADS
 static void
 dbi_unlock_mutex(m)
     dbi_mutex *m;
 {
     if (m) { MUTEX_UNLOCK(m); }
 }
+#endif
 
 
 static void
@@ -778,6 +780,7 @@ dbih_setup_fbav(imp_sth)
     /* the array only gets extended once.			*/
     while(i--)			/* field 1 stored at index 0	*/
 	av_store(av, i, newSV(0));
+    SvREADONLY_on(av);		/* protect against shift @$row etc */
     /* row_count will need to be manually reset by the driver if the	*/
     /* sth is re-executed (since this code won't get rerun)			*/
     DBIc_ROW_COUNT(imp_sth) = 0;
@@ -839,7 +842,9 @@ dbih_sth_bind_col(sth, col, ref, attribs)
 			idx, fields);
 
     /* use supplied scalar as storage for this column */
+    SvREADONLY_off(av);
     av_store(av, idx-1, SvREFCNT_inc(SvRV(ref)) );
+    SvREADONLY_on(av);
     return 1;
 }
 
@@ -1967,7 +1972,7 @@ fetchrow_array(sth)
 	    if (DBIS->debug >= 3) {
 		fprintf(DBILOGFP,
 		    "fetchrow: updating fbav 0x%lx from 0x%lx\n",
-		    bound_av, av);
+		    (long)bound_av, (long)av);
 	    }
 	    for(i=0; i < num_fields; ++i) {	/* copy over the row	*/
 		sv_setsv(AvARRAY(bound_av)[i], AvARRAY(av)[i]);

@@ -112,11 +112,16 @@ sub connect ($$;$$) {
 
     # Create an IO::Socket object
     my $sock;
-    $sock = IO::Socket::INET->new('Proto' => 'tcp',
+    eval {
+        # promote warn to die to catch "Connection refused" since $! is often useless
+	local $SIG{__WARN__} = sub { die @_ };
+	$sock = IO::Socket::INET->new('Proto' => 'tcp',
 				  'PeerAddr' => $attr{'hostname'},
 				  'PeerPort' => $attr{'port'});
+    };
     if (!$sock) {
-	DBI::set_err($drh, 1, "Cannot connect: $!");
+	$@ ||= "$!";
+	DBI::set_err($drh, 1, "Cannot connect to '$attr{'hostname'}:$attr{'port'}' : $@");
 	return undef;
     }
 

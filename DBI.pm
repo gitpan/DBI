@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 1.90 1998/08/09 21:39:14 timbo Exp $
+# $Id: DBI.pm,v 1.91 1998/08/10 23:48:07 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = '0.94'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '0.95'; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -66,8 +66,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 0.94
-($Date: 1998/08/09 21:39:14 $).
+This is the DBI specification that corresponds to the DBI version 0.95
+($Date: 1998/08/10 23:48:07 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -148,7 +148,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.90 $, 10);
+my $Revision = substr(q$Revision: 1.91 $, 10);
 
 
 use Carp;
@@ -177,7 +177,6 @@ BEGIN {
 Exporter::export_ok_tags('sql_types', 'utils');
 
 $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
-carp "Loaded DBI.pm (debug $DBI::dbi_debug)\n" if $DBI::dbi_debug;
 
 bootstrap DBI;
 }
@@ -190,7 +189,7 @@ my $connect_via = "connect";
 my $GATEWAY_INTERFACE = $ENV{GATEWAY_INTERFACE} || '';
 if (substr($GATEWAY_INTERFACE,0,8) eq 'CGI-Perl' and $INC{'Apache/DBI.pm'}) {
     $connect_via = "Apache::DBI::connect";
-    carp "DBI connect via $INC{'Apache/DBI.pm'}\n" if $DBI::dbi_debug;
+    DBI->trace_msg("DBI connect via $INC{'Apache/DBI.pm'}\n") if $DBI::dbi_debug;
 }
 
 
@@ -327,11 +326,11 @@ foreach $class (keys %DBI_IF){
 
 
 END {
-    print STDERR "    DBI::END\n" if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    DBI::END\n") if $DBI::dbi_debug >= 2;
     # Let drivers know why we are calling disconnect_all:
     $DBI::PERL_ENDING = $DBI::PERL_ENDING = 1;	# avoid typo warning
     DBI->disconnect_all();
-    print STDERR "    DBI::END complete\n" if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    DBI::END complete\n") if $DBI::dbi_debug >= 2;
 }
 
 
@@ -353,7 +352,7 @@ sub connect {
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
-	Carp::carp "$class->connect($dsn, $user, $pass, $old_driver, $attr)\n"
+	DBI->trace_msg("$class->connect($dsn, $user, $pass, $old_driver, $attr)\n");
     }
     Carp::croak('Usage: $class->connect([$dsn [,$user [,$passwd [,\%attr]]]])')
 	if (ref $old_driver or ($attr and not ref $attr) or ref $pass);
@@ -365,17 +364,25 @@ sub connect {
     $driver = $old_driver || $1
 	or Carp::croak("Can't connect, no database driver specified");
 
+    if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Switch') {
+	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
+	$driver = 'Proxy';
+	DBI->trace_msg("DBI_AUTOPROXY: dbi:$driver:$dsn\n");
+    }
+
     my $drh = $class->install_driver($driver) || die 'panic: install_driver';
-    warn "$class->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
+    DBI->trace_msg("$class->$connect_via using $driver driver $drh\n")
+	if $DBI::dbi_debug;
 
     unless ($dbh = $drh->$connect_via($dsn, $user, $pass, $attr)) {
 	# need to fake RaiseError here if $attr->{RaiseError}
 	Carp::croak($drh->errstr) if ref $attr and $attr->{RaiseError};
-	warn "$class->connect failed: ".($drh->errstr)."\n" if $DBI::dbi_debug;
+	DBI->trace_msg("$class->connect failed: ".($drh->errstr)."\n")
+	    if $DBI::dbi_debug;
 	$! = 0; # for the daft people who do DBI->connect(...) || die "$!";
 	return undef;
     }
-    warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
+    DBI->trace_msg("$class->connect = $dbh\n") if $DBI::dbi_debug;
 
     # XXX this is inelegant but practical in the short term, sigh.
     if ($installed_rootclass{$class}) {
@@ -406,9 +413,9 @@ sub connect {
 
 
 sub disconnect_all {
-    Carp::carp "DBI::disconnect_all @_\n" if $DBI::dbi_debug;
+    DBI->trace_msg("DBI::disconnect_all @_\n") if $DBI::dbi_debug;
     foreach(keys %DBI::installed_drh){
-	warn "DBI::disconnect_all for '$_'\n" if $DBI::dbi_debug;
+	DBI->trace_msg("DBI::disconnect_all for '$_'\n") if $DBI::dbi_debug;
 	my $drh = $DBI::installed_drh{$_};
 	next unless ref $drh;	# avoid problems on premature death
 	$drh->disconnect_all();
@@ -432,7 +439,8 @@ sub install_driver {		# croaks on failure
     # already installed
     return $drh if $drh = $DBI::installed_drh{$driver};
 
-    Carp::carp("$class->install_driver($driver)\n") if $DBI::dbi_debug;
+    DBI->trace_msg("$class->install_driver($driver) for perl=$] pid=$$ ruid=$< euid=$>\n")
+	if $DBI::dbi_debug;
     Carp::croak("usage $class->install_driver(\$driver [, \%attr])")
 		unless ($driver and @_<=3);
 
@@ -453,7 +461,7 @@ sub install_driver {		# croaks on failure
 	}
 	Carp::croak("install_driver($driver) failed: $@$advice\n");
     }
-    Carp::carp "DBI->install_driver($driver) loaded\n" if $DBI::dbi_debug;
+    DBI->trace_msg("DBI->install_driver($driver) loaded\n") if $DBI::dbi_debug;
 
     # --- do some behind-the-scenes checks and setups on the driver
     _setup_driver($driver);
@@ -470,7 +478,7 @@ sub install_driver {		# croaks on failure
     }
 
     $DBI::installed_drh{$driver} = $drh;
-    Carp::carp "DBI->install_driver($driver) = $drh\n" if $DBI::dbi_debug;
+    DBI->trace_msg("DBI->install_driver($driver) = $drh\n") if $DBI::dbi_debug;
     $drh;
 }
 
@@ -620,9 +628,8 @@ sub _new_handle {
     my $imp_class = $attr->{ImplementorClass} or
 	Carp::croak("_new_handle($class): 'ImplementorClass' attribute not given");
 
-    printf(STDERR "    New $class (for $imp_class, parent=$parent, id=%s)\n",
-	    ($imp_data||''))
-	if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    New $class (for $imp_class, parent=$parent, id=".($imp_data||'').")\n")
+	if $DBI::dbi_debug >= 3;
 
     # This is how we create a DBI style Object:
     my(%hash, $i, $h);
@@ -1328,6 +1335,15 @@ You must consult the documentation for the drivers you are using for a
 description of the syntax they require.  (Where a driver author needs
 to define a syntax for the data_source it is recommended that
 they follow the ODBC style, the last example above.)
+
+If the environment variable DBI_AUTOPROXY is defined (and the driver in
+$data_source is not 'Proxy') then the connect request will
+automatically be changed to:
+
+  dbi:Proxy:$ENV{DBI_AUTOPROXY};dsn=$data_source
+
+and passed to the DBD::Proxy module. DBI_AUTOPROXY would typically be
+"hostname=...;port=...". See L<DBD::Proxy> for more details.
 
 If $username or $password are I<undefined> (rather than empty) then the
 DBI will substitute the values of the DBI_USER and DBI_PASS environment

@@ -1,3 +1,13 @@
+Changes in DBI 0.95,	10th August 1998
+
+  WARNING: THIS IS AN EXPERIMENTAL RELEASE!
+
+  Fixed 0.94 slip so it will build on pre-5.005 again.
+  Added DBI_AUTOPROXY environment variable.
+  Array ref returned from fetch/fetchrow_arrayref now readonly.
+  Improved connect error reporting by DBD::Proxy.
+  All trace/debug messages from DBI now go to trace file.
+
 Changes in DBI 0.94,	9th August 1998
 
   WARNING: THIS IS AN EXPERIMENTAL RELEASE!
