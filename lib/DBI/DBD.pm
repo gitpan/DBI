@@ -1,6 +1,7 @@
-# $Id: DBD.pm,v 11.8 2002/07/18 14:23:44 timbo Exp $
+# $Id: DBD.pm,v 11.11 2002/11/30 00:46:18 timbo Exp $
 #
-# Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
+# Copyright (c) 1997-2002 Jonathan Leffler, Jochen Wiedmann, Steffen
+# Goeldner and Tim Bunce
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Artistic License, as specified in the Perl README file.
@@ -15,10 +16,10 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 11.8 $
-  $Date: 2002/07/18 14:23:44 $
+  $Revision: 11.11 $
+  $Date: 2002/11/30 00:46:18 $
 
-This document is a minimal draft which is in need of further work.
+This document is I<still> a minimal draft which is in need of further work.
 
 The changes will occur both because the DBI specification is changing
 and hence the requirements on DBD drivers change, and because feedback
@@ -48,18 +49,19 @@ The primary web-site for locating DBI software and information is
   http://dbi.perl.org/
 
 There are 2 main and one auxilliary mailing lists for people working
-with DBI.  The primary lists are dbi-users@isc.org for general users
-of DBI and DBD drivers, and dbi-dev@isc.org mainly for DBD driver
+with DBI.  The primary lists are dbi-users@perl.org for general users
+of DBI and DBD drivers, and dbi-dev@perl.org mainly for DBD driver
 writers (don't join the dbi-dev list unless you have a good reason).
-The auxilliary list is dbi-announce@isc.org for announcing new
+The auxilliary list is dbi-announce@perl.org for announcing new
 releases of DBI or DBD drivers.
 
 You can join these lists by accessing the web-site
-L<http://www.perl.org/dbi-lists.html>.
+L<http://dbi.perl.org/>.
 The lists are closed so you cannot send email to any of the lists
 unless you join the list first.
 
-You should also consider monitoring the comp.lang.perl.* newsgroups.
+You should also consider monitoring the comp.lang.perl.* newsgroups,
+especially comp.lang.perl.modules.
 
 =head1 BOOK
 
@@ -78,14 +80,12 @@ own!
 =head2 Locating drivers
 
 The primary web-site for locating Perl software is
-L<http://www.perl.com/CPAN>.
-You should look under the various modules listings for the software
-you are after.
-Two of the main pages you should look at are:
+L<http://search.cpan.org/>.  You should look under the various
+modules listings for the software you are after. For example:
 
-  http://www.perl.org/CPAN/modules/by-category/07_Database_Interfaces/DBI
+  http://search.cpan.org/modlist/Database_Interfaces
 
-  http://www.perl.org/CPAN/modules/by-category/07_Database_Interfaces/DBD
+Follow the DBD:: and DBIx:: links at the top to see those subsets.
 
 See the DBI docs for information on DBI web sites and mailing lists.
 
@@ -103,6 +103,8 @@ Writing a pure Perl driver is surprisingly simple. However, there are
 some problems one should be aware of. The best option is of course
 picking up an existing driver and carefully modifying one method
 after the other.
+
+Also look carefully at DBD::AnyData and DBD::Template.
 
 As an example we take a look at the I<DBD::File> driver, a driver for
 accessing plain files as tables, which is part of the I<DBD::CSV>
@@ -129,7 +131,7 @@ the C<ExtUtils::MM_Unix> man page. And for Emacs users I recommend
 the I<libscan> method.
 
 Now an example, I use the word C<Driver> wherever you should insert
-your drivers name:
+your driver's name:
 
   # -*- perl -*-
 
@@ -144,7 +146,7 @@ your drivers name:
 	  'INC'          => $DBI_INC_DIR,
 	  'dist'         => { 'SUFFIX'   => '.gz',
 				'COMPRESS' => 'gzip -9f' },
-	  'realclean'    => '*.xsi'
+	  'realclean'    => { FILES => '*.xsi' },
       } )
   );
 
@@ -165,7 +167,7 @@ The README file should describe what the driver is for, the
 pre-requisites for the build process, the actual build process, and how
 to report errors. Users will find ways of breaking the driver build and
 test process which you would never even dreamed to be possible in your
-nightmares. :-) Therefore, you need to write this document defensively
+nightmares.  Therefore, you need to write this document defensively
 and precisely.  Also, it is in your interests to ensure that your tests
 work as widely as possible. As always, use the README from one of the
 established drivers as a basis for your own.
@@ -173,7 +175,7 @@ established drivers as a basis for your own.
 
 =head2 MANIFEST
 
-The MANIFEST will be used by the Makefile'd dist target to build the
+The MANIFEST will be used by the Makefile's dist target to build the
 distribution tar file that is uploaded to CPAN. It should list every
 file that you want to include in your distribution, one per line.
 
@@ -504,7 +506,7 @@ and I<rollback> methods will typically be quite simple:
       if ($dbh->FETCH('Warn')) {
           warn("Commit ineffective while AutoCommit is on");
       }
-      1;
+      0;
   }
 
   sub rollback {
@@ -514,6 +516,10 @@ and I<rollback> methods will typically be quite simple:
       }
       0;
   }
+Or even simpler, just use the default methods provided by the DBI that
+do nothing except return undef.
+
+The DBI's default begin_work method can be used by inheritance.
 
 
 =item The STORE and FETCH methods
@@ -771,7 +777,7 @@ Assuming that your driver is called DBD::Driver, these files are:
 =head2 Driver.pm
 
 The Driver.pm file is the same as for Pure Perl modules, see above.
-However, there are some subtile differences:
+However, there are some subtle differences:
 
 =over 8
 
@@ -817,7 +823,7 @@ are already discussed for Pure Perl drivers or really Oracle specific.
           'Name'         => $dbname,
           'USER'         => $user,
           'CURRENT_USER' => $user,
-          });
+          }) or return undef;
 
       # Call Oracle OCI orlon func in Oracle.xs file
       # and populate internal handle data.
@@ -830,10 +836,14 @@ are already discussed for Pure Perl drivers or really Oracle specific.
 This is mostly the same as in the Pure Perl case, the exception being
 the use of the private I<_login> callback: This will really connect to
 the database. It is implemented in Driver.xst (you should not implement
-it) and calls I<dbd_db_login> from I<dbdimp.c>. See below for details.
+it) and calls I<dbd_db_login6> from I<dbdimp.c>. See below for details.
 
-Since the DBI::_new_xxh methods can't fail in normal situations, we
-don't both checking $dbh before calling _login.
+=over 4
+
+*FIX ME* Discuss removing attributes from hash reference as an optimization
+to skip later calls to $dbh->STORE made by DBI->connect.
+
+=back
 
 =item The statement handle constructor
 
@@ -959,15 +969,22 @@ have an eye at other people's work.)
 
   /*  Rename functions for avoiding name clashes; prototypes are  */
   /*  in dbd_xst.h                                                */
-  #define dbd_init          ora_init
-  #define dbd_db_login      ora_db_login
+  #define dbd_init         ora_init
+  #define dbd_db_login6    ora_db_login
   #define dbd_db_do        ora_db_do
   ... many more here ...
 
-This structures implement your private part of the handles. You I<have>
-to use the name I<imp_dbh_dr|db|st> and the first field I<must> be of
-type I<dbih_drc|dbc|stc_t>. You should never access this fields directly,
-except of using the I<DBIc_xxx> macros below.
+=over 4
+
+*FIX ME* Should use hypothetical drv_ prefix instead of ora_ prefix.
+
+=back
+
+These structures implement your private part of the handles. You
+I<have> to use the name I<imp_dbh_dr|_db|_st> and the first field
+I<must> be of type I<dbih_drc_t|_dbc_t|_stc_t> and I<must> be called
+C<com>. You should never access these fields directly, except of
+using the I<DBIc_xxx> macros below.
 
 
 =head2 Implementation source dbdimp.c
@@ -977,10 +994,8 @@ function here that's used in the I<Driver.xsi> template and thus B<has>
 to be implemented. Of course you can add private or better static
 functions here.
 
-Note that most people are still using Kernighan & Ritchie syntax here.
-I personally don't like this and especially in this documentation it
-cannot be of harm, so let's use ANSI. Finally Tim Bunce has announced
-interest in moving the DBI sources to ANSI as well.
+Since Perl 5.6 requires support for function prototypes (ANSI or ISO or
+Standard C), you should write your code using function prototypes too.
 
 =over 2
 
@@ -999,10 +1014,28 @@ dbd_init will be called when your driver is first loaded. These
 statements are needed for use of the DBI macros. They will include your
 private header file I<dbdimp.h> in turn.
 
+=over 4
+
+*FIX ME* Is recommended practice to use the unmapped DBI-specified names
+or to use your driver-specific function names in the source code?  DBD::Informix
+uses the driver-specific names in the source; the header deals with the mapping.
+
+ANSWER: Not very significant, but using the unmapped DBI-specified names
+(dbd_*) makes it a little easier to compare code between drivers and eases
+discussions on the dbi-dev mailing list.
+
+=back
+
 =item do_error
 
 You need a function to handle recording of errors. You can call it
 whatever you like, but we'll call it C<do_error> here.
+
+=over 4
+
+*FIX ME* Should this be a file static function?  Why not?
+
+=back
 
   void do_error(SV* h, int rc, char* what) {
 
@@ -1033,10 +1066,10 @@ and I<PrintError> work: That's all what you have to deal with them. :-)
 That's the first time we see how debug/trace logging works within a DBI
 driver.  Make use of this as often as you can!
 
-=item dbd_db_login
+=item dbd_db_login6
 
-  int dbd_db_login(SV* dbh, imp_dbh_t* imp_dbh, char* dbname,
-                   char* user, char* auth);
+  int dbd_db_login6(SV* dbh, imp_dbh_t* imp_dbh, char* dbname,
+                   char* user, char* auth, SV *attr);
 
 This function will really connect to the database. The argument I<dbh>
 is the database handle. I<imp_dbh> is the pointer to the handles private
@@ -1046,34 +1079,19 @@ I<connect> method.
 
 You will quite often use database specific attributes here, that are
 specified in the DSN. I recommend you parse the DSN within the
-I<connect> method and pass them as handle attributes to I<dbd_db_login>.
+I<connect> method and pass them as \%attr thru I<_login> to I<dbd_db_login6>.
 Here's how you fetch them, as an example we use I<hostname> and I<port>
 attributes:
 
-  /* This code assumes that the *second* attribute parameter to
-   * DBI::_new_dbh was used to store an hash with login attributes
-   */
-  SV* imp_data = DBIc_IMP_DATA(dbh);
-  HV* hv;
   SV** svp;
+  STRLEN len;
   char* hostname;
-  char* port;
 
-  if (! SvTRUE(imp_data) || !SvROK(imp_data)  ||
-        SvTYPE(hv = (HV*) SvRV(imp_data)) != SVt_PVHV) {
-      croak("Implementation dependent data invalid: Not a hash ref.\n");
-  }
-  if ((svp = hv_fetch(hv, "hostname", strlen("hostname"), FALSE)) &&
-      SvTRUE(*svp)) {
-      hostname = SvPV(*svp, na);
+  if ( (svp = DBD_ATTRIB_GET_SVP(attr, "drv_hostname", 12)) && SvTRUE(*svp)) {
+      hostname = SvPV(*svp, len);
+      DBD__ATTRIB_DELETE(attr, "drv_hostname", 12); /* avoid later STORE */
   } else {
       hostname = "localhost";
-  }
-  if ((svp = hv_fetch(hv, "port", strlen("port"), FALSE)) &&
-      SvTRUE(*svp)) {
-      port = SvPV(*svp, na);  /*  May be a service name  */
-  } else {
-      port = DEFAULT_PORT;
   }
 
 Now you should really connect to the database. If you are successful
@@ -1092,7 +1110,7 @@ This indicates that the handle has an active connection to the server
 and that the dbd_db_disconnect function should be called before the
 handle is destroyed.
 
-The dbd_db_login function should return TRUE for success, FALSE otherwise.
+The dbd_db_login6 function should return TRUE for success, FALSE otherwise.
 
 
 =item dbd_db_commit
@@ -1123,6 +1141,14 @@ In any case it should do a
   DBIc_ACTIVE_off(imp_dbh);
 
 before returning so DBI knows that I<dbd_db_disconnect> was executed.
+
+Note that there's noting to stop a dbh being I<disconnected>
+while it still have active children. If your database API reacts
+badly to trying to use an sth in this situation then you'll need
+to add code like this to all sth methods:
+
+  if (!DBIc_ACTIVE(DBIc_PARENT_COM(imp_sth)))
+    return 0;
 
 
 =item dbd_db_discon_all
@@ -1155,6 +1181,12 @@ if the handle is still 'active', before calling dbd_db_destroy.
 Before returning the function must switch IMPSET to off, so DBI knows
 that the destructor was called.
 
+A DBI handle doesn't keep references to its children. But children
+do keep references to their parents. So a database handle won't be
+DESTROY'd until all it's children have been DESTROY'd.
+
+=back
+
 
 =item dbd_db_STORE_attrib
 
@@ -1162,12 +1194,12 @@ This function handles
 
   $dbh->{$key} = $value;
 
-its prototype is
+Its prototype is:
 
   int dbd_db_STORE_attrib(SV* dbh, imp_dbh_t* imp_dbh, SV* keysv,
                           SV* valuesv);
 
-You do not handle all attributes, in contrary you should not handle
+You do not handle all attributes; on the contrary, you should not handle
 DBI attributes here: Leave this to DBI. (There's one exception,
 I<AutoCommit>, which you should care about.)
 
@@ -1224,10 +1256,18 @@ preparse and validate the statement or do similar things.
   int dbd_st_prepare(SV* sth, imp_sth_t* imp_sth, char* statement,
                      SV* attribs);
 
-A typical, simple possibility is just to store the statement in the
-imp_data hash ref and use it in dbd_st_execute. If you can, you should
-setup attributes like NUM_OF_FIELDS, NAME, ... here, but DBI
-doesn't require that. However, if you do, document it.
+A typical, simple, possibility is to do nothing and rely on the perl
+perpare() code that set the Statement attribute on the handle. This
+attribute can then be used by dbd_st_execute.
+
+If the driver supports placeholders then the NUM_OF_PARAMS attribute
+must be set correctly by dbd_st_prepare:
+
+  DBIc_NUM_PARAMS(imp_sth) = ...
+
+If you can, you should also setup attributes like NUM_OF_FIELDS,
+NAME, ... here, but DBI doesn't require that. However, if you do,
+document it.
 
 In any case you should set the IMPSET flag, as you did in
 I<dbd_db_connect> above:
@@ -1243,17 +1283,16 @@ This is where a statement will really be executed.
 
 Note, that you must be aware, that a statement may be executed repeatedly.
 Also, you should not expect, that I<finish> will be called between
-two executions.
+two executions, so you'll probably want code like:
 
-If your driver supports binding of parameters (he should!), but the
-database doesn't, you must probably do it here. This can be done as
-follows:
+  if (DBIc_ACTIVE(imp_sth))
+      dbd_st_finish(h, imp_sth);
 
-  char* statement = dbd_st_get_statement(sth, imp_sth);
-      /* Its your drivers task to implement this function.  It     */
-      /* must restore the statement passed to preparse.            */
-      /* See use of imp_data above for an example of how to do     */
-      /* this.                                                     */
+If your driver supports binding of parameters (it should!), but the
+database doesn't, you must do it here. This can be done as follows:
+
+  SV *svp;
+  char* statement = DBD_ATTRIB_GET_PV(h, "Statement", 9, svp, "");
   int numParam = DBIc_NUM_PARAMS(imp_sth);
   int i;
 
@@ -1263,16 +1302,18 @@ follows:
       /* it must be setup as a counterpart of dbd_bind_ph.         */
       /* Look for '?' and replace it with 'value'.  Difficult      */
       /* task, note that you may have question marks inside        */
-      /* quotes and the like ...  :-(                              */
+      /* quotes and comments the like ...  :-(                     */
       /* See DBD::mysql for an example. (Don't look too deep into  */
       /* the example, you will notice where I was lazy ...)        */
   }
 
-The next thing is you really execute the statement. Note that you must
-prepare the attributes NUM_OF_FIELDS, NAME, ... when the statement is
-successfully executed if you have not already done so: They may be used even before a potential
-I<fetchrow>. In particular you have to tell DBI the number of fields,
-that the statement has, because it will be used by DBI internally.
+The next thing is you really execute the statement.
+Note that you must set the attributes NUM_OF_FIELDS,
+NAME, etc when the statement is successfully executed if the driver has
+not already done so.
+They may be used even before a potential I<fetchrow>.
+In particular you have to tell DBI the number of fields, that the
+statement has, because it will be used by DBI internally.
 Thus the function will typically ends with:
 
   if (isSelectStatement) {
@@ -1280,16 +1321,18 @@ Thus the function will typically ends with:
       DBIc_ACTIVE_on(imp_sth);
   }
 
-It is important that the ACTIVE flag only be set for select statements.
+It is important that the ACTIVE flag only be set for C<SELECT> statements
+(or any other statements that can return multiple sets of values from
+the database using a cursor-like mechanism).
 See I<dbd_st_preparse> and I<dbd_db_connect> above for more explanations.
 
 
 =item dbd_st_fetch
 
 This function fetches a row of data. The row is stored in in an array,
-of SV's that DBI prepares for you. This has two advantages: It is fast
+of SV's that DBI prepares for you. This has two advantages: it is fast
 (you even reuse the SV's, so they don't have to be created after the
-first fetchrow) and it guarantees, that DBI handles I<bind_cols> for
+first fetchrow), and it guarantees that DBI handles I<bind_cols> for
 you.
 
 What you do is the following:
@@ -1332,6 +1375,13 @@ NULL values must be returned as undef. You can use code like this:
 The function returns the AV prepared by DBI for success or C<Nullav>
 otherwise.
 
+=over 4
+
+*FIX ME* Discuss what happens when there's no more data to fetch.
+Are errors permitted if another fetch occurs after the first fetch
+that reports no more data. (Permitted, not required.)
+
+=back
 
 =item dbd_st_finish
 
@@ -1343,12 +1393,20 @@ All it I<needs> to do is turn off the Active flag for the sth.
 It will only be called by Driver.xst code, if the driver has set
 ACTIVE to on for the sth.
 
-Minimal example (the DBI default method just does this):
+Minimal example:
 
-  int dbd_st_finish(SV* sth, imp_sth_t* imp_sth) {
+  int dbd_st_finish3(SV* sth, imp_sth_t* imp_sth, int from_destroy) {
+      if (!DBIc_ACTIVE(imp_sth))
+          return 1;
+      /* close cursor or equivalent action */
       DBIc_ACTIVE_off(imp_sth);
       return 1;
   }
+
+The from_destroy parameter is true if dbd_st_finish3 is being called
+from DESTROY - and so the statement is about to be destroyed. For
+many drivers there's no point in doing anything more than turing
+of the Active flag in this case.
 
 The function returns TRUE for success, FALSE otherwise.
 
@@ -1402,8 +1460,6 @@ the value in a parameter array and use it later in I<dbd_st_execute>.
 See the I<DBD::mysql> driver for an example.
 
 
-=back
-
 =head2 Implementing bind_param_inout support
 
 To provide support for parameters bound by reference rather than by
@@ -1425,13 +1481,11 @@ then DBI automatically calls the binding code for each element of
 @values.  These calls are indistinguishable from explicit user calls to
 bind_param.
 
-
 =head2 Makefile.PL
 
 This is exactly as in the Pure Perl case. To be honest, the above
 Makefile.PL contains some things that are superfluous for Pure Perl
 drivers. :-)
-
 
 =head1 METHODS WHICH DO NOT NEED TO BE WRITTEN
 
@@ -1756,7 +1810,7 @@ use DBI::Const::GetInfoType qw(%GetInfoType);
 
 @ISA = qw(Exporter);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.8 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.11 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
@@ -1799,7 +1853,8 @@ sub dbd_edit_mm_attribs {
 	    print PPT "#!perl -w\n";
 	    print PPT "use threads;\n" if $usethr;
 	    print PPT "\$ENV{DBI_PUREPERL}=2;\n";
-	    print PPT "do 't/$test.t';\n";
+	    print PPT "do 't/$test.t' or warn \$!;\n";
+	    print PPT 'die if $@;'."\n";
 	    print PPT "exit 0\n";
 	    close PPT or warn "Error writing $pp_test: $!";
 	}
@@ -2000,10 +2055,9 @@ __END__
 
 =head1 AUTHORS
 
-Jonathan Leffler <jleffler@informix.com>,
+Jonathan Leffler <jleffler@us.ibm.com> (previously <jleffler@informix.com>),
 Jochen Wiedmann <joe@ispsoft.de>,
 Steffen Goeldner <s.goeldner@eurodata.de>,
-and Tim Bunce.
+and Tim Bunce <tim.bunce@pobox.com>.
 
 =cut
-

@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.18 2002/07/18 14:23:44 timbo Exp $
+# $Id: DBI.pm,v 11.22 2002/11/29 23:54:32 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.30"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.31"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -99,6 +99,13 @@ at the end of this document and on the DBI home page.
 The FAQ is installed as a L<DBI::FAQ> module so
 you can read it by executing C<perldoc DBI::FAQ>.
 
+To help you make the best use of the dbi-users mailing list,
+and any other lists or forums you may use, I strongly
+recommend that you read "How To Ask Questions The Smart Way"
+by Eric Raymond:
+
+  http://www.tuxedo.org/~esr/faqs/smart-questions.html
+
 This document often uses terms like I<references>, I<objects>,
 I<methods>.  If you're not familar with those terms then it would
 be a good idea to read at least the following perl manuals first:
@@ -113,8 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.30
-(C<$Date: 2002/07/18 14:23:44 $>).
+This is the DBI specification that corresponds to the DBI version 1.31
+(C<$Date: 2002/11/29 23:54:32 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -142,7 +149,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.18 $, 10);
+my $Revision = substr(q$Revision: 11.22 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -282,7 +289,6 @@ tie $DBI::errstr, 'DBI::var', '&errstr'; # call &errstr in last used pkg
 tie $DBI::rows,   'DBI::var', '&rows';   # call &rows   in last used pkg
 sub DBI::var::TIESCALAR{ my $var = $_[1]; bless \$var, 'DBI::var'; }
 sub DBI::var::STORE    { Carp::croak("Can't modify \$DBI::${$_[0]} special variable") }
-sub DBI::var::DESTROY  { }
 
 {   package DBI::DBI_tie;	# used to catch DBI->{Attrib} mistake
     sub TIEHASH { bless {} }
@@ -307,15 +313,14 @@ my @TieHash_IF = (	# Generic Tied Hash Interface
 );
 my @Common_IF = (	# Interface functions common to all DBI classes
 	func    =>	{				O=>0x0006	},
-	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x0004 },
 	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
 	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
 	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
 	private_data =>	{ U =>[1,1],			O=>0x0004 },
 	err     =>	$keeperr,
 	errstr  =>	$keeperr,
-	state   =>	{ U =>[1,1], O=>0x0004 },
-	set_err =>	{ },
+	state   =>	{ U =>[1,1],	O=>0x0004 },
+	set_err =>	{		O=>0x0010 },
 	_not_impl =>	undef,
 );
 
@@ -382,8 +387,8 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	fetchrow_array    => undef,
 	fetchrow   	  => undef, # old alias for fetchrow_array
 
-	fetchall_arrayref => { U =>[1,3] },
-	fetchall_hashref  => { U =>[2,2] },
+	fetchall_arrayref => { U =>[1,3, '[ $slice [, $max_rows]]'] },
+	fetchall_hashref  => { U =>[2,2,'$key_field'] },
 
 	blob_read  =>	{ U =>[4,5,'$field, $offset, $len [, \\$buf [, $bufoffset]]'] },
 	blob_copy_to_file => { U =>[3,3,'$field, $filename_or_handleref'] },
@@ -471,10 +476,15 @@ sub connect {
 	or Carp::croak("Can't connect(@_), no database driver specified "
 		."and DBI_DSN env var not set");
 
-    if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Switch') {
+    if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Sponge' && $driver ne 'Switch') {
+	my $proxy = 'Proxy';
+	if ($ENV{DBI_AUTOPROXY} =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i) {
+	    $proxy = $1;
+	    $driver_attrib_spec = ($driver_attrib_spec) ? "$driver_attrib_spec,$2" : $2;
+	}
 	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
-	$driver = 'Proxy';
-	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver:$dsn\n");
+	$driver = $proxy;
+	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver($driver_attrib_spec):$dsn\n");
     }
 
     my %attr;	# take a copy we can delete from
@@ -501,15 +511,15 @@ sub connect {
 	if !(defined $user && defined $pass);
 
     unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
-	my $msg = "$class->connect($dsn) failed: ".$drh->errstr;
-	if (%attr) {
-	    # XXX add $attr{HandleError} logic here?
+	$user = '' if !defined $user;
+	my $msg = "$class connect('$dsn','$user',...) failed: ".$drh->errstr;
+	DBI->trace_msg("       $msg\n");
+	unless ($attr->{HandleError} && $attr->{HandleError}($msg, $drh, $dbh)) {
 	    Carp::croak($msg) if $attr->{RaiseError};
 	    Carp::carp ($msg) if $attr->{PrintError};
 	}
-	DBI->trace_msg("       $msg\n");
 	$! = 0; # for the daft people who do DBI->connect(...) || die "$!";
-	return undef;
+	return $dbh; # normally undef, but HandleError could change it
     }
 
 
@@ -518,11 +528,11 @@ sub connect {
     if ($rebless_class) {
 	if ($attr->{RootClass}) {	# explicit attribute (rather than static call)
 	    delete $attr->{RootClass};
-	    DBI::_load_module($rebless_class);
+	    DBI::_load_module($rebless_class, 0) unless @{"$rebless_class\::ISA"};
 	}
         no strict 'refs';
-        unless (@{"$rebless_class\::db::ISA"}) {
-            Carp::carp("DBI subclass '$rebless_class\::db' isn't setup, ignored");
+        unless (@{"$rebless_class\::db::ISA"} && @{"$rebless_class\::st::ISA"}) {
+            Carp::carp("DBI subclasses '$rebless_class\::db' and ::st are not setup, RootClass ignored");
             $rebless_class = undef;
             $class = 'DBI';
         }
@@ -699,7 +709,7 @@ sub _rebless_dbtype_subclass {
     # add the rootclass prefix to each ('DBI::' or 'MyDBI::' etc)
     $_ = $rootclass.'::'.$_ foreach (@hierarchy);
     # load the modules from the 'top down'
-    DBI::_load_module($_) foreach (reverse @hierarchy);
+    DBI::_load_module($_, 1) foreach (reverse @hierarchy);
     # setup class hierarchy if needed, does both '::db' and '::st'
     DBI::_set_isa(\@hierarchy, $rootclass);
     # finally bless the handle into the subclass
@@ -772,11 +782,12 @@ sub _dbtype_names { # list dbtypes for hierarchy, ie Informix=>ADO=>ODBC
 
 sub _load_module {
     (my $module = shift) =~ s!::!/!g;
+    my $missing_ok = shift;
     eval {
         require $module.'.pm';
     };
     return 1 unless $@;
-    return 0 if $@ =~ /^\b\@INC\b/;
+    return 0 if $missing_ok && $@ =~ /^\@INC\b/;
     die; # propagate $@;
 }
 
@@ -1140,9 +1151,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     sub disconnect  {
 	shift->_not_impl('disconnect');
     }
-
-    # Drivers are required to implement *::db::DESTROY to encourage tidy-up
-    sub DESTROY  { Carp::croak("Driver has not implemented DESTROY for @_") }
 
     sub quote_identifier {
 	my ($dbh, @id) = @_;
@@ -1637,8 +1645,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	shift->{syb_more_results};	# handy grandfathering
     }
 
-    # Drivers are required to implement *::st::DESTROY to encourage tidy-up
-    sub DESTROY  { Carp::croak("Driver has not implemented DESTROY for @_") }
 }
 
 unless ($DBI::PurePerl) {   # See install_driver
@@ -1875,6 +1881,7 @@ Driver Specific Prefix Registry:
   best_    DBD::BestWins
   csv_     DBD::CSV
   db2_     DBD::DB2
+  df_      DBD::DF
   f_       DBD::File
   file_    DBD::TextFile
   ib_      DBD::InterBase
@@ -1889,12 +1896,15 @@ Driver Specific Prefix Registry:
   rdb_     DBD::RDB
   sapdb_   DBD::SAP_DB
   solid_   DBD::Solid
-  syb_     DBD::Sybase
   sql_     SQL::Statement (used by some drivers)
+  syb_     DBD::Sybase
   tdat_    DBD::Teradata
+  tmpl_    DBD::Template
+  tmplss_  DBD::TemplateSS
   tuber_   DBD::Tuber
   uni_     DBD::Unify
   xbase_   DBD::XBase
+  xl_      DBD::Excel
 
 
 =head2 SQL - A Query Language
@@ -1962,7 +1972,9 @@ general you have to say:
 
   ... WHERE (product_code = ? OR (? IS NULL AND product_code IS NULL))
 
-and bind the same value to both placeholders.
+and bind the same value to both placeholders. Sadly, that more general
+syntax doesn't work for Sybase and MS SQL Server. However on those two
+servers the original "C<product_code = ?>" syntax works for binding nulls.
 
 B<Performance>
 
@@ -2072,14 +2084,16 @@ description of the syntax they require. (Where a driver author needs
 to define a syntax for the C<$data_source>, it is recommended that
 they follow the ODBC style, shown in the last example above.)
 
-If the environment variable C<DBI_AUTOPROXY> is defined (and the driver in
-C<$data_source> is not "C<Proxy>") then the connect request will
-automatically be changed to:
+If the environment variable C<DBI_AUTOPROXY> is defined (and the
+driver in C<$data_source> is not "C<Proxy>") then the connect request
+will automatically be changed to:
 
-  dbi:Proxy:$ENV{DBI_AUTOPROXY};dsn=$data_source
+  $ENV{DBI_AUTOPROXY};dsn=$data_source
 
-and passed to the DBD::Proxy module. C<DBI_AUTOPROXY> is typically set as
-"C<hostname=...;port=...>". See the DBD::Proxy documentation for more details.
+C<DBI_AUTOPROXY> is typically set as "C<dbi:Proxy:hostname=...;port=...>".
+If $ENV{DBI_AUTOPROXY} doesn't begin with 'C<dbi:>' then "dbi:Proxy:"
+will be prepended to it first.  See the DBD::Proxy documentation
+for more details.
 
 If C<$username> or C<$password> are undefined (rather than just empty),
 then the DBI will substitute the values of the C<DBI_USER> and C<DBI_PASS>
@@ -2662,7 +2676,7 @@ closures:
     $h->{HandleError} = sub {
       return 1 if $previous_handler and &$previous_handler(@_);
       ... your code here ...
-    }
+    };
   }
 
 Using a C<my> inside a subroutine to store the previous C<HandleError>
@@ -2788,15 +2802,27 @@ See also L</LongReadLen>.
 =item C<Taint> (boolean, inherited)
 
 If this attribute is set to a true value I<and> Perl is running in
-taint mode (e.g., started with the C<-T> option), then all data
-fetched from the database is tainted, and the arguments to most DBI
-method calls are checked for being tainted. I<This may change.>
+taint mode (e.g., started with the C<-T> option), then all the arguments
+to most DBI method calls are checked for being tainted. I<This may change.>
 
 The attribute defaults to off, even if Perl is in taint mode.
 See L<perlsec> for more about taint mode.  If Perl is not
 running in taint mode, this attribute has no effect.
 
-When fetching data that you trust you can turn off the Taint attribute,
+When fetching data that you trust you can turn off the TaintIn attribute,
+for that statement handle, for the duration of the fetch loop.
+
+=item C<TaintOut> (boolean, inherited)
+
+If this attribute is set to a true value I<and> Perl is running in
+taint mode (e.g., started with the C<-T> option), then most data fetched
+from the database is considered tainted. I<This may change.>
+
+The attribute defaults to off, even if Perl is in taint mode.
+See L<perlsec> for more about taint mode.  If Perl is not
+running in taint mode, this attribute has no effect.
+
+When fetching data that you trust you can turn off the TaintOut attribute,
 for that statement handle, for the duration of the fetch loop.
 
 Currently only fetched data is tainted. It is possible that the results
@@ -2804,6 +2830,15 @@ of other DBI method calls, and the value of fetched attributes, may
 also be tainted in future versions. That change may well break your
 applications unless you take great care now. If you use DBI Taint mode,
 please report your experience and any suggestions for changes.
+
+=item C<Taint> (boolean, inherited)
+
+This value is shortcut for L</TaintIn> and L</TaintOut> (it is also present
+for backwards compatability).
+
+Setting this attribute sets both L</TaintIn> and L</TaintOut>, and retrieving
+it returns a true value if and only if L</TaintIn> and L</TaintOut> are
+both set to true values.
 
 =item C<Profile> (inherited)
 
@@ -4235,11 +4270,12 @@ to a placeholder embedded in the prepared statement which is to be executed
 with L</execute_array>. For example:
 
   $dbh->{RaiseError} = 1;        # save having to check each method call
-  $sth = $dbh->prepare("INSERT INTO people(first_name, last_name) VALUES(?, ?)");
+  $sth = $dbh->prepare("INSERT INTO staff (first_name, last_name, dept) VALUES(?, ?, ?)");
   $sth->bind_param_array(1, [ 'John', 'Mary', 'Tim' ]);
   $sth->bind_param_array(2, [ 'Booth', 'Todd', 'Robinson' ]);
+  $sth->bind_param_array(3, "SALES"); # scalar will be reused for each row
   my @tuple_status;
-  $sth->execute_array(\@tuple_status);
+  $sth->execute_array( { ArrayTupleStatus => \@tuple_status } );
 
 The C<%attr> argument is the same as defined for L</bind_param>.
 Refer to L</bind_param> for general details on using placeholders.
@@ -4324,6 +4360,16 @@ attribute, which should specify an arrayref to receive the status of each
 parameter tuple bound to the statement. For parameter tuples which
 are successfully executed, the element at the same ordinal position in the 
 status array will return the resulting rowcount.
+
+For example:
+ 
+  $sth = $dbh->prepare("INSERT INTO staff (first_name, last_name) VALUES (?, ?)");
+  my @tuple_status;
+  $sth->execute_array(
+      { ArrayTupleStatus => \@tuple_status },
+      \@first_names,
+      \@last_names,
+  );
 
 If a parameter tuple causes an error, the associated status array
 element will be set to an arrayref of [ $sth->err, $sth->errstr ]
@@ -4508,12 +4554,21 @@ is used to limit the number of rows fetched before returning.
 fetchall_arrayref() can then be called again to fetch more rows.
 This is especially useful when you need the better performance of
 fetchall_arrayref() but don't have enough memory to fetch and return
-all the rows in one go.
+all the rows in one go. Here's an example:
+
+  my $rows = []; # cache for batches of rows
+  while( my $row = ( shift(@$rows) || # get row from cache, or reload cache:
+                     shift(@{$rows=$sth->fetchall_arrayref(undef,10_000)||[]) )
+  ) {
+    ...
+  }
+
+That is the fastest way to fetch and process lots of rows using the DBI.
 
 
 =item C<fetchall_hashref>
 
-  $hash_ref = $dbh->fetchall_hashref($key_field);
+  $hash_ref = $sth->fetchall_hashref($key_field);
 
 The C<fetchall_hashref> method can be used to fetch all the data to be
 returned from a prepared and executed statement handle. It returns a
@@ -4715,8 +4770,9 @@ may have on some attributes.
 
 =item C<NUM_OF_FIELDS>  (integer, read-only)
 
-Number of fields (columns) the prepared statement will return. Non-C<SELECT>
-statements will have C<NUM_OF_FIELDS == 0>.
+Number of fields (columns) in the data the prepared statement may return.
+Statements that don't return rows of data, like C<DELETE> and C<CREATE>
+set C<NUM_OF_FIELDS> to 0.
 
 
 =item C<NUM_OF_PARAMS>  (integer, read-only)
@@ -4816,6 +4872,11 @@ column returning a null.  Possible values are C<0>
 Returns the name of the cursor associated with the statement handle, if
 available. If not available or if the database driver does not support the
 C<"where current of ..."> SQL syntax, then it returns C<undef>.
+
+
+=item C<Database>  (dbh, read-only)
+
+Returns the parent $dbh of the statement handle.
 
 
 =item C<ParamValues>  (hash ref, read-only)
@@ -5146,8 +5207,17 @@ or specifying a C<RootClass> attribute:
 
 The only difference between the two is that using an explicit
 RootClass attribute will make the DBI automatically attempt to load
-a module by that name (and not complain if such a module can't be
-found). If both forms are used then the attribute takes precedence.
+a module by that name if the class doesn't exist.
+
+If both forms are used then the attribute takes precedence.
+
+The when subclassing is being used then, after a successful new
+connect, the DBI->connect method automatically calls:
+
+  $dbh->connected($dsn, $user, $pass, \%attr);
+
+The default method does nothing. The call is made just to simplify
+any post-connection setup that your subclass may want to perform.
 
 Here's a brief example of a DBI subclass.  A more thorough example
 can be found in t/subclass.t in the DBI distribution.
@@ -5347,7 +5417,7 @@ A BNF syntax for SQL3 is available here:
 
  Programming the Perl DBI, by Alligator Descartes and Tim Bunce.
 
- Programming Perl 2nd Ed. by Larry Wall, Tom Christiansen & Randal Schwartz.
+ Programming Perl 3rd Ed. by Larry Wall, Tom Christiansen & Jon Orwant.
 
  Learning Perl by Randal Schwartz.
 

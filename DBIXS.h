@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.8 2002/07/15 11:18:57 timbo Exp $
+/* $Id: DBIXS.h,v 11.10 2002/11/26 00:20:33 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -214,24 +214,26 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_FDESC_AV(imp)  	_imp2com(imp, fields_fdav)
 #define DBIc_FDESC(imp, i)  	((imp_fdh_t*)(void*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
 
+/* XXX --- DO NOT CHANGE THESE VALUES AS THEY ARE COMPILED INTO DRIVERS --- XXX */
 #define DBIcf_COMSET	  0x000001	/* needs to be clear'd before free'd	*/
 #define DBIcf_IMPSET	  0x000002	/* has implementor data to be clear'd	*/
 #define DBIcf_ACTIVE	  0x000004	/* needs finish/disconnect before clear	*/
 #define DBIcf_IADESTROY	  0x000008	/* do DBIc_ACTIVE_off before DESTROY	*/
 #define DBIcf_WARN  	  0x000010	/* warn about poor practice etc  	*/
 #define DBIcf_COMPAT  	  0x000020	/* compat/emulation mode (eg oraperl)	*/
-
 #define DBIcf_ChopBlanks  0x000040	/* rtrim spaces from fetch char columns	*/
 #define DBIcf_RaiseError  0x000080	/* throw exception (croak) on error	*/
 #define DBIcf_PrintError  0x000100	/* warn() on error			*/
 #define DBIcf_AutoCommit  0x000200	/* dbh only. used by drivers		*/
 #define DBIcf_LongTruncOk 0x000400	/* truncation to LongReadLen is okay	*/
 #define DBIcf_MultiThread 0x000800	/* allow multiple threads to enter	*/
-#define DBIcf_Taint       0x001000	/* taint fetched data			*/
-#define DBIcf_ShowErrorStatement  0x002000	/* include Statement in error	*/
+/*	spare		  0x001000						*/
+#define DBIcf_ShowErrorStatement  0x002000   /* include Statement in error	*/
 #define DBIcf_BegunWork   0x004000	/* between begin_work & commit/rollback */
-#define DBIcf_HandleError 0x008000	/* has coderef in HandleError attribute	*/
-#define DBIcf_Profile     0x010000	/* profile activity on this handle	*/
+#define DBIcf_HandleError 0x008000	/* has coderef in HandleError attribute */
+#define DBIcf_Profile     0x010000	/* profile activity on this handle      */
+#define DBIcf_TaintIn     0x020000	/* check inputs for taintedness */
+#define DBIcf_TaintOut    0x040000	/* taint outgoing data */
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
@@ -318,15 +320,14 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBI_IMP_SIZE(n,s) sv_setiv(perl_get_sv((n), GV_ADDMULTI), (s)) /* XXX */
 
 
-/* --- Implementors Field Descriptor Support --- */
-
 
 /* --- Event Support (VERY LIABLE TO CHANGE) --- */
 
-#define DBIh_EVENTx(h,t,a1,a2)	(DBIS->event((h), (t), (a1), (a2)))
-#define DBIh_EVENT0(h,t)	DBIh_EVENTx((h), (t), &sv_undef, &sv_undef)
-#define DBIh_EVENT1(h,t, a1)	DBIh_EVENTx((h), (t), (a1),      &sv_undef)
-#define DBIh_EVENT2(h,t, a1,a2)	DBIh_EVENTx((h), (t), (a1),      (a2))
+/* #define DBIh_EVENTx(h,t,a1,a2) (DBIS->event((h), (t), (a1), (a2))) */
+#define DBIh_EVENTx(h,t,a1,a2)	/* deprecated */ &PL_sv_no
+#define DBIh_EVENT0(h,t)	DBIh_EVENTx((h), (t), &PL_sv_undef, &PL_sv_undef)
+#define DBIh_EVENT1(h,t, a1)	DBIh_EVENTx((h), (t), (a1),         &PL_sv_undef)
+#define DBIh_EVENT2(h,t, a1,a2)	DBIh_EVENTx((h), (t), (a1),         (a2))
 
 #define ERROR_event	"ERROR"
 #define WARN_event	"WARN"
@@ -452,6 +453,10 @@ static dbistate_t **get_dbistate() {
 	    ? hv_fetch((HV*)SvRV(attribs), key,klen, 0)		\
 	    : (SV **)Nullsv)
 	
+#define DBD_ATTRIB_GET_IV(attribs, key,klen, svp, var)			\
+	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
+	    var = SvIV(*svp)
+
 #define DBD_ATTRIB_GET_BOOL(attribs, key,klen, svp, var)		\
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvTRUE(*svp)
@@ -460,9 +465,12 @@ static dbistate_t **get_dbistate() {
 	(  ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    ? SvTRUE(*svp) : 0 )
 
-#define DBD_ATTRIB_GET_IV(attribs, key,klen, svp, var)			\
-	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
-	    var = SvIV(*svp)
+#define DBD_ATTRIB_GET_PV(attribs, key,klen, svp, dflt)			\
+	(((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)		\
+	    ? SvPV_nolen(*svp) : (dflt))
+
+#define DBD_ATTRIB_DELETE(attribs, key, klen)			\
+	hv_delete((HV*)attribs, key, len, G_DISCARD)
 
 #endif /* DBIXS_VERSION */
 /* end of DBIXS.h */

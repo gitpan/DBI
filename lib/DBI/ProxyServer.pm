@@ -1,4 +1,4 @@
-#	$Header: /usr/home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.4 2002/05/25 17:36:13 timbo Exp $
+#	$Header: /home/timbo/dbi/lib/DBI/RCS/ProxyServer.pm,v 11.6 2002/10/29 10:00:44 timbo Exp $
 # -*- perl -*-
 #
 #   DBI::ProxyServer - a proxy server for DBI drivers
@@ -48,7 +48,7 @@ my $defaultPidFile = $haveFileSpec ?
 
 use vars qw($VERSION @ISA);
 
-$VERSION = "0.2005";
+$VERSION = "0.3005";
 @ISA = qw(RPC::PlServer DBI);
 
 
@@ -76,6 +76,7 @@ my %DEFAULT_SERVER_OPTIONS;
     $o->{'logfile'}    = undef;         # Use syslog or EventLog.
     $o->{'methods'}    = {
 	'DBI::ProxyServer' => {
+	    'Version' => 1,
 	    'NewHandle' => 1,
 	    'CallMethod' => 1,
 	    'DestroyHandle' => 1
@@ -188,9 +189,16 @@ sub AcceptUser {
     $self->Debug("Connecting to $dsn as $user");
     local $ENV{DBI_AUTOPROXY} = ''; # :-)
     $self->{'dbh'} = eval {
-	DBI::ProxyServer->connect($dsn, $user, $password,
-				  { 'PrintError' => 0, 'Warn' => 0,
-				    RaiseError => 1 })
+        DBI::ProxyServer->connect($dsn, $user, $password,
+				  { 'PrintError' => 0, 
+				    'Warn' => 0,
+				    'RaiseError' => 1,
+				    'HandleError' => sub {
+				        my $err = $_[1]->err;
+					my $state = $_[1]->state || '';
+					$_[0] .= " [err=$err,state=$state]";
+					return 0;
+				    } })
     };
     if ($@) {
 	$self->Error("Error while connecting to $dsn as $user: $@");
@@ -247,7 +255,7 @@ package DBI::ProxyServer::db;
 @DBI::ProxyServer::db::ISA = qw(DBI::db);
 
 sub prepare {
-    my($dbh, $statement, $attr, $params) = @_;
+    my($dbh, $statement, $attr, $params, $proto_ver) = @_;
     my $server = $dbh->{'private_server'};
     if (my $client = $server->{'client'}) {
 	if ($client->{'sql'}) {
@@ -261,22 +269,28 @@ sub prepare {
 	    }
 	}
     }
-
-    # The difference between the usual prepare and ours is that we implement
-    # a combined prepare/execute. The DBD::Proxy driver doesn't call us for
-    # prepare. Only if an execute happens, then we are called with method
-    # "prepare". Further execute's are called as "execute".
     my $sth = $dbh->SUPER::prepare($statement, $attr);
-    my @result = $sth->execute($params);
     my $handle = $server->StoreHandle($sth);
-    my ($NAME, $TYPE);
-    my $NUM_OF_FIELDS = $sth->{NUM_OF_FIELDS};
-    if ($NUM_OF_FIELDS) {	# is a SELECT
+
+    if ( $proto_ver and $proto_ver > 1 ) {
+      $sth->{private_proxyserver_described} = 0;
+      return $handle;
+
+    } else {
+      # The difference between the usual prepare and ours is that we implement
+      # a combined prepare/execute. The DBD::Proxy driver doesn't call us for
+      # prepare. Only if an execute happens, then we are called with method
+      # "prepare". Further execute's are called as "execute".
+      my @result = $sth->execute($params);
+      my ($NAME, $TYPE);
+      my $NUM_OF_FIELDS = $sth->{NUM_OF_FIELDS};
+      if ($NUM_OF_FIELDS) {	# is a SELECT
 	$NAME = $sth->{NAME};
 	$TYPE = $sth->{TYPE};
+      }
+      ($handle, $NUM_OF_FIELDS, $sth->{'NUM_OF_PARAMS'},
+       $NAME, $TYPE, @result);
     }
-    ($handle, $NUM_OF_FIELDS, $sth->{'NUM_OF_PARAMS'},
-     $NAME, $TYPE, @result);
 }
 
 sub table_info {
@@ -293,7 +307,8 @@ sub table_info {
     # DBI::st and not DBI::ProxyServer::st. We could fix this by permitting
     # the client to execute method DBI::st, but I don't like this.
     my @rows;
-    while (my $row = $sth->fetch()) {
+    while (my ($row) = $sth->fetch()) {
+        last unless defined $row;
 	push(@rows, [@$row]);
     }
     ($numFields, $names, $types, @rows);
@@ -305,7 +320,7 @@ package DBI::ProxyServer::st;
 @DBI::ProxyServer::st::ISA = qw(DBI::st);
 
 sub execute {
-    my $sth = shift; my $params = shift;
+    my $sth = shift; my $params = shift; my $proto_ver = shift;
     my @outParams;
     if ($params) {
 	for (my $i = 0;  $i < @$params;) {
@@ -325,8 +340,18 @@ sub execute {
 	    }
 	}
     }
-
     my $rows = $sth->SUPER::execute();
+    if ( $proto_ver and $proto_ver > 1 and not $sth->{private_proxyserver_described} ) {
+      my ($NAME, $TYPE);
+      my $NUM_OF_FIELDS = $sth->{NUM_OF_FIELDS};
+      if ($NUM_OF_FIELDS) {	# is a SELECT
+	$NAME = $sth->{NAME};
+	$TYPE = $sth->{TYPE};
+      }
+      $sth->{private_proxyserver_described} = 1;
+      # First execution, we ship back description.
+      return ($rows, $NUM_OF_FIELDS, $sth->{'NUM_OF_PARAMS'}, $NAME, $TYPE, @outParams);
+    }
     ($rows, @outParams);
 }
 
@@ -376,6 +401,8 @@ query restrictions: You can define a set of queries that a client may
 execute and restrict access to those. (Requires a DBI driver that supports
 parameter binding.) See L</CONFIGURATION FILE>.
 
+The provided driver script, L<dbiproxy(1)>, may either be used as it is or
+used as the basis for a local version modified to meet your needs.
 
 =head1 OPTIONS
 

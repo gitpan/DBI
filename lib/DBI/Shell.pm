@@ -37,12 +37,14 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = sprintf "%d.%02d", '$Revision: 11.2 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 11.3 $ ' =~ /(\d+)\.(\d+)/;
 
 my $warning = <<'EOM';
 
-WARNING: The DBI::Shell interface and functionality are
-=======  very likely to change in subsequent versions!
+*** NOTE: The DBI::Shell included in the DBI distribution is
+*** ===== limited in functionality. A much expanded and improved
+***       version is available from Tom Lowery <tlowery@stlowery.net>
+***       (URL details to follow when I get them)
 
 EOM
 

@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.7 2002/07/15 11:18:57 timbo Exp $
+#  $Id: Driver.xst,v 11.8 2002/11/26 00:20:33 timbo Exp $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -74,7 +74,7 @@ selectall_arrayref(...)
     SV *sth;
     SV **maxrows_svp;
     SV **tmp_svp;
-    SV *attr = &sv_undef;
+    SV *attr = &PL_sv_undef;
     imp_sth_t *imp_sth;
     CODE:
     if (items > 2) {
@@ -110,7 +110,7 @@ selectall_arrayref(...)
     }
     /* --- fetchall --- */
     maxrows_svp = DBD_ATTRIB_GET_SVP(attr, "MaxRows", 7);
-    ST(0) = dbdxst_fetchall_arrayref(sth, &sv_undef, (maxrows_svp) ? *maxrows_svp : &sv_undef);
+    ST(0) = dbdxst_fetchall_arrayref(sth, &PL_sv_undef, (maxrows_svp) ? *maxrows_svp : &PL_sv_undef);
 
 
 void
@@ -147,7 +147,7 @@ selectrow_arrayref(...)
     row_av = dbd_st_fetch(sth, imp_sth);
     if (!row_av) {
 	if (GIMME == G_SCALAR)
-	    PUSHs(&sv_undef);
+	    PUSHs(&PL_sv_undef);
     }
     else if (ix == 1) { /* selectrow_array */
 	int i;
@@ -226,7 +226,7 @@ STORE(dbh, keysv, valuesv)
 	mg_get(valuesv);
     ST(0) = &sv_yes;
     if (!dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv))
-	if (!DBIS->set_attr(dbh, keysv, valuesv))
+	if (!DBIc_DBISTATE(imp_dbh)->set_attr(dbh, keysv, valuesv))
 	    ST(0) = &sv_no;
 
 void
@@ -237,7 +237,7 @@ FETCH(dbh, keysv)
     D_imp_dbh(dbh);
     SV *valuesv = dbd_db_FETCH_attrib(dbh, imp_dbh, keysv);
     if (!valuesv)
-	valuesv = DBIS->get_attr(dbh, keysv);
+	valuesv = DBIc_DBISTATE(imp_dbh)->get_attr(dbh, keysv);
     ST(0) = valuesv;	/* dbd_db_FETCH_attrib did sv_2mortal	*/
 
 
@@ -249,7 +249,7 @@ DESTROY(dbh)
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
 	STRLEN lna;
-	if (DBIc_WARN(imp_dbh) && !dirty && DBIS->debug >= 2)
+	if (DBIc_WARN(imp_dbh) && !dirty && DBIc_DBISTATE(imp_dbh)->debug >= 2)
 	     PerlIO_printf(DBILOGFP,
 		"         DESTROY for %s ignored - handle not initialised\n",
 			SvPV(dbh,lna));
@@ -272,7 +272,7 @@ DESTROY(dbh)
 	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
 	    /* the server may automatically commit! Bham! Corrupt database!	*/ 
 	    if (!DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
-		if (DBIc_WARN(imp_dbh) && (!dirty || DBIS->debug >= 3))
+		if (DBIc_WARN(imp_dbh) && (!dirty || DBIc_DBISTATE(imp_dbh)->debug >= 3))
 		     warn("Issuing rollback() for database handle being DESTROY'd without explicit disconnect()");
 		dbd_db_rollback(dbh, imp_dbh);			/* ROLLBACK! */
 	    }
@@ -415,7 +415,7 @@ fetchrow_arrayref(sth)
     AV *av;
     if (0) ix = ix;	/* avoid unused variable warning */
     av = dbd_st_fetch(sth, imp_sth);
-    ST(0) = (av) ? sv_2mortal(newRV((SV *)av)) : &sv_undef;
+    ST(0) = (av) ? sv_2mortal(newRV((SV *)av)) : &PL_sv_undef;
 
 
 void
@@ -439,7 +439,7 @@ fetchrow_array(sth)
 
 
 void
-fetchall_arrayref(sth, slice=&sv_undef, batch_row_count=&sv_undef)
+fetchall_arrayref(sth, slice=&PL_sv_undef, batch_row_count=&PL_sv_undef)
     SV *	sth
     SV *	slice
     SV *	batch_row_count
@@ -490,7 +490,7 @@ blob_read(sth, field, offset, len, destrv=Nullsv, destoffset=0)
         destrv = sv_2mortal(newRV(sv_2mortal(newSV(0))));
     if (dbd_st_blob_read(sth, imp_sth, field, offset, len, destrv, destoffset))
          ST(0) = SvRV(destrv);
-    else ST(0) = &sv_undef;
+    else ST(0) = &PL_sv_undef;
     }
 
 
@@ -505,7 +505,7 @@ STORE(sth, keysv, valuesv)
 	mg_get(valuesv);
     ST(0) = &sv_yes;
     if (!dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv))
-	if (!DBIS->set_attr(sth, keysv, valuesv))
+	if (!DBIc_DBISTATE(imp_sth)->set_attr(sth, keysv, valuesv))
 	    ST(0) = &sv_no;
 
 
@@ -522,7 +522,7 @@ FETCH_attrib(sth, keysv)
     if (0) ix = ix;	/* avoid unused variable warning */
     valuesv = dbd_st_FETCH_attrib(sth, imp_sth, keysv);
     if (!valuesv)
-	valuesv = DBIS->get_attr(sth, keysv);
+	valuesv = DBIc_DBISTATE(imp_sth)->get_attr(sth, keysv);
     ST(0) = valuesv;	/* dbd_st_FETCH_attrib did sv_2mortal	*/
 
 
@@ -534,7 +534,7 @@ DESTROY(sth)
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_sth)) {	/* was never fully set up	*/
 	STRLEN lna;
-	if (DBIc_WARN(imp_sth) && !dirty && DBIS->debug >= 2)
+	if (DBIc_WARN(imp_sth) && !dirty && DBIc_DBISTATE(imp_sth)->debug >= 2)
 	     PerlIO_printf(DBILOGFP,
 		"Statement handle %s DESTROY ignored - never set up\n",
 		    SvPV(sth,lna));

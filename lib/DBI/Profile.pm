@@ -6,9 +6,18 @@ DBI::Profile - Performance profiling and benchmarking for the DBI
 
 =head1 SYNOPSIS
 
-  use DBI;
+The easiest way to enable DBI profiling is to set the DBI_PROFILE
+environment variable to 2 and then run your code as usual:
 
-  $h->{Profile} = ... ;
+  DBI_PROFILE=2 prog.pl
+
+This will profile your program and then output a textual summary
+grouped by query.  You can also enable profiling by setting the
+Profile attribute of any DBI handle:
+
+  $dbh->{Profile} = 2;
+
+Other values are possible - see L<"ENABLING A PROFILE"> below.
 
 =head1 DESCRIPTION
 
@@ -16,6 +25,11 @@ DBI::Profile is new and experimental and subject to change.
 
 The DBI::Profile module provides a simple interface to collect and
 report performance and benchmarking data from the DBI.
+
+For a more elaborate interface, suitable for larger programs, see
+L<DBI::ProfileDumper|DBI::ProfileDumper> and L<dbiprof|dbiprof>.
+For Apache/mod_perl applications see
+L<DBI::ProfileDumper::Apache|DBI::ProfileDumper::Apache>.
 
 =head1 OVERVIEW
 
@@ -417,15 +431,17 @@ in the Profile Data structure for each statement.
 If a method throws an exception itself (not via RaiseError) then
 it won't be counted in the profile.
 
-If a HandleError subroutine throws an exception, rather than returning
-0 and letting RaiseError do it, then the method call won't be counted
+If a HandleError subroutine throws an exception (rather than returning
+0 and letting RaiseError do it) then the method call won't be counted
 in the profile.
 
-Time spent in DESTROY is currently not counted.
+Time spent in DESTROY is added to the profile of the parent handle.
 
 Time spent in DBI->*() methods is not counted. The time spent in
 the driver connect method, $drh->connect(), when it's called by
 DBI->connect is counted if the DBI_PROFILE environment variable is set.
+
+Time spent fetching tied variables, $DBI::errstr, is counted.
 
 DBI::PurePerl does not support profiling (though it could in theory).
 
@@ -449,7 +465,7 @@ use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge);
 
-$VERSION = sprintf "%d.%02d", '$Revision: 1.2 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 1.4 $ ' =~ /(\d+)\.(\d+)/;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(
@@ -482,8 +498,20 @@ sub _auto_new {
     # assigned to the Profile attribute. For example
     #	dbi:mysql(RaiseError=>1,Profile=>4/DBIx::MyProfile):dbname
     # This sub works out what to do and returns a suitable hash ref.
+    
+    my ($path, $module, @args);
 
-    my ($path, $module, @args) = split /\s*\/\s*/, $arg, -1;
+    # parse args
+    if ($arg =~ m!/!) {
+        # it's a path/module/arg/arg/arg list
+        ($path, $module, @args) = split /\s*\/\s*/, $arg, -1;
+    } elsif ($arg =~ /^\d+$/) {
+        # it's a numeric path selector
+        $path = $arg;
+    } else {
+        # it's a module name
+        $module = $arg;
+    }
 
     my @Path;
     if ($path) {
@@ -493,10 +521,13 @@ sub _auto_new {
 	push @Path, DBIprofile_MethodName	if $path & 0x04;
 	push @Path, DBIprofile_MethodClass	if $path & 0x08;
 	@Path = reverse @Path if $reverse;
+    } else {
+        # default Path
+        push @Path, DBIprofile_Statement;
     }
 
     if ($module) {
-	if (eval { require $module }) {
+	if (eval "require $module") {
 	  $class = $module;
 	}
 	else {
@@ -588,15 +619,18 @@ sub format_profile_thingy {
 }
 
 
+sub on_destroy {
+    my $self = shift;
+    my $detail = $self->format() if $self->{Data};
+    DBI->trace_msg($detail, 0) if $detail;
+}
+
 sub DESTROY {
     my $self = shift;
-    eval {
-	my $detail = $self->format() if $self->{Data};
-	DBI->trace_msg($detail, 0);
-    };
+    eval { $self->on_destroy };
     if ($@) {
-	my $class = ref($self) || $self;
-	DBI->trace_msg("$class format failed: $@", 0);
+        my $class = ref($self) || $self;
+        DBI->trace_msg("$class on_destroy failed: $@", 0);
     }
 }
 

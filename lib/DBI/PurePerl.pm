@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.12 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.15 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -101,43 +101,50 @@ use constant IMA_COPY_STMT   	=> 0x0040; #/* copy sth Statement to dbh */
 use constant IMA_END_WORK	=> 0x0080; #/* set on commit & rollback	*/
 use constant IMA_STUB		=> 0x0100; #/* donothing eg $dbh->connected */
 
-my %is_valid_attribute = map {$_ =>1 } qw(
+my %is_flag_attribute = map {$_ =>1 } qw(
 	Active
-	ActiveKids
-	Attribution
 	AutoCommit
-	BegunWork
-	CachedKids
 	ChopBlanks
 	CompatMode
+	Taint
+	TaintIn
+	TaintOut
+	InactiveDestroy
+	LongTruncOk
+	MultiThread
+	PrintError
+	RaiseError
+	ShowErrorStatement
+	Warn
+);
+my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
+	ActiveKids
+	Attribution
+	BegunWork
+	CachedKids
+	CursorName
 	Database
 	DebugDispatch
 	Driver
 	FetchHashKeyName
 	HandleError
 	ImplementorClass
-	InactiveDestroy
 	Kids
 	LongReadLen
-	LongTruncOk
-	MultiThread
 	NAME NAME_uc NAME_lc NAME_uc_hash NAME_lc_hash
 	NUM_OF_FIELDS
 	NUM_OF_PARAMS
 	Name
 	ParamValues
-	PrintError
+	Profile
 	Provider
-	RaiseError
 	RootClass
+	RowsInCache
 	RowCacheSize
-	ShowErrorStatement
 	Statement
-	Taint
 	TraceLevel
 	Version
-	Warn
-);
+));
 
 sub valid_attribute {
     my $attr = shift;
@@ -167,7 +174,7 @@ sub  _install_method {
 
     push @pre_call_frag, q{
 	return $h->{$_[0]} if exists $h->{$_[0]};
-    } if $method_name eq 'FETCH';
+    } if $method_name eq 'FETCH' && !exists $ENV{DBI_TRACE};
 
     push @pre_call_frag, "return;"
 	if IMA_STUB & $bitmask;
@@ -284,9 +291,9 @@ sub  _install_method {
     warn "$@\n$method_code\n" if $@;
     die "$@\n$method_code\n" if $@;
     *$method = $code_ref;
-    if (0 && $method =~ 'set_err') { # debuging tool
+    if (0 && $method =~ 'FETCH') { # debuging tool
 	my $l=0; # show line-numbered code for method
-	warn join("\n", map { ++$l.": $_" } split/\n/,$method_code);
+	warn "*$method = ".join("\n", map { ++$l.": $_" } split/\n/,$method_code);
     }
 }
 
@@ -301,9 +308,10 @@ sub _setup_handle {
 	foreach (qw(
 	    RaiseError PrintError HandleError
 	    Warn LongTruncOk ChopBlanks AutoCommit
-	    ShowErrorStatement FetchHashKeyName LongReadLen
+	    ShowErrorStatement FetchHashKeyName LongReadLen CompatMode
 	)) {
-	    $h_inner->{$_} = $parent->{$_} unless exists $h_inner->{$_};
+	    $h_inner->{$_} = $parent->{$_}
+		if exists $parent->{$_} && !exists $h_inner->{$_};
 	}
 	if (ref($parent) =~ /^[^:]+::db/) {
 	    $h_inner->{Database} = $parent;
@@ -316,9 +324,13 @@ sub _setup_handle {
 	elsif (ref($parent) =~ /^[^:]+::dr/){
 	    $h_inner->{Driver} = $parent;
 	}
+	$h_inner->{_parent} = $parent;
     }
     else {	# setting up a driver handle
         $h_inner->{Warn}		= 1;
+        $h_inner->{AutoCommit}		= 1;
+        $h_inner->{TraceLevel}		= 0;
+        $h_inner->{CompatMode}		= (1==0);
 	$h_inner->{FetchHashKeyName}	||= 'NAME';
 	$h_inner->{LongReadLen}		||= 80;
     }
@@ -445,14 +457,6 @@ sub FETCH {
     my($key)=shift;
     return $DBI::err     if $$key eq '*err';
     return $DBI::errstr  if $$key eq '&errstr';
-    if ($$key eq '"state'){
-die; # XXX
-        my $state = $DBI::state;
-        return $state if $state;
-        return '' unless defined $state;
-	$state= ($DBI::err) ? "S1000" : "00000" unless $state;
-        return $state;
-    }
     Carp::croak("FETCH $key not supported when using DBI::PurePerl");
 }
 
@@ -474,7 +478,10 @@ sub trace {	# XXX should set per-handle level, not global
 
 sub FETCH {
     my($h,$key)= @_;
-    if (!$h->{$key} and $key =~ /^NAME_.c$/) {
+    my $v = $h->{$key};
+#warn ((exists $h->{$key}) ? "$key=$v\n" : "$key NONEXISTANT\n");
+    return $v if defined $v;
+    if ($key =~ /^NAME_.c$/) {
         my $cols = $h->FETCH('NAME');
         return undef unless $cols;
         my @lcols = map { lc $_ } @$cols;
@@ -483,7 +490,7 @@ sub FETCH {
         $h->STORE('NAME_uc',\@ucols);
         return $h->FETCH($key);
     }
-    if (!$h->{$key} and $key =~ /^NAME.*_hash$/) {
+    if ($key =~ /^NAME.*_hash$/) {
         my $i=0;
         for my $c(@{$h->FETCH('NAME')}) {
             $h->{'NAME_hash'}->{$c}    = $i;
@@ -491,12 +498,16 @@ sub FETCH {
             $h->{'NAME_uc_hash'}->{"\U$c"} = $i;
             $i++;
         }
+        return $h->{$key};
     }
-    my $v = $h->{$key};
     if (!defined $v && !exists $h->{$key}) {
-	local $^W; # hide undef warnings
-	Carp::croak( sprintf "Can't get %s->{%s}: unrecognised attribute (@{[ %$h ]})",$h,$key)
-	    if !$is_valid_attribute{$key} and $key =~ m/^[A-Z]/;
+	return ($h->FETCH('TaintIn') && $h->FETCH('TaintOut')) if $key eq'Taint';
+	return (1==0) if $is_flag_attribute{$key}; # return perl-style sv_no, not undef
+	return $DBI::dbi_debug if $key eq 'TraceLevel';
+	if (!$is_valid_attribute{$key} and $key =~ m/^[A-Z]/) {
+	    local $^W; # hide undef warnings
+	    Carp::croak( sprintf "Can't get %s->{%s}: unrecognised attribute (@{[ %$h ]})",$h,$key )
+	}
     }
     return $v;
 }
@@ -507,18 +518,23 @@ sub STORE {
 	    unless $value == -900 || $value == -901;
 	$value = ($value == -901);
     }
+    elsif ($key =~ /^Taint/ ) {
+	Carp::croak(sprintf "Can't set %s->{%s}: Taint mode not supported by DBI::PurePerl",$h,$key);
+    }
+    elsif ($key eq 'TraceLevel') {
+	$DBI::dbi_debug = $value;
+	return 1;
+    }
     elsif (!$is_valid_attribute{$key} && $key =~ /^[A-Z]/ && !exists $h->{$key}) {
        Carp::croak(sprintf "Can't set %s->{%s}: unrecognised attribute or invalid value %s",
 	    $h,$key,$value);
     }
-    $h->{$key} = $value;
+    $h->{$key} = $is_flag_attribute{$key} ? !!$value : $value;
     return 1;
 }
 sub err {
     my $h = shift;
-    # XXX need to be shared between dbh and sth?
-    my $err = $h->{'err'} || $h->{'errstr'};
-    return $err;
+    return $h->{'err'} || $h->{'errstr'};
 }
 sub errstr {
     my $h = shift;
@@ -528,18 +544,18 @@ sub errstr {
 sub state {
     return shift->{state};
 }
-sub event { }
 sub set_err {
     my ($h, $errnum,$msg,$state, $method, $rv) = @_;
     $h = tied(%$h) || $h; # for code that calls $h->DBI::set_err(...)
     $msg = $errnum unless defined $msg;
-    $h->{'_last_method'} = $method if $method;
+    $h->{'_last_method'} = $method;
+    $h->{err}    = $DBI::err    = $errnum;
     $h->{errstr} = $DBI::errstr = $msg;
     $h->{state}  = $DBI::state  = (defined $state) ? ($state eq "00000" ? "" : $state) : ($errnum ? "S1000" : "");
-    $h->{err}    = $DBI::err    = $errnum;
-    if (my $dbh = $h->{Database}) {
-	$dbh->{errstr} = $msg;
-	$dbh->{err} = $errnum;
+    if (my $p = $h->{_parent}) {
+	$p->{err}    = $errnum;
+	$p->{errstr} = $msg;
+	$p->{state}  = $DBI::state;
     }
     return $rv; # usually undef
 }
@@ -745,6 +761,9 @@ and the files are installed automatically?)
 
 =head2 Attributes
 
+Boolean attributes still return boolean values but the actual values
+used may be different, i.e., 0 or undef instead of an empty string.
+
 Some handle attributes are either not supported or have very limited
 functionality:
 
@@ -752,6 +771,8 @@ functionality:
   InactiveDestroy
   Kids
   Taint
+  TaintIn
+  TaintOut
   TraceLevel
 
 (and probably others)

@@ -1,5 +1,5 @@
 /*
-#  $Id: Driver_xst.h,v 1.3 2002/07/18 14:23:44 timbo Exp $
+#  $Id: Driver_xst.h,v 1.4 2002/09/13 21:49:03 timbo Exp $
 #  Copyright (c) 2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -85,6 +85,11 @@ dbdxst_fetchall_arrayref(SV *sth, SV *slice, SV *batch_row_count)
 	IV maxrows = SvOK(batch_row_count) ? SvIV(batch_row_count) : -1;
 	AV *fetched_av;
 	AV *rows_av = newAV();
+	if ( !DBIc_ACTIVE(imp_sth) && maxrows>0 ) {
+	    /* to simplify application logic we return undef without an error	*/
+	    /* if we've fetched all the rows and called with a batch_row_count	*/
+	    return &sv_undef;
+	}
 	av_extend(rows_av, (maxrows>0) ? maxrows : 31);
 	while ( (maxrows < 0 || maxrows-- > 0)
 	    && (fetched_av = dbd_st_fetch(sth, imp_sth))

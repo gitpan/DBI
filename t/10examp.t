@@ -35,10 +35,12 @@ my $orig_trace_level = DBI->trace;
 DBI->trace(3,$trace_file);		# enable trace before first driver load
 
 my $r;
-my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', undef, undef);
+my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1):', undef, undef);
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 ok(0, $dbh);
 ok(0, ref $dbh);
+
+$dbh->{Taint} = 1 unless $DBI::PurePerl;
 
 if (0) {
 DBI->trace(9,undef);
@@ -67,7 +69,7 @@ ok(0, $dbh5 ne $dbh4);
 #$dbh->trace(2);
 $dbh->{AutoCommit} = 1;
 $dbh->{PrintError} = 0;
-ok(0, $dbh->{Taint}      == 1);
+ok(0, $dbh->{Taint}      == 1) unless $DBI::PurePerl && ok(0,1);
 ok(0, $dbh->{AutoCommit} == 1);
 ok(0, $dbh->{PrintError} == 0);
 #$dbh->trace(0); die;
@@ -158,6 +160,38 @@ ok(0, "@{[sort values %{$csr_b->{NAME_lc_hash}}]}" eq "0 1 2");
 ok(0, "@{[sort keys   %{$csr_b->{NAME_uc_hash}}]}" eq "MODE NAME SIZE");
 ok(0, "@{[sort values %{$csr_b->{NAME_uc_hash}}]}" eq "0 1 2");
 
+if ($DBI::PurePerl) {
+    warn " Taint mode switching tests skipped\n";
+    ok(0,1) foreach (1..15);
+} else {
+    # Check Taint* attribute switching
+
+    #$dbh->{'Taint'} = 1; # set in connect
+    ok(0, $dbh->{'Taint'});
+    ok(0, $dbh->{'TaintIn'} == 1);
+    ok(0, $dbh->{'TaintOut'} == 1);
+
+    $dbh->{'TaintOut'} = 0;
+    ok(0, $dbh->{'Taint'} == 0);
+    ok(0, $dbh->{'TaintIn'} == 1);
+    ok(0, $dbh->{'TaintOut'} == 0);
+
+    $dbh->{'Taint'} = 0;
+    ok(0, $dbh->{'Taint'} == 0);
+    ok(0, $dbh->{'TaintIn'} == 0);
+    ok(0, $dbh->{'TaintOut'} == 0);
+
+    $dbh->{'TaintIn'} = 1;
+    ok(0, $dbh->{'Taint'} == 0);
+    ok(0, $dbh->{'TaintIn'} == 1);
+    ok(0, $dbh->{'TaintOut'} == 0);
+
+    $dbh->{'TaintOut'} = 1;
+    ok(0, $dbh->{'Taint'} == 1);
+    ok(0, $dbh->{'TaintIn'} == 1);
+    ok(0, $dbh->{'TaintOut'} == 1);
+}
+
 # get a dir always readable on all platforms
 my $dir = getcwd() || cwd();
 $dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
@@ -170,11 +204,11 @@ $dir =~ m/(.*)/; $dir = $1|| die;
 my($col0, $col1, $col2, $rows);
 my(@row_a, @row_b);
 
-#$csr_a->trace(2);
 ok(0, $csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
-ok(0, $csr_a->execute( $dir ));
-ok(0, $csr_a->{Taint} = 1);
+ok(0, $csr_a->execute( $dir ), $DBI::errstr);
+ok(0, $csr_a->{Taint} = 1) unless $DBI::PurePerl && ok(0,1);
 
+#$csr_a->trace(9);
 @row_a = $csr_a->fetchrow_array;
 ok(0, @row_a);
 
@@ -182,6 +216,7 @@ ok(0, @row_a);
 ok(0, $row_a[0] eq $col0);
 ok(0, $row_a[1] eq $col1);
 ok(0, $row_a[2] eq $col2);
+#$csr_a->trace(0);
 
 # Check Taint attribute works. This requires this test to be run
 # manually with the -T flag: "perl -T -Mblib t/examp.t"
@@ -189,29 +224,81 @@ sub is_tainted {
 	my $foo;
     return ! eval { ($foo=join('',@_)), kill 0; 1; };
 }
-if (is_tainted($^X)) {
+if (0 && is_tainted($^X) && !$DBI::PurePerl) {
     print "Taint attribute test enabled\n";
-    ok(0, is_tainted($row_a[0]) );
-    ok(0, is_tainted($row_a[1]) );
-    ok(0, is_tainted($row_a[2]) );
-	# check simple method call values
-    ok(0, 1);
-	# check simple attribute values
-    ok(0, 1); # is_tainted($dbh->{AutoCommit}) );
-	# check nested attribute values (where a ref is returned)
+    $dbh->{'Taint'} = 0;
+    my $st;
+    eval { $st = $dbh->prepare($std_sql); };
+    ok(0, ref $st);
+
+    ok(0, $st->{'Taint'} == 0);
+
+    ok(0, $st->execute( $dir ));
+
+    my @row = $st->fetchrow_array;
+    ok(0, @row);
+
+    ok(0, !is_tainted($row[0]));
+    ok(0, !is_tainted($row[1]));
+    ok(0, !is_tainted($row[2]));
+
+    $st->{'TaintIn'} = 1;
+
+    @row = $st->fetchrow_array;
+    ok(0, @row);
+
+    ok(0, !is_tainted($row[0]));
+    ok(0, !is_tainted($row[1]));
+    ok(0, !is_tainted($row[2]));
+
+    $st->{'TaintOut'} = 1;
+
+    @row = $st->fetchrow_array;
+    ok(0, @row);
+
+    ok(0, is_tainted($row[0]));
+    ok(0, is_tainted($row[1]));
+    ok(0, is_tainted($row[2]));
+
+    $st->finish;
+
+    # check simple method call values
+    #ok(0, 1);
+    # check simple attribute values
+    #ok(0, 1); # is_tainted($dbh->{AutoCommit}) );
+    # check nested attribute values (where a ref is returned)
     #ok(0, is_tainted($csr_a->{NAME}->[0]) );
-	# check checking for tainted values
-	eval { $dbh->prepare($^X); 1; };
-	ok(0, $@ =~ /Insecure dependency/, $@);
-	eval { $csr_a->execute($^X); 1; };
-	ok(0, $@ =~ /Insecure dependency/, $@);
+    # check checking for tainted values
+
+    $dbh->{'Taint'} = $csr_a->{'Taint'} = 1;
+    eval { $dbh->prepare($^X); 1; };
+    ok(0, $@ =~ /Insecure dependency/, $@);
+    eval { $csr_a->execute($^X); 1; };
+    ok(0, $@ =~ /Insecure dependency/, $@);
     undef $@;
+
+    $dbh->{'TaintIn'} = $csr_a->{'TaintIn'} = 0;
+
+    eval { $dbh->prepare($^X); 1; };
+    ok(0, !$@);
+    eval { $csr_a->execute($^X); 1; };
+    ok(0, !$@);
+
+    # Reset taint status to what it was before this block, so that
+    # tests later in the file don't get confused
+    $dbh->{'Taint'} = $csr_a->{'Taint'} = 1;
 }
 else {
     warn " Taint attribute tests skipped\n";
-    ok(0,1) foreach (1..7);
+    ok(0,1) foreach (1..19);
 }
-$csr_a->{Taint} = 0;
+
+unless ($DBI::PurePerl) {
+    $csr_a->{Taint} = 0;
+    ok(0, $csr_a->{Taint} == 0);
+} else {
+    ok(0, 1);
+}
 
 ok(0, $csr_b->bind_param(1, $dir));
 ok(0, $csr_b->execute());
@@ -574,4 +661,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 215; }
+BEGIN { $tests = 243; }

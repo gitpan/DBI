@@ -34,7 +34,7 @@ package DBD::Proxy;
 use vars qw($VERSION $err $errstr $drh);
 
 
-$VERSION = "0.2003";
+$VERSION = "0.2004";
 
 $err = 0;		# holds error code   for DBI::err
 $errstr = "";		# holds error string for DBI::errstr
@@ -58,16 +58,23 @@ sub driver ($$) {
     $drh;
 }
 
+sub proxy_set_err {
+  my ($h,$errmsg) = @_;
+  my ($err,$state) = 
+    ($errmsg =~ s/ \[err=(.*?),state=(.*?)\]//) ? ($1,$2) : (1,5 x ' ');
+
+  return DBI::set_err($h, $err, $errmsg, $state);
+}
 
 package DBD::Proxy::dr; # ====== DRIVER ======
 
 $DBD::Proxy::dr::imp_data_size = 0;
 
 sub connect ($$;$$) {
-    my($drh, $dsn, $user, $auth)= @_;
+    my($drh, $dsn, $user, $auth, $attr)= @_;
     my($dsnOrig) = $dsn;
 
-    my %attr;
+    my %attr = %$attr;
     my ($var, $val);
     while (length($dsn)) {
 	if ($dsn =~ /^dsn=(.*)/) {
@@ -107,29 +114,55 @@ sub connect ($$;$$) {
 	if ($@) { $err .= " Cannot create usercipher object: $@."; }
     }
 
-    return DBI::set_err($drh, 1, $err) if $err; # Returns undef
+    return DBD::Proxy::proxy_set_err($drh, $err) if $err; # Returns undef
 
+    my %client_opts = (
+		       'peeraddr'	=> $attr{'hostname'},
+		       'peerport'	=> $attr{'port'},
+		       'socket_proto'	=> 'tcp',
+		       'application'	=> $attr{dsn},
+		       'user'		=> $user || '',
+		       'password'	=> $auth || '',
+		       'version'	=> $DBD::Proxy::VERSION,
+		       'cipher'	        => $cipherRef,
+		       'debug'		=> $attr{debug}   || 0,
+		       'timeout'	=> $attr{timeout} || undef,
+		       'logfile'	=> $attr{logfile} || undef
+		      );
+    # Options starting with 'proxy_rpc_' are forwarded to the RPC layer after
+    # stripping the prefix.
+    while (my($var,$val) = each %attr) {
+	if ($var =~ s/^proxy_rpc_//) {
+	    $client_opts{$var} = $val;
+	}
+    }
     # Create an RPC::PlClient object.
-    my($client, $msg) = eval { RPC::PlClient->new(
-	'peeraddr'	=> $attr{'hostname'},
-	'peerport'	=> $attr{'port'},
-	'socket_proto'	=> 'tcp',
-	'application'	=> $attr{dsn},
-	'user'		=> $user || '',
-	'password'	=> $auth || '',
-	'version'	=> $DBD::Proxy::VERSION,
-	'cipher'	=> $cipherRef,
-	'debug'		=> $attr{debug}   || 0,
-	'timeout'	=> $attr{timeout} || undef,
-	'logfile'	=> $attr{logfile} || undef
-    ) };
+    my($client, $msg) = eval { RPC::PlClient->new(%client_opts) };
 
-    return DBI::set_err($drh, 1, "Cannot log in to DBI::ProxyServer: $@")
+    return DBD::Proxy::proxy_set_err($drh, "Cannot log in to DBI::ProxyServer: $@")
 	if $@; # Returns undef
-    return DBI::set_err($drh, 1, "Constructor didn't return a handle: $msg")
+    return DBD::Proxy::proxy_set_err($drh, "Constructor didn't return a handle: $msg")
 	unless ($msg =~ /^((?:\w+|\:\:)+)=(\w+)/); # Returns undef
 
     $msg = RPC::PlClient::Object->new($1, $client, $msg);
+
+    my $max_proto_ver;
+    my ($server_ver_str) = eval { $client->Call('Version') };
+    if ( $@ ) {
+      # Server denies call, assume legacy protocol.
+      $max_proto_ver = 1;
+    } else {
+      # Parse proxy server version.
+      my ($server_ver_num) = $server_ver_str =~ /^DBI::ProxyServer\s+([\d\.]+)/;
+      $max_proto_ver = $server_ver_num >= 0.3 ? 2 : 1;
+    }
+    my $req_proto_ver;
+    if ( exists $attr{proxy_lazy_prepare} ) {
+      $req_proto_ver = ($attr{proxy_lazy_prepare} == 0) ? 2 : 1;
+      return DBD::Proxy::proxy_set_err($drh, 
+                 "DBI::ProxyServer does not support synchronous statement preparation.")
+	if $max_proto_ver < $req_proto_ver;
+    }
 
     # Switch to user specific encryption mode, if desired
     if ($userCipherRef) {
@@ -141,7 +174,8 @@ sub connect ($$;$$) {
 	    'Name' => $dsnOrig,
 	    'proxy_dbh' => $msg,
 	    'proxy_client' => $client,
-	    'RowCacheSize' => $attr{'RowCacheSize'} || 20
+	    'RowCacheSize' => $attr{'RowCacheSize'} || 20,
+	    'proxy_proto_ver' => $req_proto_ver || 1
    });
 
     foreach $var (keys %attr) {
@@ -168,6 +202,13 @@ sub rollback;
 
 use vars qw(%ATTR $AUTOLOAD);
 
+# inherited: STORE / FETCH against this class.
+# local:     STORE / FETCH against parent class.
+# cached:    STORE to remote and local objects, FETCH from local.
+# remote:    STORE / FETCH against remote object only (default).
+#
+# Note: Attribute names starting with 'proxy_' always treated as 'inherited'.
+#
 %ATTR = (	# see also %ATTR in DBD::Proxy::st
     'Warn' => 'local',
     'Active' => 'local',
@@ -198,7 +239,7 @@ sub AUTOLOAD {
           sub ~method~ {
             my $h = shift;
 	    my @result = eval { $h->{'proxy_~type~h'}->~method~(@_) };
-            return DBI::set_err($h, 1, $@) if $@;
+            return DBD::Proxy::proxy_set_err($h, $@) if $@;
             wantarray ? @result : $result[0];
           }
 	 / :
@@ -206,7 +247,7 @@ sub AUTOLOAD {
 	  sub ~method~ {
 	    my $h = shift;
 	    my @result = eval { $h->{'proxy_~type~h'}->func(@_, '~method~') };
-	    return DBI::set_err($h, 1, $@) if $@;
+	    return DBD::Proxy::proxy_set_err($h, $@) if $@;
 	    wantarray ? @result : $result[0];
           }
          /;
@@ -243,7 +284,7 @@ sub STORE ($$$) {
 
     if ($type eq 'remote'  ||  $type eq 'cached') {
 	my $result = eval { $dbh->{'proxy_dbh'}->STORE($attr => $val) };
-	return DBI::set_err($dbh, 1, $@) if $@; # returns undef
+	return DBD::Proxy::proxy_set_err($dbh, $@) if $@; # returns undef
 	$dbh->{$attr} = $val if $type eq 'cached';
 	return $result;
     }
@@ -262,22 +303,35 @@ sub FETCH ($$) {
     return $dbh->SUPER::FETCH($attr) unless $type eq 'remote';
 
     my $result = eval { $dbh->{'proxy_dbh'}->FETCH($attr) };
-    return DBI::set_err($dbh, 1, $@) if $@;
+    return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
 }
 
 sub prepare ($$;$) {
     my($dbh, $stmt, $attr) = @_;
-
-    # We *could* send the statement over the net immediately, but the
-    # DBI specs allows us to defer that until the first 'execute'.
-    # XXX should make this configurable
     my $sth = DBI::_new_sth($dbh, {
-	    'Statement' => $stmt,
-	    'proxy_attr' => $attr,
-	    'proxy_params' => [],
-    	'proxy_cache_only' => 0,
-    });
+				   'Statement' => $stmt,
+				   'proxy_attr' => $attr,
+				   'proxy_cache_only' => 0,
+				   'proxy_params' => [],
+				  }
+			   );
+    my $proto_ver = $dbh->{'proxy_proto_ver'};
+    if ( $proto_ver > 1 ) {
+      $sth->{'proxy_attr_cache'} = {cache_filled => 0};
+      my $rdbh = $dbh->{'proxy_dbh'};
+      my $rsth = eval { $rdbh->prepare($sth->{'Statement'}, $sth->{'proxy_attr'}, undef, $proto_ver) };
+      return DBD::Proxy::proxy_set_err($sth, $@) if $@;
+      return DBD::Proxy::proxy_set_err($sth, "Constructor didn't return a handle: $rsth")
+	unless ($rsth =~ /^((?:\w+|\:\:)+)=(\w+)/);
+    
+      my $client = $dbh->{'proxy_client'};
+      $rsth = RPC::PlClient::Object->new($1, $client, $rsth);
+      
+      $sth->{'proxy_sth'} = $rsth;
+      # If statement is a positioned update we do not want any readahead.
+      $sth->{'RowCacheSize'} = 1 if $stmt =~ /\bfor\s+update\b/i;
+    }
     $sth;
 }
 
@@ -303,7 +357,7 @@ sub quote {
     # Jochen
 
     my $result = eval { $dbh->{'proxy_dbh'}->quote(@_) };
-    return DBI::set_err($dbh, 1, $@) if $@;
+    return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
 }
 
@@ -312,7 +366,7 @@ sub table_info {
     my $rdbh = $dbh->{'proxy_dbh'};
     #warn "table_info(@_)";
     my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
-    return DBI::set_err($dbh, 1, $@) if $@;
+    return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     my $sth = DBI::_new_sth($dbh, {
         'Statement' => "SHOW TABLES",
 	'proxy_params' => [],
@@ -321,11 +375,14 @@ sub table_info {
 		'NUM_OF_PARAMS' => 0, 
 		'NUM_OF_FIELDS' => $numFields, 
 		'NAME' => $names, 
-		'TYPE' => $types
+		'TYPE' => $types,
+		'cache_filled' => 1
 		},
     	'proxy_cache_only' => 1,
     });
     $sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
+    $sth->SUPER::STORE('Active' => 1);
+    $sth->{'proxy_rows'} = @rows;
     return $sth;
 }
 
@@ -339,7 +396,7 @@ sub tables {
 sub type_info_all {
     my $dbh = shift;
     my $result = eval { $dbh->{'proxy_dbh'}->type_info_all(@_) };
-    return DBI::set_err($dbh, 1, $@) if $@;
+    return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
 }
 
@@ -350,6 +407,15 @@ $DBD::Proxy::st::imp_data_size = 0;
 
 use vars qw(%ATTR);
 
+# inherited:  STORE to current object. FETCH from current if exists, else call up
+#              to the (proxy) database object.
+# local:      STORE / FETCH against parent class.
+# cache_only: STORE noop (read-only).  FETCH from private_* if exists, else call
+#              remote and cache the result.
+# remote:     STORE / FETCH against remote object only (default).
+#
+# Note: Attribute names starting with 'proxy_' always treated as 'inherited'.
+#
 %ATTR = (	# see also %ATTR in DBD::Proxy::db
     'Warn' => 'local',
     'Active' => 'local',
@@ -378,60 +444,68 @@ sub execute ($@) {
     # new execute, so delete any cached rows from previous execute
     undef $sth->{'proxy_data'};
 
-    my $dbh = $sth->FETCH('Database');
-    my $client = $dbh->{'proxy_client'};
     my $rsth = $sth->{proxy_sth};
+    my $dbh = $sth->FETCH('Database');
+    my $proto_ver = $dbh->{proxy_proto_ver};
 
-    my ($numFields, $numParams, $numRows, $names, $types, @outParams);
+    my ($numRows, @outData);
 
-    if ($sth->{'proxy_data'}) {
-	my $attrCache = $sth->{'proxy_attr_cache'};
-	$numFields = $attrCache->{'NUM_OF_FIELDS'};
-	$numParams = $attrCache->{'NUM_OF_PARAMS'};
-	$names = $attrCache->{'NAME'};
-	$types = $attrCache->{'TYPE'};
-	$numRows = scalar @{$sth->{'proxy_data'}};
+    if ( $proto_ver > 1 ) {
+      ($numRows, @outData) = eval { $rsth->execute($params, $proto_ver) };
+      return DBD::Proxy::proxy_set_err($sth, $@) if $@;
+      
+      # Attributes passed back only on the first execute() of a statement.
+      unless ($sth->{proxy_attr_cache}->{cache_filled}) {
+	my ($numFields, $numParams, $names, $types) = splice(@outData, 0, 4); 
+	$sth->{'proxy_attr_cache'} = {
+				      'NUM_OF_FIELDS' => $numFields,
+				      'NUM_OF_PARAMS' => $numParams,
+				      'NAME'          => $names,
+				      'cache_filled'  => 1
+				     };
+	$sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
+	$sth->SUPER::STORE('NUM_OF_PARAMS' => $numParams);
+      }
+
     } else {
+      if ($rsth) {
+	($numRows, @outData) = eval { $rsth->execute($params, $proto_ver) };
+	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 
-    if (!$rsth) {
+      } else {
 	my $rdbh = $dbh->{'proxy_dbh'};
-
-	($rsth, $numFields, $numParams, $names, $types, $numRows, @outParams) =
-	    eval { $rdbh->prepare($sth->{'Statement'},
-				  $sth->{'proxy_attr'}, $params) };
-	return DBI::set_err($sth, 1, $@) if $@;
-	return DBI::set_err($sth, 1,
-			    "Constructor didn't return a handle: $rsth")
-	    unless ($rsth =~ /^((?:\w+|\:\:)+)=(\w+)/);
-
+	
+	# Legacy prepare is actually prepare + first execute on the server.
+        ($rsth, @outData) =
+	  eval { $rdbh->prepare($sth->{'Statement'},
+				$sth->{'proxy_attr'}, $params, $proto_ver) };
+	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
+	return DBD::Proxy::proxy_set_err($sth, "Constructor didn't return a handle: $rsth")
+	  unless ($rsth =~ /^((?:\w+|\:\:)+)=(\w+)/);
+	
+	my $client = $dbh->{'proxy_client'};
 	$rsth = RPC::PlClient::Object->new($1, $client, $rsth);
 
+	my ($numFields, $numParams, $names, $types) = splice(@outData, 0, 4);
 	$sth->{'proxy_sth'} = $rsth;
- 	$sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
- 	$sth->SUPER::STORE('NUM_OF_PARAMS' => $numParams);
-    } else {
-	my $attrCache = $sth->{'proxy_attr_cache'};
-	$numFields = $attrCache->{'NUM_OF_FIELDS'};
-	$numParams = $attrCache->{'NUM_OF_PARAMS'};
-	$names = $attrCache->{'NAME'};
-	$types = $attrCache->{'TYPE'};
-	($numRows, @outParams) = eval { $rsth->execute($params) };
-	return DBI::set_err($sth, 1, $@) if $@;
-    }
-    }
-    $sth->{'proxy_rows'} = $numRows;
-    $sth->{'proxy_attr_cache'} = {
+        $sth->{'proxy_attr_cache'} = {
 	    'NUM_OF_FIELDS' => $numFields,
 	    'NUM_OF_PARAMS' => $numParams,
 	    'NAME'          => $names
-    };
-
-    $sth->SUPER::STORE('Active' => 1) if $numFields; # is SELECT
-
-    if (@outParams) {
+        };
+	$sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
+	$sth->SUPER::STORE('NUM_OF_PARAMS' => $numParams);
+	$numRows = shift @outData;
+      }
+    }
+    # Always condition active flag.
+    $sth->SUPER::STORE('Active' => 1) if $sth->FETCH('NUM_OF_FIELDS'); # is SELECT
+    $sth->{'proxy_rows'} = $numRows;
+    # Any remaining items are output params.
+    if (@outData) {
 	foreach my $p (@$params) {
-	    if (ref($p)  &&  @$p > 2) {
-		my $ref = shift @outParams;
+	    if (ref($p->[0])) {
+		my $ref = shift @outData;
 		${$p->[0]} = $$ref;
 	    }
 	}
@@ -454,7 +528,7 @@ sub fetch ($) {
 	}
 	my $num_rows = $sth->FETCH('RowCacheSize') || 20;
 	my @rows = eval { $rsth->fetch($num_rows) };
-	return DBI::set_err($sth, 1, $@) if $@;
+	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	unless (@rows == $num_rows) {
 	    undef $sth->{'proxy_data'};
 	    # server side has already called finish
@@ -486,7 +560,7 @@ sub finish ($) {
 	: $sth->FETCH('Database')->{'proxy_no_finish'};
     unless ($no_finish) {
 	my $result = eval { $rsth->finish() };
-	return DBI::set_err($sth, 1, $@) if $@;
+	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	return $result;
     }
     1;
@@ -508,7 +582,7 @@ sub STORE ($$$) {
     if ($type eq 'remote') {
 	my $rsth = $sth->{'proxy_sth'}  or  return undef;
 	my $result = eval { $rsth->STORE($attr => $val) };
-	return DBI::set_err($sth, 1, $@) if ($@);
+	return DBD::Proxy::proxy_set_err($sth, $@) if ($@);
 	return $result;
     }
     return $sth->SUPER::STORE($attr => $val);
@@ -537,7 +611,7 @@ sub FETCH ($$) {
     if ($type ne 'local') {
 	my $rsth = $sth->{'proxy_sth'}  or  return undef;
 	my $result = eval { $rsth->FETCH($attr) };
-	return DBI::set_err($sth, 1, $@) if $@;
+	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	return $result;
     }
     elsif ($attr eq 'RowsInCache') {

@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.5 2002/05/25 17:36:13 timbo Exp $
+#   $Id: Sponge.pm,v 11.6 2002/10/29 10:00:44 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -39,7 +39,6 @@
     $imp_data_size = 0;
     # we use default (dummy) connect method
     sub disconnect_all { }
-    sub DESTROY { }
 }
 
 
@@ -142,8 +141,6 @@
         return $dbh->SUPER::STORE($attrib, $value);
     }
 
-    sub DESTROY { }
-
 }
 
 
@@ -194,8 +191,6 @@
 	# else pass up to DBI to handle
 	return $sth->SUPER::STORE($attrib, $value);
     }
-
-    sub DESTROY { }
 }
 
 1;

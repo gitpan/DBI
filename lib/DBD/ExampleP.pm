@@ -6,9 +6,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.8 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.6 2002/07/15 11:18:57 timbo Exp $
+#   $Id: ExampleP.pm,v 11.8 2002/10/29 10:00:44 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -26,6 +26,10 @@
 	SQL_INTEGER, SQL_INTEGER, SQL_INTEGER,
 	SQL_INTEGER, SQL_INTEGER, SQL_VARCHAR);
     @stattypes{@statnames} = @stattypes;
+    @statprec = ((10) x (@statnames-1), 1024);
+    @statprec{@statnames} = @statprec;
+    die unless @statnames == @stattypes;
+    die unless @statprec  == @stattypes;
 
     $drh = undef;	# holds driver handle once initialised
     $err = 0;		# The $DBI::err value
@@ -108,9 +112,7 @@
 	$outer->STORE('NULLABLE' => [ (0) x @fields ]);
 	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
 	$outer->STORE('NUM_OF_PARAMS' => ($dir !~ /\?/) ? 0 : 1);
-	# should do better here:
-	$outer->STORE('SCALE'     => undef);
-	$outer->STORE('PRECISION' => undef);
+	$outer->STORE('SCALE'     => [ (0) x @fields ] );
 
 	$outer;
     }
@@ -326,6 +328,8 @@
 		$sth->finish;
 		return;
 	    }
+	    # untaint $f so that we can use this for DBI taint tests
+	    ($f) = ($f =~ m/^(.*)$/);
 	    my $file = $haveFileSpec
 		? File::Spec->catfile($dir, $f) : "$dir/$f";
 	    # put in all the data fields
@@ -356,8 +360,10 @@
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
 	if ($attrib eq 'TYPE'){
-	    my @t = @DBD::ExampleP::stattypes{ @{ $sth->{NAME} } };
-	    return \@t;
+	    return [ @DBD::ExampleP::stattypes{ @{ $sth->{NAME_lc} } } ];
+	}
+	elsif ($attrib eq 'PRECISION'){
+	    return [ @DBD::ExampleP::statprec{  @{ $sth->{NAME_lc} } } ];
 	}
 	elsif ($attrib eq 'ParamValues') {
 	    my $dbd_param = $sth->{dbd_param} || [];

@@ -1,6 +1,10 @@
 
 *** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
 
+Devel::Leak
+
+DBIx::DWIW
+
 The DBI needs some standard way to handle the 'success with info' concept:
 	$h->{HandleEvent}
 
@@ -19,9 +23,14 @@ DBI::Profile: add simple way to normalise the sql (convert constants
 to placeholders) so profiling is more effective for drivers/applications
 which don't use placeholders.
 
+DBI::Profile: Add calc of approx XS method call and timing overhead
+by calling perl_call("DBI::dbi_time") at boot time for profile, and
+add to each sample.
+
 Sort out DBIcDBISTATE() and DBIS mess
 
-fetchall_hashref: may be better to call fetchall_arrayref then convert to hashes
+fetchall_hashref: may be better to call (the optimized) fetchall_arrayref
+then convert to hashes
 
 Sponge behave_like - generalize?
 

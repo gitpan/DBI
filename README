@@ -36,10 +36,17 @@ which you will be told are already answered in the documentation.
 For more information and to keep informed about progress you can join
 the a mailing list via mailto:dbi-users-help@perl.org
 
+To help you make the best use of the dbi-users mailing list,
+and any other lists or forums you may use, I strongly
+recommend that you read "How To Ask Questions The Smart Way"
+by Eric Raymond:
+ 
+  http://www.tuxedo.org/~esr/faqs/smart-questions.html
+
 Much useful information and online archives of the mailing lists can be
 found at http://dbi.perl.org/
 
-See also http://www.perl.com/CPAN/
+See also http://search.cpan.org/
 
 
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
