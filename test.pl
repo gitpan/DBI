@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.13 1996/01/29 20:02:50 timbo Exp $
+# $Id: test.pl,v 1.14 1996/03/05 00:50:37 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,7 +11,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.13 $}."\n";
+	print q{DBI test application $Revision: 1.14 $}."\n";
 	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
 }
 
@@ -61,13 +61,7 @@ print "\n";
 
 
 my($dbh);   # first, get connected using either of these methods:
-if (0){
-	$dbh = DBI->connect('', '', '', $driver);
-}else{
-	my($drh) = DBI->install_driver($driver);
-	print "Driver installed as $drh\n";
-	$dbh = $drh->connect('', '', '');
-}
+$dbh = DBI->connect('', '', '', $driver);
 $dbh->debug($::opt_h);
 
 if ($::opt_m) {

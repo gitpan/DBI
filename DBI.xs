@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.50 1996/01/29 20:02:50 timbo Exp $
+/* $Id: DBI.xs,v 1.51 1996/03/05 00:50:37 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -119,13 +119,17 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     char *v;
     if (!sv)
 	return "NULL";
-    v = (SvOK(sv)) ? SvPV(sv,len) : "undef";
-    /* undef and numbers get no special treatment */
-    if (!SvOK(sv) || SvIOK(sv) || SvNOK(sv))
-	return v;
-    /* In the future refs with overload magic will need handling */
-    /* because the '""' method may return long or binary strings */
-    if (SvROK(sv))
+    if (!SvOK(sv))
+	return "undef";
+    if (SvROK(sv) && SvAMAGIC(sv)) {	/* handle Overload magic refs */
+	SvAMAGIC_off(sv);	/* should really be done via local scoping */
+	v = SvPV(sv,len);
+	SvAMAGIC_on(sv);
+    }
+    else	/* handles all else, including non AMAGIC refs	*/
+	v = SvPV(sv,len);
+    /* numbers and (un-amagic'd) refs get no special treatment */
+    if (SvNIOK(sv) || SvROK(sv))
 	return v;
     /* for strings we limit the length and translate codes */
     nsv = sv_2mortal(newSVpv("'",1));

@@ -3,11 +3,11 @@ require 5.002;	# 5.002beta2 or later
 {
 package DBI;
 
-$VERSION = '0.67';
+$VERSION = '0.68';
 
-my $Revision = substr(q$Revision: 1.51 $, 10);
+my $Revision = substr(q$Revision: 1.52 $, 10);
 
-# $Id: DBI.pm,v 1.51 1996/02/15 22:43:55 timbo Exp $
+# $Id: DBI.pm,v 1.52 1996/03/05 00:50:37 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -73,7 +73,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 my %DBI_IF = (	# Define the DBI Interface:
 
     dr => {		# Database Driver Interface
-	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'] },
+	'connect'  =>	{ U =>[1,6,'[$db [,$user [,$passwd [, $driver [,\%attr]]]]]'] },
 	disconnect_all=>{ U =>[1,1] },
 	data_sources => { U =>[1,1] },
 	@Common_IF,
@@ -133,15 +133,19 @@ END {
 # --- The DBI->connect Front Door function
 
 sub connect {
-    my($class, $database, $user, $passwd, $driver, $attr) = @_;
+    my $class = shift;
+    my($database, $user, $passwd, $driver, $attr) = @_;
 
-    $database = $ENV{DBI_DBNAME} unless $database;
-    $driver   = $ENV{DBI_DRIVER} unless $driver;
+    $database ||= $ENV{DBI_DBNAME};
+    $driver   ||= $ENV{DBI_DRIVER};
 
     warn "DBI->connect($database, $user, $passwd, $driver, $attr)\n"
 	    if $DBI::dbi_debug;
     die 'Usage: DBI->connect([$db [,$user [,$passwd [, $driver [,\%attr]]]]])'
 	    unless ($class eq 'DBI' && @_ <= 6);
+
+    # Experimental hook
+    return DBIODBC->connect(@_) if $database =~ m/^[A-Z]+=/; # DSN= etc
 
     confess "DBI->connect() currently needs a driver" unless $driver;
 
@@ -561,12 +565,12 @@ if it's not a simple scalar:
 ---------------------------------------------------------------
 DBI OBJECTS
 
+$dbh = DBI->connect([$database [, $username [, $auth [, $driver [, \%attribs]]]]]);
+$rc  = DBI->disconnect_all;  # disconnect all database sessions
+
 $drh = DBI->internal; # return $drh for internal Switch 'driver'
 $drh = DBI->install_driver($driver_name [, \%attributes ] );
 $rv  = DBI->install_method($class_method, $filename [, \%attribs]);
-
-$dbh = DBI->connect([$database [, $username [, $auth [, $driver [, \%attribs]]]]]);
-$rc  = DBI->disconnect_all;  # disconnect all database sessions
 
 $DBI::db_error   same as DBI->internal->{LastDbh}->{Error}
 $DBI::db_errstr  same as DBI->internal->{LastDbh}->{ErrorStr}
@@ -639,7 +643,7 @@ $sth->{NUM_OF_PARAMS}  ($)
 
 ---------------------------------------------------------------
 
-WWW links
+Random WWW links
 
 http://www-ccs.cs.umass.edu/db.html
 http://www.odmg.org/odmg93/updates_dbarry.htm

@@ -6,8 +6,13 @@ Current DBI Implementation Notes:
 	$sth->bind_param currently takes a variable value not a reference.
 	That may change later.
 
-    *** MANY THINGS MAY CHANGE SOON *** See README file ***
+    *** MANY THINGS MAY CHANGE *** See README file ***
 
+
+Changes in DBI 0.68,	2 Mar 1996
+
+	Changes to suit perl5.002 and site_lib directories.
+	Detects old versions ahead on new in @INC.
 
 Changes in DBI 0.67,	15 Feb 1996
 
