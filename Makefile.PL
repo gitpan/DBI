@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.62 1997/07/22 23:17:50 timbo Exp $
+# $Id: Makefile.PL,v 1.63 1997/07/25 11:17:49 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -9,8 +9,11 @@ use Config;
 	NAME=> 'DBI',
 	VERSION_FROM=> 'DBI.pm',
 	clean => { FILES=> '$(DISTVNAME)/' },
-	dist  => { DIST_DEFAULT=> 'clean distcheck disttest ci tardist',
-				PREOP => '$(MAKE) -f Makefile.old distdir' },
+	dist  => {
+		DIST_DEFAULT=> 'clean distcheck disttest ci tardist',
+		PREOP => '$(MAKE) -f Makefile.old distdir',
+		COMPRESS => 'gzip', SUFFIX => 'gz',
+	},
 );
 
 $opts{'DEFINE'} = '-Wall -Wno-comment'
@@ -53,10 +56,11 @@ sub MY::post_initialize {
 
     if ($Config{privlibexp} ne $Config{sitelibexp}) {
 	warn "
-WARNING! By default new modules are installed into your 'site_lib'
+Warning: By default new modules are installed into your 'site_lib'
 directories. Since site_lib directories come after the normal library
-directories you MUST delete old DBI files and directories from your
+directories you must delete old DBI files and directories from your
 'privlib' and 'archlib' directories and their auto subdirectories.
+If you don't have an old version of the DBI installed you can ignore this.
 ";
 	my $find = "find $Config{privlibexp} $Config{archlibexp} ";
 	$find .= "-name 'DB*' -print | sort | uniq";

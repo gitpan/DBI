@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.88'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '0.89'; # ==> ALSO update the version in the pod text below!
 
 =head1 NAME
 
@@ -53,8 +53,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the draft DBI specification that corresponds to the DBI version 0.88
-($Date: 1997/07/22 23:17:50 $).
+This is the draft DBI specification that corresponds to the DBI version 0.89
+($Date: 1997/07/25 11:17:49 $).
 
  * The DBI specification is currently evolving quite quickly so it is
  * important to check that you have the latest copy. The RECENT CHANGES
@@ -128,9 +128,9 @@ Added DBI->data_sources($driver) method for implementation by drivers.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.81 $, 10);
+my $Revision = substr(q$Revision: 1.82 $, 10);
 
-# $Id: DBI.pm,v 1.81 1997/07/22 23:17:50 timbo Exp $
+# $Id: DBI.pm,v 1.82 1997/07/25 11:17:49 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -1067,6 +1067,10 @@ as the first argument to the L</prepare> method.
 
 Establishes a database connection (session) to the requested data_source.
 Returns a database handle object.
+
+Multiple simultaneous connections to multiple databases through multiple
+drivers can be made via the DBI. Simply make one connect call for each
+and keep a copy of each returned database handle.
 
 The $data_source value should begin with 'dbi:driver_name:'. That
 prefix will be stripped off and the driver_name part is used to specify
@@ -2085,13 +2089,12 @@ http://www.perl.co.uk/tpc for more details.
 
 =head1 OUTSTANDING ISSUES TO DO
 
-	bind variables (and 'in (:1)' issues)
-	blob_read
-	error handling
 	data types (ISO type numbers and type name conversions)
-	portability
+	error handling
 	data dictionary methods
 	test harness support methods
+	portability
+	blob_read
 	etc
 
 =head1 FREQUENTLY ASKED QUESTIONS

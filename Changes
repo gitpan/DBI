@@ -1,4 +1,10 @@
 
+Changes in DBI 0.89,	25th July 1997
+
+  Minor fix to neatsvpv (mainly used for debug trace) to workaround
+  bug in perl where SvPV removes IOK flag from an SV.
+  Minor updates to the docs.
+
 Changes in DBI 0.88,	22nd July 1997
 
   Fixed build for perl5.003 and Win32 with Borland.

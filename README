@@ -96,6 +96,7 @@ please don't send them just to me.  Please include:
 2. The output of perl -V
 
 3. If you get a core dump, try to include a stack trace from it.
+   (Try installing the Devel::CoreStack module to get a stack trace.)
    If the stack trace mentions XS_DynaLoader_dl_load_file then rerun
    make test after setting the environment variable PERL_DL_DEBUG to 2.
 
@@ -251,9 +252,6 @@ would be replaced. That's not the case. I believe that more functionality
 can be added more easily to drivers such as DBD::Oracle once SQL CLI
 concepts and definitions are being used within the DBI as a whole.
 
-Please note that the ODBC work is a long term project and not likely
-to simply appear one day. Please don't ask me about progress. If you're
-on the dbi-users or dbi-dev mailing lists you'll hear about it as it
-progresses.
+A DBD::ODBC module is now available from CPAN sites.
 
 -------------------------------------------------------------------------

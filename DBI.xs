@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.76 1997/07/22 23:17:50 timbo Exp $
+/* $Id: DBI.xs,v 1.77 1997/07/25 11:17:49 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -166,10 +166,21 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     STRLEN len;
     SV *nsv = NULL;
     char *v;
+
+    /* deal with the common cases fast and efficiently */
     if (!sv)
 	return "NULL";
     if (!SvOK(sv))
 	return "undef";
+    if (SvNIOK(sv)) {
+	char buf[48];
+	if (SvIOK(sv))
+	     sprintf(buf, "%ld", (long)SvIV(sv));
+	else sprintf(buf, "%g",  (double)SvNV(sv));
+	nsv = sv_2mortal(newSVpv(buf, 0));
+	return SvPVX(nsv);
+    }
+
     if (SvROK(sv) && SvAMAGIC(sv)) {	/* handle Overload magic refs */
 	SvAMAGIC_off(sv);	/* should really be done via local scoping */
 	v = SvPV(sv,len);
@@ -180,6 +191,7 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     /* numbers and (un-amagic'd) refs get no special treatment */
     if (SvNIOK(sv) || SvROK(sv))
 	return v;
+
     /* for strings we limit the length and translate codes */
     nsv = sv_2mortal(newSVpv("'",1));
     if (maxlen == 0)
