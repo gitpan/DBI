@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.19 1999/06/09 20:52:53 timbo Exp $
+# $Id: DBI.pm,v 10.22 1999/06/13 23:46:47 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = 1.09; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.10"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -67,10 +67,10 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.09
-($Date: 1999/06/09 20:52:53 $).
+This is the DBI specification that corresponds to the DBI version 1.10
+($Date: 1999/06/13 23:46:47 $).
 
-The DBI specification is currently evolving quite quickly so it is
+The DBI specification is evolving at a steady pace so it's
 important to check that you have the latest copy. The RECENT CHANGES
 section below has a summary of user-visible changes and the F<Changes>
 file supplied with the DBI holds more detailed change information.
@@ -96,9 +96,14 @@ significant user-visible changes in that version).
 
 =over 4 
 
-=item DBI 1.00 - 14th August 1998
+=item Between DBI 1.00 and DBI 1.09
 
-Added $dbh->table_info.
+  Added $dbh->selectcol_arrayref($statement) method.
+
+  Connect now allows you to specify attribute settings within the DSN
+    E.g., "dbi:Driver(RaiseError=>1,Taint=>1,AutoCommit=>0):dbname"
+
+  Added $h->{Taint}, $sth->{NAME_uc} and $sth->{NAME_lc} attributes.
 
 =back 
 
@@ -113,7 +118,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.19 $, 10);
+my $Revision = substr(q$Revision: 10.22 $, 10);
 
 
 use Carp;
@@ -147,14 +152,16 @@ $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 # then you haven't installed the DBI correctly. Read the README
 # then install it again.
 bootstrap DBI;
+
 }
+*trace_msg = \&DBD::_::common::trace_msg;
 
 use strict;
 
 my $connect_via = "connect";
 
 # check if user wants a persistent database connection ( Apache + mod_perl )
-if (substr($ENV{GATEWAY_INTERFACE}||'',0,8) eq 'CGI-Perl' and $INC{'Apache/DBI.pm'}) {
+if ($INC{'Apache/DBI.pm'} && substr($ENV{GATEWAY_INTERFACE}||'',0,8) eq 'CGI-Perl') {
     $connect_via = "Apache::DBI::connect";
     DBI->trace_msg("DBI connect via $INC{'Apache/DBI.pm'}\n");
 }
@@ -327,17 +334,6 @@ sub connect {
     ($old_driver, $attr) = ($attr, $old_driver) if $attr and !ref($attr);
 
     $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '' unless $old_driver;
-    unless (defined $user) {
-	$user = $ENV{DBI_USER};
-	carp("$class->connect: user not defined and DBI_USER env var not set")
-	    unless defined $user;
-    }
-    unless (defined $pass) {
-	$pass = $ENV{DBI_PASS};
-	carp("$class->connect: password not defined and DBI_PASS env var not set")
-	    unless defined $user;
-    }
-
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;
@@ -377,6 +373,9 @@ sub connect {
     }
 
     my $drh = $class->install_driver($driver) || die "panic: install_driver($driver) failed";
+
+    ($user, $pass) = $drh->default_user($user,$pass)
+	if !(defined $user && defined $pass);
 
     unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
 	my $msg = "$class->connect failed: ".$drh->errstr;
@@ -623,7 +622,6 @@ sub connect_test_perf {
     return $td;
 }
 
-*trace_msg = \&DBD::_::common::trace_msg;
 
 # Help people doing DBI->errstr, might even document it one day
 # XXX probably best moved to cheaper XS code
@@ -798,6 +796,21 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 {   package DBD::_::dr;  # ====== DRIVER ======
     @ISA = qw(DBD::_::common);
     use strict;
+
+    sub default_user {
+	my ($drh, $user, $pass) = @_;
+	unless (defined $user) {
+	    $user = $ENV{DBI_USER};
+	    carp("DBI connect: user not defined and DBI_USER env var not set")
+		if 0 && !defined $user && $drh->{Warn};	# XXX enable later
+	}
+	unless (defined $pass) {
+	    $pass = $ENV{DBI_PASS};
+	    carp("DBI connect: password not defined and DBI_PASS env var not set")
+		if 0 && !defined $pass && $drh->{Warn};	# XXX enable later
+	}
+	return ($user, $pass);
+    }
 
     sub connect { # normally overridden, but a handy default
 	my ($drh, $dsn, $user, $auth) = @_;
@@ -1448,7 +1461,7 @@ SQL history.
   $dbh = DBI->connect($data_source, $username, $password) || die $DBI::errstr;
   $dbh = DBI->connect($data_source, $username, $password, \%attr) || die $DBI::errstr;
 
-Establishes a database connection (session) to the requested data_source.
+Establishes a database connection, or session, to the requested data_source.
 Returns a database handle object if the connect succeeds. Use
 $dbh->disconnect to terminate the connection.
 
@@ -1461,7 +1474,7 @@ drivers can be made via the DBI. Simply make one connect call for each
 and keep a copy of each returned database handle.
 
 The $data_source value should begin with 'dbi:driver_name:'.  The
-driver_name part sprcifies the driver that will be used to make the
+driver_name part specifies the driver that will be used to make the
 connection (letter case is significant).
 
 As a convenience, if the $data_source parameter is undefined or empty the
@@ -1495,9 +1508,10 @@ and passed to the DBD::Proxy module. DBI_AUTOPROXY would typically be
 
 If $username or $password are I<undefined> (rather than just empty)
 then the DBI will substitute the values of the DBI_USER and DBI_PASS
-environment variables respectively.  The use of the environment for
+environment variables respectively.  The DBI will warn if the
+environment variables are not defined. The use of the environment for
 these values is not recommended for security reasons. The mechanism is
-only intended to simplify testing.
+primarily intended to simplify testing.
 
 DBI->connect automatically installs the driver if it has not been
 installed yet. Driver installation I<always> returns a valid driver
@@ -1752,6 +1766,7 @@ about the DBI_TRACE environment variable. The L</neat> function is
 often used to format trace information and thus strings in the trace
 output may be edited and truncated by it.
 
+
 =item B<trace_msg>
 
   $h->trace_msg($message_text);
@@ -1762,7 +1777,8 @@ for the DBI as a whole. Can also be called as DBI->trace_msg($msg).
 See L</trace>.
 
 If $min_level is defined then the message is output only if the trace
-level is equal to or greater than that level.
+level is equal to or greater than that level. $min_level defaults to 1.
+
 
 =item B<func>
 
@@ -1968,8 +1984,8 @@ taint mode (e.g., started with the C<-T> option), then a) all data
 fetched from the database is tainted, and b) the arguments to most DBI
 method calls are checked for being tainted. I<This may change.>
 
-The attribute defaults to off, if when perl is started with the C<-T>
-option. See L<perlsec> for more about taint mode.  If Perl is not
+The attribute defaults to off, even if perl is in taint mode.
+See L<perlsec> for more about taint mode.  If Perl is not
 running in taint mode, this attribute has no effect.
 
 Currently only fetched data is tainted. It is likely that the results

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.19 1999/06/09 20:52:53 timbo Exp $
+/* $Id: DBI.xs,v 10.20 1999/06/13 23:02:03 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -463,7 +463,7 @@ dbi_cond_signal(imp_xxh)
     if (!imp_xxh || !DBIc_THR_COND(imp_xxh))
 	return;
     DBI_LOCK;
-    if (DBIS->debug >= 4)
+    if (PL_threadnum && DBIS->debug >= 4)
 	fprintf(DBILOGFP,"    .. thread %lu leaving %s\n",
 		DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
     DBIc_THR_USER(imp_xxh) = DBIc_THR_USER_NONE; /* free for other thread to enter */
@@ -1656,24 +1656,25 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
 
 #ifdef DBI_USE_THREADS		/* only pay the cost with threaded perl	*/
-	/* XXX add if (PL_threadnum) ... to skip this if only one thread	*/
-	DBI_LOCK;
-	while(DBIc_THR_USER(imp_xxh) != DBIc_THR_USER_NONE && DBIc_THR_USER(imp_xxh) != thr->tid) {
+	if (PL_threadnum) {	/* and only if > one thread exists	*/
+	    DBI_LOCK;
+	    while(DBIc_THR_USER(imp_xxh) != DBIc_THR_USER_NONE && DBIc_THR_USER(imp_xxh) != thr->tid) {
+		if (debug >= 4) {
+		    fprintf(DBILOGFP,"    .. %s: thread %lu waiting for thread %lu to leave %s\n",
+			    meth_name, thr->tid, DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
+		    Fflush(DBILOGFP);
+		}
+		COND_WAIT(DBIc_THR_COND(imp_xxh), DBIS->mutex);
+	    }
+	    DBIc_THR_USER(imp_xxh) = thr->tid;
 	    if (debug >= 4) {
-		fprintf(DBILOGFP,"    .. %s: thread %lu waiting for thread %lu to leave %s\n",
-			meth_name, thr->tid, DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
+		fprintf(DBILOGFP,"    .. %s: thread %lu entering %s\n",
+			meth_name, thr->tid, HvNAME(DBIc_IMP_STASH(imp_xxh)));
 		Fflush(DBILOGFP);
 	    }
-	    COND_WAIT(DBIc_THR_COND(imp_xxh), DBIS->mutex);
+	    SAVEDESTRUCTOR(dbi_cond_signal, imp_xxh);  /* arrange later cond signal	*/
+	    DBI_UNLOCK;
 	}
-	DBIc_THR_USER(imp_xxh) = thr->tid;
-	if (debug >= 4) {
-	    fprintf(DBILOGFP,"    .. %s: thread %lu entering %s\n",
-		    meth_name, thr->tid, HvNAME(DBIc_IMP_STASH(imp_xxh)));
-	    Fflush(DBILOGFP);
-	}
-	SAVEDESTRUCTOR(dbi_cond_signal, imp_xxh);  /* arrange later cond signal	*/
-	DBI_UNLOCK;
 #endif
 
 	if (!imp_msv) {
@@ -2492,24 +2493,24 @@ trace(sv, level=0, file=Nullsv)
 
 
 void
-trace_msg(sv, msg, min_level_sv=&sv_undef)
+trace_msg(sv, msg, min_level=1)
     SV *sv
     char *msg
-    SV *min_level_sv
+    int min_level
     PREINIT:
     int debug = 0;
-    int min_level = 1;
     CODE:
-    if (SvOK(min_level_sv))
-	min_level = SvIV(min_level_sv);
     if (SvROK(sv)) {
 	D_imp_xxh(sv);
 	debug = DBIc_DEBUGIV(imp_xxh);
     }
     if (DBIS->debug >= min_level || debug >= min_level) {
 	fputs(msg, DBILOGFP);
+        ST(0) = &sv_yes;
     }
-    ST(0) = &sv_no;
+    else {
+        ST(0) = &sv_no;
+    }
 
 
 MODULE = DBI   PACKAGE = DBD::_mem::common

@@ -3,6 +3,8 @@
 
 Primary Key metadata
 
+Enable warnings in default_user().
+
 Change bind_column to save the info for get_fbav to use when
 first called. Thus making bind before execute reliable.
 

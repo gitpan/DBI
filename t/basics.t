@@ -51,7 +51,8 @@ ok(0, $switch->{Kids} == 0);
 ok(0, $switch->{ActiveKids} == 0);
 ok(0, $switch->{Active});
 
-$switch->trace_msg("Test trace_msg text.\n", 1);
+$switch->trace_msg("Test \$h->trace_msg text.\n", 1);
+DBI->trace_msg("Test DBI->trace_msg text.\n", 1);
 
 ok(0, SQL_VARCHAR == 12);
 ok(0, SQL_ALL_TYPES == 0);

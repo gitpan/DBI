@@ -1,4 +1,5 @@
-package Win32::ODBC;
+package			# hide this package from CPAN indexer
+	Win32::ODBC;
 
 use strict;
 

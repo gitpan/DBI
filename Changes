@@ -1,3 +1,12 @@
+
+Changes in DBI 1.10,	14th June 1999
+
+  Fixed trace_msg.al error when using Apache.
+  Fixed dbd_st_finish enhancement in Driver.xst (internals).
+  Enable drivers to define default username and password
+    and temporarily disabled warning added in 1.09.
+  Thread safety optimised for single thread case.
+
 Changes in DBI 1.09,	9th June 1999
 
   Added optional minimum trace level parameter to trace_msg().

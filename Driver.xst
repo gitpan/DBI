@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 10.14 1999/06/09 20:52:53 timbo Exp $
+#  $Id: Driver.xst,v 10.16 1999/06/13 23:27:53 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -356,17 +356,18 @@ finish(sth)
     CODE:
     D_imp_sth(sth);
     D_imp_dbh_from_sth;
-    if (!DBIc_ACTIVE(imp_dbh)) {
-	/* Either an explicit disconnect() or global destruction	*/
-	/* has disconnected us from the database. Finish is meaningless	*/
-	XSRETURN_YES;
-    }
     if (!DBIc_ACTIVE(imp_sth)) {
 	/* No active statement to finish	*/
 	XSRETURN_YES;
     }
+    if (!DBIc_ACTIVE(imp_dbh)) {
+	/* Either an explicit disconnect() or global destruction	*/
+	/* has disconnected us from the database. Finish is meaningless	*/
+	DBIc_ACTIVE_off(imp_sth);
+	XSRETURN_YES;
+    }
 #ifdef dbd_db_finish3
-    ST(0) = dbd_st_finish(sth, imp_sth, 0) ? &sv_yes : &sv_no;
+    ST(0) = dbd_st_finish3(sth, imp_sth, 0) ? &sv_yes : &sv_no;
 #else
     ST(0) = dbd_st_finish(sth, imp_sth) ? &sv_yes : &sv_no;
 #endif
@@ -437,12 +438,22 @@ DESTROY(sth)
 		    SvPV(sth,lna));
     }
     else {
-	D_imp_dbh_from_sth;
         if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
             DBIc_ACTIVE_off(imp_sth);
         }
-	if (DBIc_ACTIVE(imp_sth) && DBIc_ACTIVE(imp_dbh))
+	if (DBIc_ACTIVE(imp_sth)) {
+	    D_imp_dbh_from_sth;
+	    if (DBIc_ACTIVE(imp_dbh)) {
+#ifdef dbd_db_finish3
+	    dbd_st_finish3(sth, imp_sth, 1);
+#else
 	    dbd_st_finish(sth, imp_sth);
+#endif
+	    }
+	    else {
+		DBIc_ACTIVE_off(imp_sth);
+	    }
+	}
 	dbd_st_destroy(sth, imp_sth);
     }
 
