@@ -30,7 +30,7 @@ $switch->{DebugDispatch} = 0;	# handled by Switch
 $switch->{Warn} = 1;			# handled by DBI core
 
 ok(0, 1);
-ok(7, $switch->{'Attribution'} =~ m/DBI.*? Switch by Tim Bunce/);
+ok(7, $switch->{'Attribution'} =~ m/DBI.*? by Tim Bunce/);
 ok(8, $switch->{'Version'} > 0);
 
 eval { $switch->{FooBarUnknown} = 1 };
@@ -51,7 +51,7 @@ ok(0, $switch->{Kids} == 0);
 ok(0, $switch->{ActiveKids} == 0);
 ok(0, $switch->{Active});
 
-$switch->trace_msg("Test trace_msg text.\n");
+$switch->trace_msg("Test trace_msg text.\n", 1);
 
 ok(0, SQL_VARCHAR == 12);
 ok(0, SQL_ALL_TYPES == 0);

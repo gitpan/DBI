@@ -1,3 +1,22 @@
+Changes in DBI 1.09,	9th June 1999
+
+  Added optional minimum trace level parameter to trace_msg().
+  Added warning in Makefile.PL that DBI will require 5.004 soon.
+  Added $dbh->selectcol_arrayref($statement) method.
+  Fixed fetchall_arrayref hash-slice mode undef NAME problem.
+  Fixed problem with tainted parameter checking and t/examp.t.
+  Fixed problem with thread safety code, including 64 bit machines.
+  Thread safety now enabled by default for threaded perls.
+  Enhanced code for MULTIPLICITY/PERL_OBJECT from ActiveState.
+  Enhanced prepare_cached() method.
+  Minor changes to trace levels (less internal info at level 2).
+  Trace log now shows "!! ERROR..." before the "<- method" line.
+  DBI->connect() now warn's if user / password is undefined and
+    DBI_USER / DBI_PASS environment variables are not defined.
+  The t/proxy.t test now ignores any /etc/dbiproxy.conf file.
+  Added portability fixes for MacOS from Chris Nandor.
+  Updated mailing list address from fugue.com to isc.org.
+
 Changes in DBI 1.08,	12th May 1999
 
   Much improved DBD::ADO driver thanks to Phlip Plumlee and others.

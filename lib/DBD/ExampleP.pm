@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.6 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 10.8 $, 9,-1) -1;
 
-#   $Id: ExampleP.pm,v 10.6 1999/05/13 01:44:25 timbo Exp $
+#   $Id: ExampleP.pm,v 10.8 1999/06/09 20:52:53 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -128,7 +128,7 @@
 	}
 	# We would like to simply do a DBI->connect() here. However,
 	# this is wrong if we are in a subclass like DBI::ProxyServer.
-	$dbh->{'dbd_sponge_dbh'} ||= DBI->connect("DBI:Sponge:")
+	$dbh->{'dbd_sponge_dbh'} ||= DBI->connect("DBI:Sponge:", '','')
 	    or return $dbh->DBI::set_err($DBI::err,
 				    "Failed to connect to DBI::Sponge: "
 				    . $DBI::errstr);
@@ -254,6 +254,7 @@
 		or return $sth->DBI::set_err(2, "opendir($dir): $!");
 	    $sth->{dbd_dir} = $dir;
 	}
+	$sth->STORE(Active => 1);
 	1;
     }
 
@@ -296,7 +297,6 @@
 	    my $file = $haveFileSpec
 		? File::Spec->catfile($sth->{'dbd_dir'}, $f)
 		: "$sth->{'dbd_dir'}/$f";
-
         # put in all the data fields
 	    @s{@DBD::ExampleP::statnames} =
 		(stat($file), $f);
@@ -317,6 +317,7 @@
 	return undef unless $sth->{dbd_datahandle};
 	closedir($sth->{dbd_datahandle});
 	$sth->{dbd_datahandle} = undef;
+	$sth->SUPER::finish();
 	return 1;
     }
 

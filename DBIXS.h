@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.8 1999/05/09 01:14:04 timbo Exp $
+/* $Id: DBIXS.h,v 10.10 1999/06/01 10:53:41 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -32,6 +32,11 @@
 #define dTHR typedef int _thr_DBI_dummy
 #endif
 
+#if defined(__CYGWIN__) || defined(__CYGWIN32__)
+#ifdef debug
+#undef debug
+#endif
+#endif
 
 /* DBI SQL_* type definitions */
 #include "dbi_sql.h"
@@ -193,7 +198,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
 #define DBIc_THR_COND(imp)  	_imp2com(imp, std.thr_cond)
 #define DBIc_THR_USER(imp)  	_imp2com(imp, std.thr_user)
-#define DBIc_THR_USER_NONE  	(~(unsigned long)0)
+#define DBIc_THR_USER_NONE  	(U32_MAX)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)

@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.14 1999/05/13 01:44:25 timbo Exp $
+# $Id: DBI.pm,v 10.19 1999/06/09 20:52:53 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = 1.08; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.09; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -18,57 +18,57 @@ DBI - Database independent interface for Perl
 =head1 SYNOPSIS
 
   use DBI;
- 
+
   @driver_names = DBI->available_drivers;
   @data_sources = DBI->data_sources($driver_name);
 
-  $dbh = DBI->connect($data_source, $username, $auth);
   $dbh = DBI->connect($data_source, $username, $auth, \%attr);
- 
+
   $rv  = $dbh->do($statement);
   $rv  = $dbh->do($statement, \%attr);
   $rv  = $dbh->do($statement, \%attr, @bind_values);
 
-  @row_ary = $dbh->selectrow_array($statement);
   $ary_ref = $dbh->selectall_arrayref($statement);
- 
+  @row_ary = $dbh->selectrow_array($statement);
+  $ary_ref = $dbh->selectcol_arrayref($statement);
+
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare_cached($statement);
- 
+
   $rv = $sth->bind_param($p_num, $bind_value);
   $rv = $sth->bind_param($p_num, $bind_value, $bind_type);
   $rv = $sth->bind_param($p_num, $bind_value, \%attr);
 
   $rv = $sth->execute;
   $rv = $sth->execute(@bind_values);
- 
+
   $rc = $sth->bind_col($col_num, \$col_variable);
-  $rc = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
+  $rc = $sth->bind_columns(@list_of_refs_to_vars_to_bind);
 
   @row_ary  = $sth->fetchrow_array;
   $ary_ref  = $sth->fetchrow_arrayref;
   $hash_ref = $sth->fetchrow_hashref;
- 
+
   $ary_ref  = $sth->fetchall_arrayref;
 
   $rv = $sth->rows;
- 
+
   $rc  = $dbh->commit;
   $rc  = $dbh->rollback;
 
   $sql = $dbh->quote($string);
- 
+
   $rc  = $h->err;
   $str = $h->errstr;
   $rv  = $h->state;
 
   $rc  = $dbh->disconnect;
- 
+
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.08
-($Date: 1999/05/13 01:44:25 $).
+This is the DBI specification that corresponds to the DBI version 1.09
+($Date: 1999/06/09 20:52:53 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -113,7 +113,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.14 $, 10);
+my $Revision = substr(q$Revision: 10.19 $, 10);
 
 
 use Carp;
@@ -156,24 +156,21 @@ my $connect_via = "connect";
 # check if user wants a persistent database connection ( Apache + mod_perl )
 if (substr($ENV{GATEWAY_INTERFACE}||'',0,8) eq 'CGI-Perl' and $INC{'Apache/DBI.pm'}) {
     $connect_via = "Apache::DBI::connect";
-    DBI->trace_msg("DBI connect via $INC{'Apache/DBI.pm'}\n") if $DBI::dbi_debug;
+    DBI->trace_msg("DBI connect via $INC{'Apache/DBI.pm'}\n");
 }
 
 
 if ($DBI::dbi_debug) {
-    # this is a bit of a handy hack for "DBI_TRACE=/tmp/dbi.log"
-    if ($DBI::dbi_debug =~ m/^\d$/) {
-	# dbi_debug is number so debug to stderr at that level
-	DBI->trace($DBI::dbi_debug);
-    }
-    else {
+    my @trace = ($DBI::dbi_debug);
+
+    if ($DBI::dbi_debug !~ m/^\d$/) {
 	# dbi_debug is a file name to write trace log to.
 	# Default level is 2 but if file starts with "digits=" then the
 	# digits (and equals) are stripped off and used as the level
-	my $level = 2;
-	$level = $1 if $DBI::dbi_debug =~ s/^(\d+)=//;
-	DBI->trace($level, $DBI::dbi_debug);
+	unshift @trace, 2;
+	@trace = ($1,$2) if $DBI::dbi_debug =~ m/^(\d+)=(.*)/;
     }
+    DBI->trace(@trace) if @trace;
 }
 
 %DBI::installed_drh = ();  # maps driver names to installed driver handles
@@ -216,7 +213,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	func    =>	{				O=>0x06	},
 	event   =>	{ U =>[2,0,'$type, @args'],	O=>0x04 },
 	'trace' =>	{ U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x04 },
-	trace_msg =>	{ U =>[2,2,'$message_text'],	O=>0x04 },
+	trace_msg =>	{ U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x04 },
 	debug   =>	{ U =>[1,2,'[$debug_level]'],	O=>0x04 }, # old name for trace
 	private_data =>	{ U =>[1,1],			O=>0x04 },
 	err     =>	$keeperr,
@@ -242,9 +239,10 @@ my %DBI_IF = (	# Define the DBI Interface:
 	rollback   	=> { U =>[1,1] },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
-	prepare_cached	=> { U =>[2,3,'$statement [, \%attr]'] },
+	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
 	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	handler    	=> { U =>[2,2,'\&handler'] },
 	ping       	=> { U =>[1,1] },
 	disconnect 	=> { U =>[1,1] },
@@ -300,11 +298,11 @@ foreach $class (keys %DBI_IF){
 
 
 END {
-    DBI->trace_msg("    -> DBI::END\n") if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    -> DBI::END\n", 2);
     # Let drivers know why we are calling disconnect_all:
     $DBI::PERL_ENDING = $DBI::PERL_ENDING = 1;	# avoid typo warning
     DBI->disconnect_all() if %DBI::installed_drh;
-    DBI->trace_msg("    <- DBI::END complete\n") if $DBI::dbi_debug >= 2;
+    DBI->trace_msg("    <- DBI::END complete\n", 2);
 }
 
 
@@ -329,8 +327,16 @@ sub connect {
     ($old_driver, $attr) = ($attr, $old_driver) if $attr and !ref($attr);
 
     $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '' unless $old_driver;
-    $user = $ENV{DBI_USER} unless defined $user;
-    $pass = $ENV{DBI_PASS} unless defined $pass;
+    unless (defined $user) {
+	$user = $ENV{DBI_USER};
+	carp("$class->connect: user not defined and DBI_USER env var not set")
+	    unless defined $user;
+    }
+    unless (defined $pass) {
+	$pass = $ENV{DBI_PASS};
+	carp("$class->connect: password not defined and DBI_PASS env var not set")
+	    unless defined $user;
+    }
 
 
     if ($DBI::dbi_debug) {
@@ -348,7 +354,8 @@ sub connect {
 
     # Set $driver. Old style driver, if specified, overrides new dsn style.
     $driver = $old_driver || $1 || $ENV{DBI_DRIVER}
-	or Carp::croak("Can't connect(@_), no database driver specified");
+	or Carp::croak("Can't connect(@_), no database driver specified "
+		."and DBI_DSN env var not set");
 
     if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Switch') {
 	$dsn = "$ENV{DBI_AUTOPROXY};dsn=dbi:$driver:$dsn";
@@ -737,7 +744,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		'Name'    => 'Switch',
 		'Version' => $DBI::VERSION,
 		# the Attribution is defined as a sub as an example
-		'Attribution' => sub { "DBI-$DBI::VERSION Switch by Tim Bunce" },
+		'Attribution' => sub { "DBI $DBI::VERSION by Tim Bunce" },
 	    }, \$err);
 	Carp::croak("DBD::Switch init failed!") unless ($drh && $inner);
 	return $drh;
@@ -902,18 +909,32 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return $sth->fetchall_arrayref;
     }
 
+    sub selectcol_arrayref {
+	my ($dbh, $stmt, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt
+			      : $dbh->prepare($stmt, $attr);
+	return unless $sth;
+	$sth->execute(@bind) || return;
+	my $column = 1;
+	my $value;
+	$sth->bind_col($column, \$value) || return;
+	my @col;
+	push @col, $value while $sth->fetch;
+	return \@col;
+    }
+
     sub prepare_cached {
-	my ($dbh, $statement, $attr, @params) = @_;
+	my ($dbh, $statement, $attr, $allow_active) = @_;
 	# Needs support at dbh level to clear cache before complaining about
 	# active children. The XS template code does this. Drivers not using
 	# the template must handle clearing the cache themselves.
 	my $cache = $dbh->FETCH('CachedKids');
 	$dbh->STORE('CachedKids', $cache = {}) unless $cache;
-	my $key = join " | ", $statement, $attr ? %$attr : ();
+	my $key = ($attr) ? join(" | ", $statement, %$attr) : $statement;
 	my $sth = $cache->{$key};
 	if ($sth) {
 	    Carp::croak("prepare_cached($statement) statement handle $sth is still active")
-		if $sth->FETCH('Active');
+		if !$allow_active && $sth->FETCH('Active');
 	    return $sth;
 	}
 	$sth = $dbh->prepare($statement, $attr);
@@ -1044,7 +1065,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	elsif ($mode eq 'HASH') {
 	    my @o_keys = keys %$slice;
 	    if (@o_keys) {
-		my %i_names = map {  (lc($_)=>$_) } @{ $sth->{NAME} };
+		my %i_names = map {  (lc($_)=>$_) } @{ $sth->FETCH('NAME') };
 		my @i_keys  = map { $i_names{lc($_)} } @o_keys;
 		while ($row = $sth->fetchrow_hashref) {
 		    my %hash;
@@ -1158,17 +1179,6 @@ functions need be concerned with Drivers.
 
 Note that Perl will automatically destroy database and statement objects
 if all references to them are deleted.
-
-Handle object attributes are shown as:
-
-C<  $h-E<gt>{attribute_name}>   (I<type>)
-
-where I<type> indicates the type of the value of the attribute (if it's
-not a simple scalar):
-
-  \$   reference to a scalar: $h->{attr}       or  $a = ${$h->{attr}}
-  \@   reference to a list:   $h->{attr}->[0]  or  @a = @{$h->{attr}}
-  \%   reference to a hash:   $h->{attr}->{a}  or  %a = %{$h->{attr}}
 
 
 =head2 Outline Usage
@@ -1599,10 +1609,11 @@ Initially trace output is written to STDERR.  If $trace_filename is
 specified then the file is opened in append mode and I<all> trace
 output (including that from other handles) is redirected to that file.
 Further calls to trace without a $trace_filename do not alter where
-the trace output is sent.
+the trace output is sent. If $trace_filename is undefined then
+trace output is sent to STDERR and the previous trace file closed.
 
-See also the $h->trace() method and L</DEBUGGING> for information
-about the DBI_TRACE environment variable.
+See also the $h->trace() and $h->trace_msg() methodd and L</DEBUGGING>
+for information about the DBI_TRACE environment variable.
 
 
 =back
@@ -1733,7 +1744,8 @@ Initially trace output is written to STDERR.  If $trace_filename is
 specified then the file is opened in append mode and I<all> trace
 output (including that from other handles) is redirected to that file.
 Further calls to trace without a $trace_filename do not alter where
-the trace output is sent.
+the trace output is sent. If $trace_filename is undefined then
+trace output is sent to STDERR and the previous trace file closed.
 
 See also the DBI->trace() method and L</DEBUGGING> for information
 about the DBI_TRACE environment variable. The L</neat> function is
@@ -1743,10 +1755,14 @@ output may be edited and truncated by it.
 =item B<trace_msg>
 
   $h->trace_msg($message_text);
+  $h->trace_msg($message_text, $min_level);
 
-Writes $message_text to trace file if trace is enabled for $h or
+Writes $message_text to trace file I<if> trace is enabled for $h or
 for the DBI as a whole. Can also be called as DBI->trace_msg($msg).
 See L</trace>.
+
+If $min_level is defined then the message is output only if the trace
+level is equal to or greater than that level.
 
 =item B<func>
 
@@ -1853,7 +1869,7 @@ By default DBI->connect sets PrintError on (except for old-style connect
 usage, see L</connect> for more details).
 
 If desired, the warnings can be caught and processed using a $SIG{__WARN__}
-handler or modules like CGI::ErrorWrap.
+handler or modules like CGI::Carp and CGI::ErrorWrap.
 
 =item B<RaiseError> (boolean, inherited)
 
@@ -1995,8 +2011,9 @@ context it returns the first field of the first row. The $statement
 parameter can be a previously prepared statement handle in which case
 the prepare is skipped.
 
-In any method fails, and L</RaiseError> is not set, selectrow_array
+If any method fails, and L</RaiseError> is not set, selectrow_array
 will return an empty list (or undef in scalar context).
+
 
 =item B<selectall_arrayref>
 
@@ -2004,12 +2021,37 @@ will return an empty list (or undef in scalar context).
   $ary_ref = $dbh->selectall_arrayref($statement, \%attr);
   $ary_ref = $dbh->selectall_arrayref($statement, \%attr, @bind_values);
 
-This utility method combines L</prepare>, L</execute> and L</fetchall_arrayref>
-into a single call. The $statement parameter can be a previously prepared 
-statement handle in which case the prepare is skipped.
+This utility method combines L</prepare>, L</execute> and
+L</fetchall_arrayref> into a single call. It returns a reference to an
+array containing references to arrays for each row of data fetched.
 
-In any method fails, and L</RaiseError> is not set, selectall_arrayref
-will return undef.
+The $statement parameter can be a previously prepared statement handle
+in which case the prepare is skipped.
+
+If any method except fetch fails, and L</RaiseError> is not set,
+selectall_arrayref will return undef.  If fetch fails, and
+L</RaiseError> is not set, then it will return with whatever data it
+has fetched thus far.
+
+
+=item B<selectcol_arrayref>
+
+  $ary_ref = $dbh->selectcol_arrayref($statement);
+  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr);
+  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr, @bind_values);
+
+This utility method combines L</prepare>, L</execute> and fetching one
+column from all the rows, into a single call. It returns a reference to
+an array containing the values of the first column from each row.
+
+The $statement parameter can be a previously prepared statement handle
+in which case the prepare is skipped.
+
+If any method except fetch fails, and L</RaiseError> is not set,
+selectall_arrayref will return undef.  If fetch fails, and
+L</RaiseError> is not set, then it will return with whatever data it
+has fetched thus far.
+
 
 =item B<prepare>
 
@@ -2054,18 +2096,19 @@ used with the DBI.
 
 =item B<prepare_cached>
 
-  $sth = $dbh->prepare_cached($statement)          || die $dbh->errstr;
-  $sth = $dbh->prepare_cached($statement, \%attr)  || die $dbh->errstr;
+  $sth = $dbh->prepare_cached($statement)
+  $sth = $dbh->prepare_cached($statement, \%attr)
+  $sth = $dbh->prepare_cached($statement, \%attr, $allow_active)
 
 Like L</prepare> except that the statement handled returned will be stored
 in a hash associated with the $dbh. If another call is made to prepare_cached
 with the I<same parameter values> then the corresponding cached $sth
-will be returned (and the database server will not be contacted).
+will be returned without contacting the database server.
 
 This cacheing can be useful in some applications but it can also cause
-problems and should be used with care. Currently a warning will be
-generated if the cached $sth being returned is active (i.e., is a
-select that may still have data to be fetched).
+problems and should be used with care. A warning will be generated if
+the cached $sth being returned is active (i.e., is a select that may
+still have data to be fetched) unless $allow_active is true.
 
 The cache can be accessed (and cleared) via the L</CachedKids> attribute.
 
@@ -2173,10 +2216,13 @@ each one.
 
 Attempts to determine, in a reasonably efficient way, if the database
 server is still running and the connection to it is still working.
+Individual drivers should implement this function in the most suitable
+manner for their database engine.
 
 The default implementation currently always returns true without
-actually doing anything. Individual drivers should implement this
-function in the most suitable manner for their database engine.
+actually doing anything. Actually it returns "C<0E0>" which is true
+but zero. That way you can tell if the return value is genuine or just
+the default.
 
 Very few applications would have any use for this method. See the
 specialist Apache::DBI module for one example usage.
@@ -2213,6 +2259,12 @@ B<REMARKS>: A description of the table. May be NULL (undef).
 Note that table_info might not return records for all tables.
 Applications can use any valid table regardless of whether it's
 returned by table_info.  See also L</tables>.
+
+For more detailed information about the fields and their meanings,
+you can refer to:
+
+  http://msdn.microsoft.com/library/sdkdoc/dasdk/odbc/odbcsqltables.htm
+
 
 =item B<tables> *NEW*
 
@@ -2410,6 +2462,10 @@ where this is not applicable.
 
 =back
 
+For more detailed information about these fields and their meanings, you
+can refer to:
+
+  http://msdn.microsoft.com/library/sdkdoc/dasdk/odbc/odbcsqlgettypeinfo.htm
 
 =item B<quote>
 
@@ -2428,7 +2484,7 @@ For most database types quote would return C<'Don''t'> (including the
 outer quotation marks).
 
 An undefined $value value will be returned as the string NULL (without
-quotation marks).
+quotation marks) to match how NULLs are represented in SQL.
 
 If $data_type is supplied it is used to try to determine the required
 quoting behaviour by using the information returned by L</type_info>.
@@ -3249,7 +3305,11 @@ for a single command:
 
 If DBI_TRACE is set to a non-numeric value then it is assumed to
 be a file name and the trace level will be set to 2 with all trace
-output will be appended to that file.
+output will be appended to that file. If the name beings with a number
+followed by an equals (C<=>) then they are stripped off from the name
+and the number is used to set the trace level. For example:
+
+  DBI_TRACE=3=dbitrace.log perl your_test_script.pl
 
 See also the L</trace> method.
 
@@ -3274,23 +3334,19 @@ The $sth handle you're using to call execute is probably undefined because
 the preceeding prepare failed. You should always check the return status of
 DBI methods, or use the L</RaiseError> attribute.
 
-=item Database handle destroyed without explicit disconnect
-
 =item DBI/DBD internal version mismatch
 
 =item DBD driver has not implemented the AutoCommit attribute
 
 =item Can't [sg]et %s->{%s}: unrecognised attribute
 
-=item panic: DBI active kids (%d) > kids (%d)
-
-=item panic: DBI active kids (%d) < 0 or > kids (%d)
-
 =back
 
 =head2 Warnings
 
 =over 4
+
+=item Database handle destroyed without explicit disconnect
 
 =item DBI Handle cleared whilst still holding %d cached kids!
 
@@ -3310,6 +3366,9 @@ SQL Language Reference Manual.
 
 =head2 Books and Journals
 
+ Programming the Perl DBI, by Alligator Descartes and Tim Bunce.
+ Due to be published by O'Reilly September/October 1999.
+
  Programming Perl 2nd Ed. by Larry Wall, Tom Christiansen & Randal Schwartz.
  Learning Perl by Randal Schwartz.
 
@@ -3323,9 +3382,9 @@ L<perl(1)>, L<perlmod(1)>, L<perlbook(1)>
 =head2 Mailing List
 
 The dbi-users mailing list is the primary means of communication among
-uses of the DBI and its related modules. Subscribe and unsubscribe via:
+users of the DBI and its related modules. Subscribe and unsubscribe via:
 
- http://www.fugue.com/dbi
+ http://www.isc.org/dbi-lists.html
 
 Mailing list archives are held at:
 
@@ -3351,6 +3410,7 @@ Other DBI related links:
 Other database related links:
 
  http://www.jcc.com/sql_stnd.html
+ http://cuiwww.unige.ch/OSG/info/FreeDB/FreeDB.home.html
 
 Commercial and Data Warehouse Links
 
@@ -3537,87 +3597,6 @@ See also the "Does Perl have a year 2000 problem?" section of the Perl FAQ:
 
   http://www.perl.com/CPAN/doc/FAQs/FAQ/PerlFAQ.html
 
-=head1 KNOWN DRIVER MODULES
-
-=over 4
-
-=item Altera - DBD::Altera
-
- Author:  Dimitrios Souflis
- Email:   dsouflis@altera.gr
-
-=item ODBC - DBD::ODBC
-
- Author:  Tim Bunce
- Email:   dbi-users@fugue.com
-
-=item Oracle - DBD::Oracle
-
- Author:  Tim Bunce
- Email:   dbi-users@fugue.com
-
-=item Ingres - DBD::Ingres
-
- Author:  Henrik Tougaard
- Email:   ht@datani.dk,  dbi-users@fugue.com
-
-=item mSQL - DBD::mSQL
-
- Author:  Jochen Wiedmann
- Email:   joe@ispsoft.de, msql-mysql-modules@tcx.se
-
-=item MySQL - DBD::mysql
-
- Author:  Jochen Wiedmann
- Email:   joe@ispsoft.de, msql-mysql-modules@tcx.se
-
-=item DB2 - DBD::DB2
-
- Email: db2perl@ca.ibm.com
- URL: http://www.software.ibm.com/data/db2/perl
-
-=item Empress - DBD::Empress
-
-=item Velocis - DBD::Velocis
-
-=item Informix - DBD::Informix
-
- Author:  Jonathan Leffler
- Email:   jleffler@informix.com, j.leffler@acm.org, dbi-users@fugue.com
-
-=item Solid - DBD::Solid
-
- Author:  Thomas Wenrich
- Email:   wenrich@site58.ping.at, dbi-users@fugue.com
-
-=item Postgres - DBD::Pg
-
- Author:  Edmund Mergl
- Email:   E.Mergl@bawue.de, dbi-users@fugue.com
-
-=item Illustra - DBD::Illustra
-
- Author:  Peter Haworth
- Email:   pmh@edison.ioppublishing.com, dbi-users@fugue.com
-
-=item Fulcrum SearchServer - DBD::Fulcrum
-
- Author:  Davide Migliavacca
- Email:   davide.migliavacca@inferentia.it
-
-=item XBase (dBase) - DBD::XBase
-
- Author:  Honza Pazdziora
- Email:   adelton@fi.muni.cz
-
-=item CSV files - DBD::CSV
-
- Author:  Jochen Wiedmann
- Email:   joe@ispsoft.de, see also
-          http://mail.healthquiz.com/mailman/listinfo/dbd-csv
-
-=back
-
 =head1 OTHER RELATED WORK AND PERL MODULES
 
 =over 4
@@ -3641,14 +3620,6 @@ It seems to be very similar to some commercial products, such as jdbcKona.
 
 As of DBI 1.02, a complete implementation of a DBD::Proxy driver and the
 DBI::ProxyServer are part of the DBI distribution.
-
-Besides, contact
-
-  Carl Declerck <carl@miskatonic.inbe.net>
-  Terry Greenlaw <z50816@mip.mar.lmco.com>
-
-Carl is developing a generic proxy object module which could form the basis
-of a DBD::Proxy driver in the future. Terry is doing something similar.
 
 =item SQL Parser
 

@@ -1,45 +1,13 @@
-Wednesday, June 2, 1999
-
-This is the DBI module with shared libraries compiled for 
-MacPerl.  Shared libraries run only on PPC and CFM68K versions, not 
-non-CFM 68K versions.
-
-This was compiled with MPW and Codewarrior.  Passed all tests.  
-I have no 68K machine so I can't test the CFM68K version.  Let me 
-know of any problems.
-
-shell.t will only work if ToolServer and the perl MPW tool are
-installed, I believe.  proxy.t won't work.  Everything else should.
-Note that for examp.t, you need to turn on Taint Checks in the
-MacPerl "Script" menu.
-
-Best installed using cpan-mac, either with the CPAN shell,
-or the installme droplet.  From the CPAN shell, type:
-
-    cpan> install CNANDOR/DBI-1.08-bin-2-MacOS.tar.gz
-
-Also, see the MMP page:
-
-    http://pudge.net/mmp/
-
---
-Chris Nandor          mailto:pudge@pobox.com         http://pudge.net/
-%PGPKey = ('B76E72AD', [1024, '0824090B CE73CA10  1FF77F13 8180B6B6'])
-
-#===================================
-
 DBI - The Perl Database Interface by Tim Bunce.
 
-Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England.
+Copyright (c) 1994,1995,1996,1997,1998,1999  Tim Bunce  England.
 
 See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 RECENT NEWS:
 
-    The DBI is now formally released (no longer alpha or beta).
-
     The DBI now comes bundled with DBI::Shell, DBD::Proxy and
-    DBD::ProxyServer modules. These *are* still alpha.
+    DBD::ProxyServer modules. Those are still alpha releases.
 
     Note that recent additions to the DBI spec (marked *NEW*) may
     take a little while to be fully supported by individual drivers.
@@ -61,14 +29,14 @@ QUICK START GUIDE:
     as for the DBI module.
 
 
-The DBI.pm file now contains the DBI specification and other documentation.
+The DBI.pm file contains the DBI specification and other documentation.
 PLEASE READ IT. It'll save you asking questions on the mailing list
 which you will be told are already answered in the documentation.
 
 For more information and to keep informed about progress you can join
-the a mailing list via http://www.fugue.com/dbi (if you are unable to
-use the web you can subscribe by sending a message to
-dbi-users-request@fugue.com, it may take a few days to be processed).
+the a mailing list via http://www.isc.org/dbi-lists.html (if you are
+unable to use the web you can subscribe by sending a message to
+dbi-users-request@isc.org, it may take a few days to be processed).
 
 Much useful information and online archives of the mailing lists can be
 found at http://www.symbolstone.org/technology/perl/DBI
@@ -103,7 +71,7 @@ IF YOU HAVE PROBLEMS:
 
 First, carefully read the notes at the bottom of this file.
 
-If you can't fix it your self please post details to dbi-users@fugue.com.
+If you can't fix it your self please post details to dbi-users@isc.org.
 You can CC them to me at Tim.Bunce@ig.co.uk BUT please DON'T send them
 just to me (I'm likely to ignore it).  Please include:
 
@@ -124,10 +92,10 @@ just to me (I'm likely to ignore it).  Please include:
 Please don't post problems to comp.lang.perl.* or perl5-porters.
 This software is supported via the dbi-users mailing list.  For more
 information and to keep informed about progress you can join the
-mailing list via http://www.fugue.com/dbi (if you are unable to use the
-web you can subscribe by sending a message to dbi-request@fugue.com, it
-may take a few days to be processed by hand. Please note that I do not
-run or manage the mailing list).
+mailing list via http://www.isc.org/dbi-lists.html (if you are unable
+to use the web you can subscribe by sending a message to
+dbi-request@isc.org, it may take a few days to be processed by hand.
+Please note that I do not run or manage the mailing list).
 
 It is important to check that you are using the latest version before
 posting. If you're not then I'm *very* likely to simply say "upgrade to

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.6 1999/01/06 01:12:45 timbo Exp $
+# $Id: Makefile.PL,v 10.10 1999/06/09 20:52:53 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -25,8 +25,10 @@ my $ext_pl = $^O eq 'VMS' ? '.pl' : '';
 
 $::opt_v = 0;
 $::opt_g = 0;
-$::opt_thread = 0;
-GetOptions(qw(v! g! thread!)) or die "Invalid arguments\n";
+$::opt_thread = 1;	# unset later if not a threaded perl
+
+GetOptions(qw(v! g! thread!))
+	or die "Invalid arguments\n";
 
 $::opt_g &&= '-g';  # convert to actual string
 
@@ -35,14 +37,23 @@ if ($] < 5.004) {
     print "Perl 5.004 fixes many bugs in older versions and is highly recommended.\n";
     print "You may see warnings from 'pod2man' due to the old version you have.\n";
     print "You can ignore them, or, better still, upgrade to the latest release\n";
-    print "of Perl (5.004_04 and 5.005_02 at the time this was written).\n\n";
-    sleep 3;
+    print "of Perl (5.004_04 and 5.005_03 at the time this was written).\n\n";
+    sleep 10;
+    print "In the near future the DBI will no longer support your very old Perl!\n\n\a";
+    sleep 20;
 }
 
-if ($::opt_thread && $Config{archname} =~ /-thread\b/i) {
-    print "\n*** Thread support in the DBI is known to be broken. ***\a\n";
-    print   "*** You asked for it and you have been warned!       ***\a\n\n";
-    sleep 3;
+if ($Config{archname} =~ /-thread\b/i) {
+    print "\n";
+    print "*** You are using a perl with experimental threading enabled!\a\n";
+    print "*** You should be aware that using multiple threads is unstable\n";
+    print "*** are should NOT be done in production environments.\n";
+    print "DBI thread mutex protection is ", $::opt_thread ? "enabled\n" : "disabled!\n";
+    print "\n";
+    sleep 5;
+}
+else {
+    $::opt_thread = 0;
 }
 
 
@@ -56,7 +67,7 @@ if ($@) {
     The optional PlRPC-modules (RPC::PlServer etc) are not installed.
     If you want to use the DBD::Proxy driver and DBI::ProxyServer
     modules, then you'll need to install the RPC::PlServer, RPC::PlClient,
-    Storable and Net::Daemon modules. The DBI CPAN Bundle may help you.
+    Storable and Net::Daemon modules. The CPAN Bundle::DBI may help you.
     You can install them any time after installing the DBI.
     You do *not* need these modules for typical DBI usage.
 
@@ -144,7 +155,7 @@ warn <<EOT;
 
 EOT
 
-#exit 0;
+exit 0;
 
 
 # =====================================================================

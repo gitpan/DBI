@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 10.2 1999/01/01 20:56:53 timbo Exp $
+# $Id: test.pl,v 10.3 1999/05/18 22:04:23 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 10.2 $}."\n";
+    print q{DBI test application $Revision: 10.3 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
 	warn $@ if $@;
@@ -57,7 +57,7 @@ my $dbh = DBI->connect('', '', '', $driver);
 $dbh->debug($::opt_h);
 
 if (0) {	# only works after 5.004_04
-    my $h = DBI->connect('dbi:NullP:');
+    my $h = DBI->connect('dbi:NullP:','','');
 	$h->trace(3);
 	{
 		warn "RaiseError= '$h->{RaiseError}' (pre local)\n";
@@ -82,7 +82,7 @@ else {
 
     require Benchmark;
     print "Testing handle creation speed...\n";
-    my $null_dbh = DBI->connect('dbi:NullP:');
+    my $null_dbh = DBI->connect('dbi:NullP:','','');
     my $null_sth = $null_dbh->prepare('');	# create one to warm up
     $count = 5000;
     my $i = $count;

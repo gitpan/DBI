@@ -1,5 +1,5 @@
 
-*** Assorted to-do items and random thoughts *** in no particuar order ***
+*** Assorted to-do items and random thoughts *** in no particular order ***
 
 Primary Key metadata
 
@@ -24,11 +24,10 @@ $dbh-level __WARN__ and __DIE__. Initially just provide DBIXS hooks
 for DBD's to use (and pass h and imp_xxh to). Thus $dbh can redirect
 errors etc from all children in one go.
 
-Allow first arg to bind_columns to be not supplied.
-
 Informix inspired changes.
 
-Detect it in eval block for when PrintError and RaiseError are both set.
+Detect it in eval block for when PrintError and RaiseError are both set
+to avoid duplicated error msg.
 
 selectcol_arrayref
 

@@ -24,17 +24,22 @@ sub ok ($$;$) {
 }
 	
 
+my $trace_file = "dbitrace.log";
+unlink $trace_file;
+ok(0, !-e $trace_file);
+DBI->trace(3,$trace_file);		# enable trace before first driver load
+
 my $r;
 my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', '', '');
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 
 my $dbh2 = DBI->connect('dbi:ExampleP:', '', '');
-ok(0, $dbh != $dbh2);
+ok(0, $dbh ne $dbh2);
 my $dbh3 = DBI->connect_cached('dbi:ExampleP:', '', '');
 my $dbh4 = DBI->connect_cached('dbi:ExampleP:', '', '');
-ok(0, $dbh3 == $dbh4);
+ok(0, $dbh3 eq $dbh4);
 my $dbh5 = DBI->connect_cached('dbi:ExampleP:', '', '', { foo=>1 });
-ok(0, $dbh5 != $dbh4);
+ok(0, $dbh5 ne $dbh4);
 
 $dbh->{AutoCommit} = 1;
 $dbh->{PrintError} = 0;
@@ -43,7 +48,6 @@ ok(0, $dbh->{AutoCommit} == 1);
 ok(0, $dbh->{PrintError} == 0);
 #$dbh->trace(2);
 
-ok(0, $dbh->ping);
 ok(0, $dbh->quote("quote's") eq "'quote''s'");
 ok(0, $dbh->quote("42", SQL_VARCHAR) eq "'42'");
 ok(0, $dbh->quote("42", SQL_INTEGER) eq "42");
@@ -52,6 +56,12 @@ ok(0, $dbh->quote(undef)     eq "NULL");
 eval { $dbh->commit('dummy') };
 ok(0, $@ =~ m/DBI commit: invalid number of parameters: handle \+ 1/);
 
+DBI->trace(0, undef);
+ok(0,  -s $trace_file > 1024, "trace file size = " . -s $trace_file);
+unlink $trace_file;
+ok(0, !-e $trace_file);
+
+ok(0, $dbh->ping);
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 ok(0, !defined $cursor_e);
 ok(0, $DBI::err);
@@ -80,13 +90,16 @@ ok(0, "@{$csr_b->{NAME}}"    eq "mode size name");
 # get a dir always readable on all platforms
 my $dir = getcwd() || cwd();
 $dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
-my($col0, $col1, $col2);
+# untaint $dir
+$dir =~ m/(.*)/; $dir = $1|| die;
+
+my($col0, $col1, $col2, $rows);
 my(@row_a, @row_b);
 
 #$csr_a->trace(2);
 ok(0, $csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
-ok(0, $csr_a->{Taint} = 1);
 ok(0, $csr_a->execute( $dir ));
+ok(0, $csr_a->{Taint} = 1);
 
 @row_a = $csr_a->fetchrow_array;
 ok(0, @row_a);
@@ -114,12 +127,14 @@ if (is_tainted($^X)) {
 	# check nested attribute values (where a ref is returned)
     #ok(0, is_tainted($csr_a->{NAME}->[0]) );
 	# check checking for tainted values
-	eval { $dbh->prepare("tainted sql $^X"); 1; };
+	eval { $dbh->prepare($^X); 1; };
+	ok(0, $@ =~ /Insecure dependency/, $@);
+	eval { $csr_a->execute($^X); 1; };
 	ok(0, $@ =~ /Insecure dependency/, $@);
 }
 else {
     print "Taint attribute tests skipped\n";
-    ok(0,1) while (1..6);
+    ok(0,1) while (1..7);
 }
 $csr_a->{Taint} = 0;
 
@@ -165,13 +180,24 @@ ok(0, $r && @$r);
 ok(0, $r->[0]->{Size} == $row_a[1]);
 ok(0, $r->[0]->{NAME} eq $row_a[2]);
 
+$rows = $csr_b->rows;
+ok(0, $rows > 0, "row count $rows");
+ok(0, $rows == @$r, "$rows vs ".@$r);
+
 @row_b = $dbh->selectrow_array($std_sql, undef, $dir);
 ok(0, @row_b == 3);
 ok(0, "@row_b" eq "@row_a");
+
 $r = $dbh->selectall_arrayref($std_sql, undef, $dir);
 ok(0, $r);
 ok(0, @{$r->[0]} == 3);
 ok(0, "@{$r->[0]}" eq "@row_a");
+ok(0, @$r == $rows);
+
+$r = $dbh->selectcol_arrayref($std_sql, undef, $dir);
+ok(0, $r);
+ok(0, @$r == $rows);
+ok(0, $r->[0] eq $row_b[0]);
 
 # ---
 
@@ -201,12 +227,11 @@ ok(0, !$dbh->{RaiseError});
 
 ok(0, $csr_a = $dbh->prepare($std_sql));
 ok(0, $csr_a->execute($haveFileSpec ? File::Spec->rootdir : '/'));
-
 my $dump_dir = ($ENV{TMP} || $ENV{TEMP} || $ENV{TMPDIR} || '/tmp');
-my $dump_file = $haveFileSpec
+my $dump_file = ($haveFileSpec)
     ? File::Spec->catfile($dump_dir, 'dumpcsr.tst')
     : "$dump_dir/dumpcsr.tst";
-
+($dump_file) = ($dump_file =~ m/^(.*)$/);	# untaint
 if (open(DUMP_RESULTS, ">$dump_file")) {
 	ok(0, $csr_a->dump_results("4", "\n", ",\t", \*DUMP_RESULTS));
 	close(DUMP_RESULTS);
@@ -216,7 +241,7 @@ if (open(DUMP_RESULTS, ">$dump_file")) {
 	ok(0, 1);
 	ok(0, 1);
 }
-#unlink $dump_file;
+unlink $dump_file;
 
 
 # Test the table_info method
@@ -227,7 +252,7 @@ my(%dirs, %unexpected, %missing);
 while (defined(my $file = readdir(DIR))) {
     $dirs{$file} = 1 if -d $file;
 }
-close(DIR);
+closedir(DIR);
 my $sth = $dbh->table_info();
 ok(0, $sth);
 %unexpected = %dirs;
@@ -291,4 +316,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 186; }
+BEGIN { $tests = 196; }

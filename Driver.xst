@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 10.10 1999/05/09 01:14:04 timbo Exp $
+#  $Id: Driver.xst,v 10.14 1999/06/09 20:52:53 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -45,19 +45,22 @@ discon_all_(drh)
 MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::db
 
 void
-_login(dbh, dbname, username, pwd, attribs=Nullsv)
+_login(dbh, dbname, username, password, attribs=Nullsv)
     SV *	dbh
     char *	dbname
-    char *	username
-    char *	pwd
+    SV *	username
+    SV *	password
     SV *	attribs
     CODE:
     {
+    STRLEN lna;
     D_imp_dbh(dbh);
+    char *u = (SvOK(username)) ? SvPV(username,lna) : "";
+    char *p = (SvOK(password)) ? SvPV(password,lna) : "";
 #ifdef dbd_db_login6
-    ST(0) = dbd_db_login6(dbh, imp_dbh, dbname, username, pwd, attribs) ? &sv_yes : &sv_no;
+    ST(0) = dbd_db_login6(dbh, imp_dbh, dbname, u, p, attribs) ? &sv_yes : &sv_no;
 #else
-    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, username, pwd) ? &sv_yes : &sv_no;
+    ST(0) = dbd_db_login( dbh, imp_dbh, dbname, u, p) ? &sv_yes : &sv_no;
 #endif
     }
 
@@ -98,7 +101,7 @@ disconnect(dbh)
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
 	STRLEN lna;
 	char *plural = (DBIc_ACTIVE_KIDS(imp_dbh)==1) ? "" : "s";
-	warn("%s->disconnect invalidates %d active statement%s %s",
+	warn("%s->disconnect invalidates %d active statement handle%s %s",
 	    SvPV(dbh,lna), (int)DBIc_ACTIVE_KIDS(imp_dbh), plural,
 	    "(either destroy statement handles or call finish on them before disconnecting)");
     }
@@ -142,7 +145,7 @@ DESTROY(dbh)
 	STRLEN lna;
 	if (DBIc_WARN(imp_dbh) && !dirty && DBIS->debug >= 2)
 	     fprintf(DBILOGFP,
-			"Database handle %s DESTROY ignored - never set up\n",
+			"         DESTROY for %s ignored - handle not initialised\n",
 				SvPV(dbh,lna));
     }
     else {
@@ -166,7 +169,8 @@ DESTROY(dbh)
 		if (DBIc_WARN(imp_dbh) && (!dirty || DBIS->debug >= 3))
 		     warn("Database handle destroyed without explicit disconnect");
 		if (DBIS->debug >= 2)
-		    fprintf(DBILOGFP, "    IMPLICIT ROLLBACK ON DESTROY!\n");
+		    fprintf(DBILOGFP, "    IMPLICIT ROLLBACK ON DESTROY%s!\n",
+				" of database handle that is still connected");
 		dbd_db_rollback(dbh, imp_dbh);			/* ROLLBACK! */
 	    }
 	    dbd_db_disconnect(dbh, imp_dbh);
@@ -355,14 +359,17 @@ finish(sth)
     if (!DBIc_ACTIVE(imp_dbh)) {
 	/* Either an explicit disconnect() or global destruction	*/
 	/* has disconnected us from the database. Finish is meaningless	*/
-	/* XXX warn? */
 	XSRETURN_YES;
     }
     if (!DBIc_ACTIVE(imp_sth)) {
 	/* No active statement to finish	*/
 	XSRETURN_YES;
     }
+#ifdef dbd_db_finish3
+    ST(0) = dbd_st_finish(sth, imp_sth, 0) ? &sv_yes : &sv_no;
+#else
     ST(0) = dbd_st_finish(sth, imp_sth) ? &sv_yes : &sv_no;
+#endif
 
 
 void
@@ -430,10 +437,11 @@ DESTROY(sth)
 		    SvPV(sth,lna));
     }
     else {
+	D_imp_dbh_from_sth;
         if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
             DBIc_ACTIVE_off(imp_sth);
         }
-	if (DBIc_ACTIVE(imp_sth))
+	if (DBIc_ACTIVE(imp_sth) && DBIc_ACTIVE(imp_dbh))
 	    dbd_st_finish(sth, imp_sth);
 	dbd_st_destroy(sth, imp_sth);
     }

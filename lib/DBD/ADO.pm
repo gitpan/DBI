@@ -6,9 +6,9 @@
     require Carp;
 
     @EXPORT = ();
-    $VERSION = substr(q$Revision: 1.10 $, 9,-1) -1;
+    $VERSION = substr(q$Revision: 1.11 $, 9,-1) -1;
 
-#   $Id: ADO.pm,v 1.10 1999/05/13 01:44:25 timbo Exp $
+#   $Id: ADO.pm,v 1.11 1999/05/26 00:48:39 timbo Exp $
 #
 #   Copyright (c) 1999, Phlip & Tim Bunce
 #
@@ -52,6 +52,7 @@
 
 # ADO.pm lexically scoped constants
 my $ado_consts;
+my $VT_I4_BYREF;
 
 
 
@@ -67,6 +68,9 @@ my $ado_consts;
 	    my $name = "Microsoft ActiveX Data Objects 2\\.0 Library";
 	    $ado_consts = Win32::OLE::Const->Load($name)
 		|| die "Unable to load Win32::OLE::Const ``$name'' ".Win32::OLE->LastError;
+	    require Win32::OLE::Variant;
+	    $VT_I4_BYREF = Win32::OLE::Variant::VT_I4()
+			 | Win32::OLE::Variant::VT_BYREF();
 	}
 
 	local $Win32::OLE::Warn = 0;
@@ -128,7 +132,7 @@ my $ado_consts;
         # else pass up to DBI to handle
         if ($attrib eq 'AutoCommit') {
             return 1 if $value; # is already set
-            croak("Can't disable AutoCommit");
+            Carp::croak("Can't disable AutoCommit");
         }
         return $dbh->DBD::_::db::STORE($attrib, $value);
     }
@@ -142,14 +146,12 @@ my $ado_consts;
     $imp_data_size = 0;
     use strict;
 
-    use Win32::OLE::Variant;
-
     sub execute {
 	my ($sth) = @_;
 	my $conn = $sth->{ado_conn};
 	my $sql  = $sth->{Statement};
 
-	my $rows = Variant(VT_I4|VT_BYREF, 0);
+	my $rows = Variant($VT_I4_BYREF, 0);
 	my $rs = $conn->Execute($sql, $rows, $ado_consts->{adCmdText});
 
 	local $Win32::OLE::Warn = 0;

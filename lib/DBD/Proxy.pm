@@ -625,16 +625,17 @@ remaining part of the dsn. Example:
 By using these fields you can enable encryption. If you set,
 for example,
 
-    cipher=$class:key=$key
+    cipher=$class;key=$key
 
-then DBD::Proxy will create a new cipher object by executing
+(note the semicolon) then DBD::Proxy will create a new cipher object
+by executing
 
     $cipherRef = $class->new(pack("H*", $key));
 
 and pass this object to the RPC::PlClient module when creating a
 client. See L<RPC::PlClient(3)>. Example:
 
-    cipher=IDEA:key=97cd2375efa329aceef2098babdc9721
+    cipher=IDEA;key=97cd2375efa329aceef2098babdc9721
 
 The usercipher/userkey attributes allow you to use two phase encryption:
 The cipher/key encryption will be used in the login and authorisation

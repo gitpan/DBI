@@ -193,5 +193,6 @@ $script =~ s/\~(\w+)\~/$config->{$1}/eg;
 if (!(open(FILE, ">$file"))  ||
     !(print FILE $script)  ||
     !(close(FILE))) {
-    die "Error while writing $file\n";
+    die "Error while writing $file: $!\n";
 }
+print "Extracted $file from ",__FILE__," with variable substitutions.\n";

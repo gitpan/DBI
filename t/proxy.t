@@ -40,6 +40,18 @@ if ($@) { print "1..0\n"; print $@; exit 0; }
 }
 
 
+# Create an empty config file to make sure that settings aren't
+# overloaded by /etc/dbiproxy.conf
+my $i = 0;
+while (-f "dbiproxy$i.conf") {
+    ++$i;
+}
+my $config_file = "dbiproxy$i.conf";
+(open(FILE, ">$config_file")  and
+ (print FILE "{}\n")          and
+ close(FILE))
+    or die "Failed to create config file $config_file: $!";
+
 my($handle, $port);
 my $numTests = 129;
 if (@ARGV) {
@@ -49,6 +61,7 @@ if (@ARGV) {
 						$^X, '-Iblib/lib',
 						'-Iblib/arch', 
 						'dbiproxy', '--test',
+						'--configfile', $config_file,
 						'--mode=single',
 						'--debug', '--timeout=60');
 }
@@ -239,7 +252,7 @@ my(%dirs, %unexpected, %missing);
 while (defined(my $file = readdir(DIR))) {
     $dirs{$file} = 1 if -d $file;
 }
-close(DIR);
+closedir(DIR);
 my $sth = $dbh->table_info();
 Test($sth) or print "table_info failed: ", $dbh->errstr(), "\n";
 %missing = %dirs;
@@ -340,4 +353,12 @@ Test($csr_a->finish());
 
 
 
-END { $handle->Terminate() if $handle; undef $handle };
+END {
+    my $status = $?;
+    $handle->Terminate() if $handle;
+    undef $handle;
+    my $f = $config_file;
+    undef $config_file;
+    unlink $f if $f;
+    $? = $status;
+};
