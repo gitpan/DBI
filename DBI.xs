@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.58 1996/09/23 18:20:45 timbo Exp $
+/* $Id: DBI.xs,v 1.59 1996/10/10 15:55:12 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -734,7 +734,7 @@ static SV *
 quick_FETCH(hrv, keysv, imp_msv)
     SV *hrv;	/* ref to inner hash */
     SV *keysv;
-    GV **imp_msv;
+    SV **imp_msv;	/* Code GV or CV */
 {
     void *tmp;
     SV *sv;
@@ -753,7 +753,7 @@ quick_FETCH(hrv, keysv, imp_msv)
 	return SvRV(sv); /* return deref if ref to CODE ref */
     if (type != SVt_PVCV)
 	return sv;	 /* return non-code refs */
-    *imp_msv = SvRV(sv); /* tell dispatch() to execute this code instead */
+    *imp_msv = (SV*)SvRV(sv); /* tell dispatch() to execute this code instead */
     return NULL;
 }
 
@@ -886,7 +886,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     }else{
 	if (!imp_msv) {
-	    imp_msv = gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
+	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
 	    if (!imp_msv)
 		croak("Can't locate DBI object method \"%s\" via package \"%s\"",
 		    meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
@@ -1106,6 +1106,7 @@ _debug_dispatch(sv, level=dbis->debug, file=Nullch)
 	else {
 	    if (DBILOGFP != stderr)
 		fclose(DBILOGFP);
+	    setbuf(fp, NULL);	/* force upbuffered output */
 	    DBILOGFP = fp;
 	}
     }

@@ -9,6 +9,15 @@ Current DBI Implementation Notes:
     *** MANY THINGS MAY CHANGE *** See README file ***
 
 
+Changes in DBI 0.73,	10th Oct 1996
+
+	Fixed some compiler type warnings (IRIX).
+	Fixed DBI->internal->{DebugLog} = $filename.
+	Made debug log file unbuffered.
+	Added experimental bind_param_inout method to interface.
+	Usage: $dbh->bind_param_inout($param, \$value, $maxlen [, \%attribs ])
+	(only currently used by DBD::Oracle at this time.)
+
 Changes in DBI 0.72,	23 Sep 1996
 
 	Using an undefined value as a handle now gives a better

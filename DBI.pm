@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.72';
+$VERSION = '0.73';
 
-my $Revision = substr(q$Revision: 1.58 $, 10);
+my $Revision = substr(q$Revision: 1.59 $, 10);
 
-# $Id: DBI.pm,v 1.58 1996/09/23 18:20:45 timbo Exp $
+# $Id: DBI.pm,v 1.59 1996/10/10 15:55:12 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -96,7 +96,8 @@ my %DBI_IF = (	# Define the DBI Interface:
     st => {		# Statement Class Interface
 	bind_col   =>	{ U =>[3,4,'$column, \\$var [, \%attribs]'] },
 	bind_columns =>	{ U =>[3,0,'\%attribs, \\$var1 [, \\$var2, ...]'] },
-	bind_param =>	{ U =>[3,4,'$parameter, $var [, \%attribs]'] }, # XXX $var as ref?
+	bind_param =>	{ U =>[3,4,'$parameter, $var [, \%attribs]'] },
+	bind_param_inout => { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attribs]'] },
 	execute    =>	{ U =>[1,0,'[@args]'] },
 	fetch      =>	undef, # no checks, no args, max speed
 	fetchrow   =>	undef, # no checks, no args, max speed
@@ -410,6 +411,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub FETCH {
 	my($drh, $key) = @_;
 	return DBI->_debug_dispatch if $key eq 'DebugDispatch';
+	return undef if $key eq 'DebugLog';	# not worth fetching, sorry
 	return $drh->DBD::_::dr::FETCH($key);
 	undef;
     }
