@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.24 2003/02/26 17:56:01 timbo Exp $
+# $Id: DBI.pm,v 11.26 2003/02/27 00:22:28 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.32_90"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.33"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.33
-(C<$Date: 2003/02/26 17:56:01 $>).
+(C<$Date: 2003/02/27 00:22:28 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -154,7 +154,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.24 $, 10);
+my $Revision = substr(q$Revision: 11.26 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -349,9 +349,9 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
 	commit     	=> { U =>[1,1], O=>0x0480 },
 	rollback   	=> { U =>[1,1], O=>0x0480 },
-	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x0200 },
 	preparse    	=> {  }, # XXX
-	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
+	prepare    	=> { U =>[2,3,'$statement [, \%attr]'], O=>0x0200 },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
 	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
@@ -362,7 +362,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	ping       	=> { U =>[1,1], O=>0x0404 },
 	disconnect 	=> { U =>[1,1], O=>0x0400 },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
-	quote_identifier=> { U =>[2,5, '$name [, ...]' ],	    O=>0x0430 },
+	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ],    O=>0x0430 },
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x0200 },
@@ -1197,7 +1197,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub quote_identifier {
 	my ($dbh, @id) = @_;
-	my $attr = (@id > 3) ? pop @id : undef;
+	my $attr = (@id > 3 && ref($id[-1])) ? pop @id : undef;
 
 	my $info = $dbh->{dbi_quote_identifier_cache} ||= [
 	    $dbh->get_info(29)  || '"',	# SQL_IDENTIFIER_QUOTE_CHAR
@@ -1423,14 +1423,14 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return @tables;
     }
 
-    sub type_info_all {
+    sub type_info_all {	# drivers need to supply their own
 	my ($dbh) = @_;
 	$dbh->_not_impl('type_info_all');
 	my $ti = [ {} ];
 	return $ti;
     }
 
-    sub type_info {
+    sub type_info {	# this should be sufficient for all drivers
 	my ($dbh, $data_type) = @_;
 	my $idx_hash;
 	my $tia = $dbh->{dbi_type_info_row_cache};
@@ -1440,6 +1440,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	else {
 	    my $temp = $dbh->type_info_all;
 	    return unless $temp && @$temp;
+	    # we cache here because type_info_all may be expensive to call
 	    $tia      = $dbh->{dbi_type_info_row_cache} = $temp;
 	    $idx_hash = $dbh->{dbi_type_info_idx_cache} = shift @$tia;
 	}
@@ -4032,7 +4033,7 @@ need to quote values being used with L</"Placeholders and Bind Values">.
 =item C<quote_identifier>
 
   $sql = $dbh->quote_identifier( $name );
-  $sql = $dbh->quote_identifier( $name1, $name2, $name3, \%attr );
+  $sql = $dbh->quote_identifier( $catalog, $schema, $table, \%attr );
 
 Quote an identifier (table name etc.) for use in an SQL statement,
 by escaping any special characters (such as double quotation marks)
@@ -4046,8 +4047,8 @@ joined together, typically with a dot (C<.>) character. For example:
 would, for most database types, return C<"Her schema"."My table">
 (including all the double quotation marks).
 
-If three names are supplied then the first is assumed to be a catalog
-name and special rules may be applied based on what L</get_info>
+If three names are supplied then the first is assumed to be a
+catalog name and special rules may be applied based on what L</get_info>
 returns for SQL_CATALOG_NAME_SEPARATOR (41) and SQL_CATALOG_LOCATION (114).
 For example, for Oracle:
 
@@ -4951,17 +4952,25 @@ Returns the parent $dbh of the statement handle.
 Returns a reference to a hash containing the values currently bound
 to placeholders.  The keys of the hash are the 'names' of the
 placeholders, typically integers starting at 1.  Returns undef if
-not supported by the driver.  If the driver does support C<ParamValues>
-but no values have been bound yet then either undef or an empty
-hash may be returned.
+not supported by the driver.
 
 See L</ShowErrorStatement> for an example of how this is used.
+
+If the driver supports C<ParamValues> but no values have been bound
+yet then the driver should return a hash with placeholders names
+in the keys but all the values undef, but some drivers may return
+a ref to an empty hash.
 
 It is possible that the values in the hash returned by C<ParamValues>
 are not exactly the same as those passed to bind_param() or execute().
 The driver may have modified the values in some way based on the
 TYPE the value was bound with. For example a floating point value
 bound as an SQL_INTEGER type may be returned as an integer.
+
+It is also possible that the keys in the hash returned by C<ParamValues>
+are not exactly the same as those implied by the prepared statement.
+For example, DBD::Oracle translates 'C<?>' placeholders into 'C<:pN>'
+where N is a sequence number starting at 1.
 
 The C<ParamValues> attribute was added in DBI 1.28.
 

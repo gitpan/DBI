@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs,v 11.20 2003/02/26 17:56:01 timbo Exp $
+ * $Id: DBI.xs,v 11.21 2003/02/27 00:22:28 timbo Exp $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -10,6 +10,10 @@
 #define IN_DBI_XS 1	/* see DBIXS.h */
 
 #include "DBIXS.h"	/* DBI public interface for DBD's written in C	*/
+
+# if (defined(_WIN32) && (! defined(HAS_GETTIMEOFDAY)))
+#include <sys/timeb.h>
+# endif
 
 #define MY_VERSION "DBI(" XS_VERSION ")"
 
@@ -1813,7 +1817,13 @@ dbi_time() {
     gettimeofday(&when, (struct timezone *) 0);
     return when.tv_sec + (when.tv_usec / 1000000.0);
 # else	/* per-second is almost useless */
+# ifdef _WIN32 /* use _ftime() on Win32 (MS Visual C++ 6.0) */
+    struct _timeb when;
+    _ftime( &when );
+    return when.time + (when.millitm / 1000.0);
+# else
     return time(NULL);
+# endif
 # endif
 }
 

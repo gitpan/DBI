@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.12 2002/12/01 22:34:29 timbo Exp $
+# $Id: Makefile.PL,v 11.14 2003/02/27 00:22:28 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -9,6 +9,21 @@
 BEGIN {
     require 5.005_03;
     unshift @INC, "lib";
+}
+
+if ($] < 5.006001) {
+	warn qq{\a\a\a
+**************************************************************************
+**************************************************************************
+  Version $] of perl will NOT BE SUPPORTED by future DBI releases.
+  You will have to upgrade your perl or stop upgrading DBI.
+  Perl version 5.6.1 will be the lowest version supported.
+  Press return to continue...
+**************************************************************************
+**************************************************************************
+};
+    sleep 3;
+    my $pause = <>;
 }
 
 use ExtUtils::MakeMaker 5.16, qw(WriteMakefile $Verbose);
@@ -155,6 +170,11 @@ warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
 my ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $cfg_man3direxp ) =
      @Config{qw( privlibexp archlibexp sitelibexp sitearchexp man3direxp ) };
+for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
+     $cfg_man3direxp ) {
+     $_ = '' unless defined $_;
+}
+
 
 $Verbose = $::opt_v;
 WriteMakefile(
@@ -233,6 +253,10 @@ Here's a list of probable old files and directories:
 
     # install files that DBD's may need
     File::Find::find( sub {
+
+	# may be '.' or '[]' depending on File::Find version
+	$_ = '.' if $^O eq 'VMS' && $_ eq File::Spec->curdir;
+
 	$File::Find::prune = 1, return if -d $_ && '.' ne $_;
 	$self->{PM}->{$_} = File::Spec->catfile($self->{INST_ARCHAUTODIR}, $_)
 	    if '.h' eq substr( $_, -2 ) || '.xst' eq substr( $_, -4 );

@@ -17,9 +17,10 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
 
 =head1 CHANGES
 
-=head2 Changes in DBI 1.32_90,    26th February 2003
+=head2 Changes in DBI 1.33,    27th February 2003
 
-  NOTE: Future versions of the DBI *will not* support perl 5.5 or earlier.
+  NOTE: Future versions of the DBI *will not* support perl 5.6.0 or earlier.
+  : perl 5.6.1 will be the minimum supported version.
 
   NOTE: The "old-style" connect: DBI->connect($database, $user, $pass, $driver);
   : has been deprecated for several years and will now generate a warning.
@@ -31,15 +32,14 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
 
   Fixed merging of profile data to not sum DBIprof_FIRST_TIME values.
   Fixed unescaping of newlines in DBI::ProfileData thanks to Sam Tregar.
-  Fixed t/40profile.t to not use Time::HiRes.
-  Fixed t/06attrs.t to not be locale sensitive, reported by Christian Hammers.
-  Fixed sgi compiler warnings, reported by Paul Blake.
   Fixed Taint bug with fetchrow_hashref with help from Bradley Baetz.
   Fixed $dbh->{Active} for DBD::Proxy, reported by Bob Showalter.
   Fixed STORE to not clear error during nested DBI call,
    thanks to Tony Bowden for the report and helpful test case.
   Fixed DBI::PurePerl error clearing behaviour.
-  Fixed build using make -j4, reported by Jonathan Leffler.
+  Fixed dbi_time() and thus DBI::Profile on Windows thanks to Smejkal Petr.
+  Fixed problem that meant ShowErrorStatement could show wrong statement,
+   thanks to Ron Savage for the report and test case.
   Changed Apache::DBI hook to check for $ENV{MOD_PERL} instead of
     $ENV{GATEWAY_INTERFACE} thanks to Ask Bjoern Hansen.
   No longer tries to dup trace logfp when an interpreter is being cloned.
@@ -49,6 +49,13 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
     Now when a dbh is destroyed it's err/errstr/state values are copied
     up to the driver so checking $DBI::errstr still works as expected.
 
+  Build / portability fixes:
+    Fixed t/40profile.t to not use Time::HiRes.
+    Fixed t/06attrs.t to not be locale sensitive, reported by Christian Hammers.
+    Fixed sgi compiler warnings, reported by Paul Blake.
+    Fixed build using make -j4, reported by Jonathan Leffler.
+    Fixed build and tests under VMS thanks to Craig A. Berry.
+
   Documentation changes:
     Documented $high_resolution_time = dbi_time() function.
     Documented that bind_col() can take an atribute hash.
@@ -57,6 +64,7 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
       including a major update to the DBI::DBD driver author guide.
     Clarified that execute() should itself call finish() if it's
       called on a statement handle that's still active.
+    Clarified $sth->{ParamValues}. Driver authors please note.
     Removed "NEW" markers on some methods and attributes and
       added text to each giving the DBI version it was added in,
       if it was added after DBI 1.21 (Feb 2002).
@@ -66,12 +74,15 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
       INTERVAL_PRECISION fields to docs for type_info_all. There were
       already in type_info(), but type_info_all() didn't specify the
       index values.  Please check and update your type_info_all() code.
-    Added DBI::DBD::GetInfo module that auto-generates your drivers
-      get_info support code, thanks to Steffen Goeldner and others.
-    Added DBI::DBD::TypeInfo module that auto-generates your drivers
-      type_info_all data structure, thanks to Jonathan Leffler.
-    Drivers should no longer pass Err, Errstr, or State to _new_dbr
-      or _new_dbh.
+    Added DBI::DBD::Metadata module that auto-generates your drivers
+      get_info and type_info_all data and code, thanks mainly to
+      Jonathan Leffler and Steffen Goeldner. If you've not implemented
+      get_info and type_info_all methods and your database has an ODBC
+      driver available then this will do all the hard work for you!
+    Drivers should no longer pass Err, Errstr, or State to _new_drh
+      or _new_dbh functions.
+    Please check that you support the slightly modified behaviour of
+      $sth->{ParamValues}, e.g., always return hash with keys if possible.
 
   Changes of note for authors of compiled drivers:
     Added dbd_db_login6 & dbd_st_finish3 prototypes thanks to Jonathan Leffler.

@@ -14,6 +14,7 @@ use strict;
 
 use DBI;
 use DBI::Profile;
+use File::Spec;
 
 BEGIN {
     if ($DBI::PurePerl) {
@@ -32,7 +33,7 @@ $Data::Dumper::Terse = 1;
 # log file to store profile results 
 my $LOG_FILE = "profile.log";
 DBI->trace(0, $LOG_FILE);
-END { unlink $LOG_FILE; }
+END { 1 while unlink $LOG_FILE; }
 
 # make sure profiling starts disabled
 my $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
@@ -187,6 +188,7 @@ if (0) {
 }
 
 # check that output went into the log file
+DBI->trace(0, File::Spec->devnull); # close current log to flush it
 ok(-s $LOG_FILE);
 
 exit 0;

@@ -18,6 +18,8 @@ sub ok ($$;$) {
 
 use DBI qw(:sql_types);
 
+use DBI::DBD::Metadata; # just to check for syntax errors etc
+
 $dbh = DBI->connect("dbi:ExampleP:.","","", { FetchHashKeyName => 'NAME_lc' });
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 ok(0, $dbh);

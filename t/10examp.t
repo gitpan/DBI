@@ -573,11 +573,11 @@ ok(0, !$dbh->{HandleError});
 
 print "dump_results\n";
 ok(0, $csr_a = $dbh->prepare($std_sql));
-if ($haveFileSpec && length(File::Spec->rootdir))
+if ($haveFileSpec && length(File::Spec->updir))
 {
-  ok(0, $csr_a->execute(File::Spec->rootdir));
+  ok(0, $csr_a->execute(File::Spec->updir));
 } else {
-  ok(0, $csr_a->execute('/'));
+  ok(0, $csr_a->execute('../'));
 }
 my $dump_dir = ($ENV{TMP} || $ENV{TEMP} || $ENV{TMPDIR} 
                || $ENV{'SYS$SCRATCH'} || '/tmp');
