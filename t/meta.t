@@ -1,4 +1,4 @@
-#!../perl
+#!../perl -w
 
 $|=1;
 print "1..$tests\n";
@@ -16,7 +16,7 @@ sub ok ($$;$) {
 
 use DBI qw(:sql_types);
 
-$dbh = DBI->connect("dbi:ExampleP:.","","");
+$dbh = DBI->connect("dbi:ExampleP:.","","", { FetchHashKeyName => 'NAME_lc' });
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 ok(0, $dbh);
 #$dbh->trace(3);

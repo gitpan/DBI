@@ -55,6 +55,7 @@ $dbh->{PrintError} = 0;
 ok(0, $dbh->{Taint}      == 1);
 ok(0, $dbh->{AutoCommit} == 1);
 ok(0, $dbh->{PrintError} == 0);
+ok(0, $dbh->{FetchHashKeyName} eq 'NAME');
 #$dbh->trace(2);
 
 ok(0, $dbh->quote("quote's") eq "'quote''s'");
@@ -105,6 +106,11 @@ ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");	# before NAME
 ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
 ok(0, "@{$csr_b->{NAME}}"    eq "mode size name");
 ok(0, "@{$csr_b->{ $csr_b->{FetchHashKeyName} }}" eq "MODE SIZE NAME");
+
+ok(0, "@{[sort keys   %{$csr_b->{NAME_lc_hash}}]}" eq "mode name size");
+ok(0, "@{[sort values %{$csr_b->{NAME_lc_hash}}]}" eq "0 1 2");
+ok(0, "@{[sort keys   %{$csr_b->{NAME_uc_hash}}]}" eq "MODE NAME SIZE");
+ok(0, "@{[sort values %{$csr_b->{NAME_uc_hash}}]}" eq "0 1 2");
 
 # get a dir always readable on all platforms
 my $dir = getcwd() || cwd();
@@ -209,10 +215,10 @@ ok(0, $r->[0]->[0] eq $row_a[2]);
 print "fetchall_arrayref hash slice\n";
 ok(0, $csr_b->execute());
 #$csr_b->trace(9);
-$r = $csr_b->fetchall_arrayref({ size=>1, name=>1});
+$r = $csr_b->fetchall_arrayref({ SizE=>1, nAMe=>1});
 ok(0, $r && @$r);
-ok(0, $r->[0]->{size} == $row_a[1]);
-ok(0, $r->[0]->{name} eq $row_a[2]);
+ok(0, $r->[0]->{SizE} == $row_a[1]);
+ok(0, $r->[0]->{nAMe} eq $row_a[2]);
 
 #$csr_b->trace(4);
 print "fetchall_arrayref hash\n";
@@ -231,35 +237,97 @@ ok(0, $rows == @$r, "$rows vs ".@$r);
 
 # ---
 
+print "selectrow_array\n";
 @row_b = $dbh->selectrow_array($std_sql, undef, $dir);
 ok(0, @row_b == 3);
 ok(0, "@row_b" eq "@row_a");
 
+print "selectrow_hashref\n";
 $r = $dbh->selectrow_hashref($std_sql, undef, $dir);
 ok(0, keys %$r == 3);
 ok(0, $r->{MODE} eq $row_a[0]);
 ok(0, $r->{SIZE} eq $row_a[1]);
 ok(0, $r->{NAME} eq $row_a[2]);
 
+print "selectall_arrayref\n";
 $r = $dbh->selectall_arrayref($std_sql, undef, $dir);
 ok(0, $r);
 ok(0, @{$r->[0]} == 3);
 ok(0, "@{$r->[0]}" eq "@row_a");
 ok(0, @$r == $rows);
 
-$r = $dbh->selectall_hashref($std_sql, undef, $dir);
+print "selectall_arrayref Slice array slice\n";
+$r = $dbh->selectall_arrayref($std_sql, { Slice => [ 2, 0 ] }, $dir);
 ok(0, $r);
-ok(0, keys %{$r->[0]} == 3);
-ok(0, "@{$r->[0]}{qw(MODE SIZE NAME)}" eq "@row_a");
+ok(0, @{$r->[0]} == 2);
+ok(0, "@{$r->[0]}" eq "$row_a[2] $row_a[0]", qq{"@{$r->[0]}" eq "$row_a[2] $row_a[0]"});
 ok(0, @$r == $rows);
 
+print "selectall_arrayref Columns array slice\n";
+$r = $dbh->selectall_arrayref($std_sql, { Columns => [ 3, 1 ] }, $dir);
+ok(0, $r);
+ok(0, @{$r->[0]} == 2);
+ok(0, "@{$r->[0]}" eq "$row_a[2] $row_a[0]", qq{"@{$r->[0]}" eq "$row_a[2] $row_a[0]"});
+ok(0, @$r == $rows);
+
+print "selectall_arrayref hash slice\n";
+$r = $dbh->selectall_arrayref($std_sql, { Columns => { MoDe=>1, NamE=>1 } }, $dir);
+ok(0, $r);
+ok(0, keys %{$r->[0]} == 2);
+ok(0, exists $r->[0]{MoDe});
+ok(0, exists $r->[0]{NamE});
+ok(0, $r->[0]{MoDe} eq $row_a[0]);
+ok(0, $r->[0]{NamE} eq $row_a[2]);
+ok(0, @$r == $rows);
+
+print "selectall_hashref\n";
+$r = $dbh->selectall_hashref($std_sql, 'NAME', undef, $dir);
+ok(0, $r);
+ok(0, ref $r eq 'HASH');
+ok(0, keys %$r == $rows);
+ok(0, $r->{ $row_a[2] }{SIZE} eq $row_a[1], qq{$r->{ $row_a[2] }{SIZE} eq $row_a[1]});
+
+print "selectall_hashref by column number\n";
+$r = $dbh->selectall_hashref($std_sql, 3, undef, $dir);
+ok(0, $r);
+ok(0, $r->{ $row_a[2] }{SIZE} eq $row_a[1], qq{$r->{ $row_a[2] }{SIZE} eq $row_a[1]});
+
+print "selectcol_arrayref\n";
 $r = $dbh->selectcol_arrayref($std_sql, undef, $dir);
 ok(0, $r);
 ok(0, @$r == $rows);
 ok(0, $r->[0] eq $row_b[0]);
 
+print "selectcol_arrayref column slice\n";
+$r = $dbh->selectcol_arrayref($std_sql, { Columns => [3,2] }, $dir);
+ok(0, $r);
+# use Data::Dumper; warn Dumper([\@row_b, $r]);
+ok(0, @$r == $rows * 2);
+ok(0, $r->[0] eq $row_b[2]);
+ok(0, $r->[1] eq $row_b[1]);
+
 # ---
 
+print "begin_work...\n";
+ok(0, $dbh->{AutoCommit});
+ok(0, !$dbh->{BegunWork});
+
+ok(0, $dbh->begin_work);
+ok(0, !$dbh->{AutoCommit});
+ok(0, $dbh->{BegunWork});
+
+$dbh->commit;
+ok(0, $dbh->{AutoCommit});
+ok(0, !$dbh->{BegunWork});
+
+ok(0, $dbh->begin_work({}));
+$dbh->rollback;
+ok(0, $dbh->{AutoCommit});
+ok(0, !$dbh->{BegunWork});
+
+# ---
+
+print "others...\n";
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
@@ -398,4 +466,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 139; }
+BEGIN { $tests = 175; }

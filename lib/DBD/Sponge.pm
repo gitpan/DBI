@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.6 $, 9,-1);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 10.6 2001/03/30 14:35:41 timbo Exp $
+#   $Id: Sponge.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #

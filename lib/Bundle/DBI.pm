@@ -2,7 +2,7 @@
 
 package Bundle::DBI;
 
-$VERSION = '1.03';
+$VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
 1;
 
@@ -27,6 +27,8 @@ RPC::PlServer 0.2001 - for DBD::Proxy and DBI::ProxyServer
 Getopt::Long 2.17 - for DBI::Shell
 
 DBI - for to get to know thyself
+
+DBD::Multiplex
 
 =head1 DESCRIPTION
 

@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 10.8 2001/05/29 23:25:55 timbo Exp $
+### $Id: FAQ.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,9 @@
 ### made to Alligator Descartes <I<http://www.symbolstone.org/descarte/contact.html>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 11.2  2001/08/24  22:10:44  timbo
+# *** empty log message ***
+#
 # Revision 10.8  2001/05/29  23:25:55  timbo
 # *** empty log message ***
 #

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.16 2001/07/16 16:10:30 timbo Exp $
+# $Id: Makefile.PL,v 11.2 2001/08/24 22:10:44 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #

@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 10.14 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 10.14 2001/05/29 23:25:55 timbo Exp $
+#   $Id: ExampleP.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -192,7 +192,6 @@
 	# In reality this would interrogate the database engine to
 	# either return dynamic values that cannot be precomputed
 	# or fetch and cache attribute values too expensive to prefetch.
-	return 1 if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
 	return $dbh->SUPER::FETCH($attrib);
     }
@@ -203,8 +202,9 @@
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
 	if ($attrib eq 'AutoCommit') {
-	    return 1 if $value;	# is already set
-	    Carp::croak("Can't disable AutoCommit");
+	    # convert AutoCommit values to magic ones to let DBI
+	    # know that the driver has 'handled' the AutoCommit attribute
+	    $value = ($value) ? -901 : -900;
 	}
 	return $dbh->SUPER::STORE($attrib, $value);
     }

@@ -1,3 +1,57 @@
+Changes in DBI 1.20,    24th August 2001
+
+  WARNING: This release contains two changes that may affect your code.
+  : Any code using selectall_hashref(), which was added in March 2001, WILL
+  : need to be changed. Any code using fetchall_arrayref() with a non-empty
+  : hash slice parameter may, in a few rare cases, need to be changed.
+  : See the change list below for more information about the changes.
+  : See the DBI documentation for a description of current behaviour.
+
+  Changed fetchall_arrayref({ foo=>1, ...}) specification again (sorry):
+    The key names of the returned hashes is identical to the letter case of
+    the names in the parameter hash, regardless of the L</FetchHashKeyName>
+    attribute. The letter case is ignored for matching.
+  Changed fetchall_arrayref([...]) array slice syntax specification to
+    clarify that the numbers in the array slice are perl index numbers
+    (which start at 0) and not column numbers (which start at 1).
+  Added { Columns=>... } and { Slice =>... } attributes to selectall_arrayref()
+    which is passed to fetchall_arrayref() so it can fetch hashes now.
+  Added a { Columns => [...] } attribute to selectcol_arrayref() so that
+    the list it returns can be built from more than one column per row.
+    Why? Consider my %hash = @{$dbh->selectcol_arrayref($sql,{ Columns=>[1,2]})}
+    to return id-value pairs which can be used directly to build a hash.
+  Added $hash_ref = $sth->fetchall_hashref( $key_field )
+    which returns a ref to a hash with, typically, one element per row.
+    $key_field is the name of the field to get the key for each row from.
+    The value of the hash for each row is a hash returned by fetchrow_hashref.
+  Changed selectall_hashref to return a hash ref (from fetchall_hashref)
+    and not an array of hashes as it has since DBI 1.15 (end March 2001).
+    WARNING: THIS CHANGE WILL BREAK ANY CODE USING selectall_hashref()!
+    Sorry, but I think this is an important regularization of the API.
+    To get previous selectall_hashref() behaviour (an array of hash refs)
+    change $ary_ref = $dbh->selectall_hashref( $statement, undef, @bind);
+	to $ary_ref = $dbh->selectall_arrayref($statement, { Columns=>{} }, @bind);
+  Added NAME_lc_hash, NAME_uc_hash, NAME_hash statement handle attributes.
+    which return a ref to a hash of field_name => field_index (0..n-1) pairs.
+  Fixed select_hash() example thanks to Doug Wilson.
+  Removed (unbundled) DBD::ADO and DBD::Multiplex from the DBI distribution.
+    The latest versions of those modules are available from CPAN sites.
+  Added $dbh->begin_work. This method causes AutoCommit to be turned
+    off just until the next commit() or rollback().
+    Driver authors: if the DBIcf_BegunWork flag is set when your commit or
+    rollback method is called then please turn AutoCommit on and clear the
+    DBIcf_BegunWork flag. If you don't then the DBI will but it'll be much
+    less efficient and won't handle error conditions very cleanly.
+  Retested on perl 5.4.4, but the DBI won't support 5.4.x much longer.
+  Added text to SUPPORT section of the docs:
+    For direct DBI and DBD::Oracle support, enhancement, and related work
+    I am available for consultancy on standard commercial terms.
+  Added text to ACKNOWLEDGEMENTS section of the docs:
+    Much of the DBI and DBD::Oracle was developed while I was Technical
+    Director (CTO) of the Paul Ingram Group (www.ig.co.uk).  So I'd
+    especially like to thank Paul for his generosity and vision in
+    supporting this work for many years.
+
 Changes in DBI 1.19,    20th July 2001
 
   Made fetchall_arrayref({ foo=>1, ...}) be more strict to the specification

@@ -1,20 +1,32 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Foreign key metadata
+
+Update DBI::DBD with overview (at least) recommend Driver.xst strongly.
+Find XS drivers that don't use it and talk to authors.
+Ship separate DBD::TemplateP and DBD::TemplateXS drivers as examples.
+
 Check/fix: local($h->{PrintError})=0; resets $DBI::errstr at end of scope
 
 Implement _fetchall_arrayref XS
+and perhaps within Driver.xst!
 
-Add row num to fetch trace
-Trace1 = first and last fetch only.
-Trace2 = fetch return only.
 ShowTracePid attrib
 Add UnimpMethodHook (in XS)
 Test and integrate with DProf?
 FetchHashReuse attrib (=1 or ={}) copy from dbh to sth.
-Record attrib STOREs so can be replayed
+Record attrib STOREs so can be replayed (or use subclass?)
+
+Add to AdvDBI tutorial trace section: call depth and tainting info
+
+Merge DBIx::AnyDBD functionality into the DBI
 
 make lasth return outer handle
+
+Add $h->swap_internal_handle($other_h)
+
+Add DBI::hash2
 
 make ShowErrorStatement also show the st1 etc? for execute() and do().
 
@@ -42,24 +54,15 @@ In $dbh->DESTROY don't issue warning if count == 0.
 change *.xst to treat eaither that or -2 as an error. (The -2 is
 a transition or old drivers.)
 
-selectall_hashref($sql, \%attr, [ $join, @fields ]);
-	# leave as key=>[@row] or key=>$value if only one left?
-	# include the keys in the value?
-
-Added refcount to dump method output (to trace ref leakage etc).
-
 ODBC 3.5 date and intervals types and subtypes (from unixODBC?)
 
-Docs for connect_cached and test with proxy.
-
 Proxy: allow config to speficy SQL to allow/deny via regexen
-
-Primary Key metadata
+Docs for connect_cached and test with proxy.
 
 BINDING:
 
 Add to docs & tutorial re wrong bind type on a param may cause
-index to not be used!
+index to not be used! (Find real examples first)
 
 > And note that if you are using bind_param_inout as 'bind_param_by_ref',
 > then the $maxlen parameter is redundant.  I suspect all drivers could
@@ -70,8 +73,6 @@ index to not be used!
 > placeholders, and values are returned through a cursor, and that's all.
 Okay. I'll take that as a vote for bind_param_by_ref as an alias for
 bind_param_inout. >>todo.
-
-bind_params($value1,\%attr1, $value2,\%attr2, ...); # _ref?
 
 Get bind values from statement handle via an attribute.
 Useful for diagnostics. Also probably useful for pure-perl drivers.
@@ -94,7 +95,7 @@ by multiple threads/interpreters (esp mod_perl v2 and ActivePerl).
 OTHERS:
 
 Enable warnings in default_user().
-Add prompt for user/pass in default_user().
+Add prompt for user/pass in default_user()?
 
 Change bind_column to save the info for get_fbav to use when
 first called. Thus making bind before execute reliable.
@@ -125,12 +126,9 @@ to avoid duplicated error msg.
 Add hook to DBI::DBD to write a myconfig.txt file into the
 source directory containing key driver and config info.
 
-attribute for 'last inserted id'
+attribute for 'last inserted id'?
 
 test suite
-
-$sth->{Database} and $dbh->{Driver} should hold the
-outer handle not the inner one.
 
 $sth->more_results, now and $sth->become($sth2) later
 
@@ -141,13 +139,11 @@ Add thread CV locks (not method locks)
 to &DBI::connect and &DBI::connect_cached
 in xs dbi_init code.
 
-Complete and test connect_cached, inc proxy.
-
 fetch_scroll handling via get_fbav.
 Also add:
 	getrow_array       (or getdata_?)
-	getrow_arrayref
-	getrow_hashref
+	getrow_arrayref?
+	getrow_hashref?
 
 test that $dbh->do will RaiseError
 RaiseError in %attr - doc it not working - hints.
@@ -169,17 +165,9 @@ Else more generic dsn-rewrite via env vars
 
 Check DBD::Proxy connect&fetch latency (e.g. CGI use).
 
-Add TYPE, SCALE, PRECISION to DBD::Sponge
+Add SCALE to DBD::Sponge
 
 $dbh->get_info?
-
-Bundle DBD::Xbase?
-Bundle Tie::DBI?
-Bundle others
-
-Add $dbh->{BusyCallback} = sub { ... } hook so drivers which support
-polling can allow other processing without complicating the logic.
-(But that won't allow callbacks into DBI code.)
 
 Rework handle creation for
 $h->clone ?, and maybe
@@ -187,9 +175,6 @@ $dbh->connect([$user, $passwd])	# to reconnect, possibly as a different user
 
 generic dbd_preparse (for both C and perl)
 Add (ODBC) attribute to indicate if placeholders are supported.
-
-SQL Parser
-  CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
 
 Fix shared error codes between (dbh) handles, maybe.
 
@@ -201,6 +186,9 @@ Add 'break handling' when field values change? Use two fbav's so 'previous
 record' is available. Defind break fields and handlers. Call them via
 an alternate fetch_with_break method.
 
+Add mechanism to optimise
+  $sth2->execute(@$row) while ($row = $sth1->fetchrow_arrayref);
+maybe just offer an XS method that does just that.
 
 ---
 > > Is there any way to know whether a particular DBD needs a separate

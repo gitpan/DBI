@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = sprintf "%d.%02d", '$Revision: 10.11 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 11.2 $ ' =~ /(\d+)\.(\d+)/;
 
 my $warning = <<'EOM';
 

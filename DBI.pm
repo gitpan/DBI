@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.39 2001/07/20 22:28:28 timbo Exp $
+# $Id: DBI.pm,v 11.3 2001/08/24 23:33:40 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.19"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.20"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -28,10 +28,11 @@ DBI - Database independent interface for Perl
   $rv  = $dbh->do($statement, \%attr);
   $rv  = $dbh->do($statement, \%attr, @bind_values);
 
-  $ary_ref = $dbh->selectall_arrayref($statement);
-  $ary_ref = $dbh->selectall_hashref($statement);
+  $ary_ref  = $dbh->selectall_arrayref($statement);
+  $hash_ref = $dbh->selectall_hashref($statement, $key_field);
 
   $ary_ref = $dbh->selectcol_arrayref($statement);
+  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr);
 
   $ary_ref = $dbh->selectrow_arrayref($statement);
   @row_ary = $dbh->selectrow_array($statement);
@@ -57,8 +58,11 @@ DBI - Database independent interface for Perl
   $ary_ref  = $sth->fetchall_arrayref( { ... } );
   $ary_ref  = $sth->fetchall_arrayref( [ ... ] );
 
+  $hash_ref = $sth->fetchall_hashref( $key_field );
+
   $rv  = $sth->rows;
 
+  $rc  = $dbh->begin_work;
   $rc  = $dbh->commit;
   $rc  = $dbh->rollback;
 
@@ -99,8 +103,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.19
-(C<$Date: 2001/07/20 22:28:28 $>).
+This is the DBI specification that corresponds to the DBI version 1.20
+(C<$Date: 2001/08/24 23:33:40 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -142,7 +146,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.39 $, 10);
+my $Revision = substr(q$Revision: 11.3 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -272,8 +276,9 @@ my @Common_IF = (	# Interface functions common to all DBI classes
     db => {		# Database Session Class Interface
 	@Common_IF,
 	@TieHash_IF,
-	commit     	=> { U =>[1,1] },
-	rollback   	=> { U =>[1,1] },
+	begin_work   	=> { U =>[1,2,'[ \%attr ]'] },
+	commit     	=> { U =>[1,1], O=>0x0080 },
+	rollback   	=> { U =>[1,1], O=>0x0080 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
@@ -313,6 +318,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	fetchrow   	  => undef, # old alias for fetchrow_array
 
 	fetchall_arrayref => { U =>[1,2] },
+	fetchall_hashref  => { U =>[2,2] },
 
 	blob_read  =>	{ U =>[4,5,'$field, $offset, $len [, \\$buf [, $bufoffset]]'] },
 	blob_copy_to_file => { U =>[3,3,'$field, $filename_or_handleref'] },
@@ -975,36 +981,40 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub selectall_arrayref {
 	my ($dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt
-			      : $dbh->prepare($stmt, $attr);
+	my $sth = (ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
-	my $slice = $attr->{dbi_fetchall_arrayref_attr}; # typically undef
+	my $slice = $attr->{Slice}; # typically undef, else hash or array ref
+	if (!$slice and $slice=$attr->{Columns}) {
+	    if (ref $slice eq 'ARRAY') { # map col idx to perl array idx
+		$slice = [ @{$attr->{Columns}} ];	# take a copy
+		for (@$slice) { $_-- }
+	    }
+	}
 	return $sth->fetchall_arrayref($slice);
     }
 
     sub selectall_hashref {
-	my ($dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt
-			      : $dbh->prepare($stmt, $attr);
+	my ($dbh, $stmt, $key_field, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
-	my ($row, @rows);
-	push @rows, $row while ($row = $sth->fetchrow_hashref());
-	return \@rows;
+	return $sth->fetchall_hashref($key_field);
     }
 
     sub selectcol_arrayref {
 	my ($dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt
-			      : $dbh->prepare($stmt, $attr);
+	my $sth = (ref $stmt) ? $stmt : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
-	my $column = 1;
-	my $value;
-	$sth->bind_col($column, \$value) || return;
+	my @columns = ($attr->{Columns}) ? @{$attr->{Columns}} : (1);
+	my @values  = (undef) x @columns;
+	my $idx = 0;
+	for (@columns) {
+	    $sth->bind_col($_, \$values[$idx++]) || return;
+	}
 	my @col;
-	push @col, $value while $sth->fetch;
+	push @col, @values while $sth->fetch;
 	return \@col;
     }
 
@@ -1036,6 +1046,13 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	"0 but true";	# special kind of true 0
     }
 
+    sub begin_work {
+	my $dbh = shift;
+	return $dbh->DBI::set_err(1, "Already in a transaction")
+		unless $dbh->FETCH('AutoCommit');
+	$dbh->STORE('AutoCommit', 0); # will croak if driver doesn't support it
+	$dbh->STORE('BegunWork',  1); # trigger post commit/rollback action
+    }
     sub commit {
 	shift->_not_impl('commit');
     }
@@ -1163,9 +1180,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	elsif ($mode eq 'HASH') {
 	    if (keys %$slice) {
 		my @o_keys = keys %$slice;
+		my @i_keys = map { lc } keys %$slice;
 		while ($row = $sth->fetchrow_hashref('NAME_lc')) {
 		    my %hash;
-		    @hash{@o_keys} = @{$row}{@o_keys};
+		    @hash{@o_keys} = @{$row}{@i_keys};
 		    push @rows, \%hash;
 		}
 	    }
@@ -1176,6 +1194,26 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	}
 	else { Carp::croak("fetchall_arrayref($mode) invalid") }
 	return \@rows;
+    }
+
+    sub fetchall_hashref {
+	my ($sth, $key_field) = @_;
+
+	my ($sth_outer) = DBI::_handles($sth); # get outer handle for magic FETCH
+	my $hash_key_name = $sth->{FetchHashKeyName};
+	my $names_hash = $sth_outer->{"${hash_key_name}_hash"};
+	my $index = $names_hash->{$key_field};	# perl index not column number
+	++$index if defined $index;		# convert to column number
+	$index ||= $key_field if DBI::looks_like_number($key_field) && $key_field>=1;
+	return $sth->DBI::set_err(1, "Field '$key_field' does not exist (not one of @{[keys %$names_hash]})")
+		unless defined $index;
+	my $key_value;
+	$sth->bind_col($index, \$key_value) or return;
+	my %rows;
+	while (my $row = $sth->fetchrow_hashref($hash_key_name)) {
+	    $rows{ $key_value } = $row;
+	}
+	return \%rows;
     }
 
     *dump_results = \&DBI::dump_results;
@@ -2333,7 +2371,7 @@ because the first field value was NULL, calling C<selectrow_array> in
 a scalar context should be used with caution.
 
 
-=item C<selectall_arrayref>
+=item C<selectall_arrayref> I<NEW>
 
   $ary_ref = $dbh->selectall_arrayref($statement);
   $ary_ref = $dbh->selectall_arrayref($statement, \%attr);
@@ -2349,20 +2387,32 @@ statement is going to be executed many times.
 
 If L</RaiseError> is not set and any method except C<fetchall_arrayref>
 fails then C<selectall_arrayref> will return C<undef>; if
-C<fetchall_arrayref> fails then it will return with whatever data it
-has been fetched thus far. $DBI::err should be checked to catch that.
+C<fetchall_arrayref> fails then it will return with whatever data
+has been fetched thus far. You should check C<$sth->E<gt>C<err>
+afterwards (or use the C<RaiseError> attribute) to discover if the data is
+complete or was truncated due to an error.
+
+The L</fetchall_arrayref> method called by C<selectall_arrayref>
+supports a $slice parameter. You can specify a value for $slice by
+including a 'C<Slice>' or 'C<Columns>' attribute in \%attr. The only
+difference between the two is that if C<Slice> is not defined and
+C<Columns> is an array ref, then the array is assumed to contain column
+index values (which count from 1), rather than perl array index values.
+In which case the array is copied and each value decremented before
+passing to C</fetchall_arrayref>.
 
 
-=item C<selectall_hashref>
+=item C<selectall_hashref> I<NEW>
 
-  $ary_ref = $dbh->selectall_hashref($statement);
-  $ary_ref = $dbh->selectall_hashref($statement, \%attr);
-  $ary_ref = $dbh->selectall_hashref($statement, \%attr, @bind_values);
+  $hash_ref = $dbh->selectall_hashref($statement, $key_field);
+  $hash_ref = $dbh->selectall_hashref($statement, $key_field, \%attr);
+  $hash_ref = $dbh->selectall_hashref($statement, $key_field, \%attr, @bind_values);
 
 This utility method combines L</prepare>, L</execute> and
-L</fetchrow_hashref> into a single call. It returns a reference to an
-array containing, for each row of data fetched, a reference to a hash
-containing field name and value pairs for that row.
+L</fetchall_hashref> into a single call. It returns a reference to a
+hash containing one entry for each row. The key for each row entry is
+specified by $key_field. The value is a reference to a hash returned by
+C<fetchrow_hashref>.
 
 The C<$statement> parameter can be a previously prepared statement handle,
 in which case the C<prepare> is skipped. This is recommended if the
@@ -2392,6 +2442,17 @@ If any method except C<fetch> fails, and L</RaiseError> is not set,
 C<selectcol_arrayref> will return C<undef>.  If C<fetch> fails and
 L</RaiseError> is not set, then it will return with whatever data it
 has fetched thus far. $DBI::err should be checked to catch that.
+
+The C<selectcol_arrayref> method defaults to pushing a single column
+value (the first) from each row into the result array. However, it can
+also push another column, or even multiple columns per row, into the
+result array. This behaviour can be specified via a 'C<Columns>'
+attribute which must be a ref to an array containing the column number
+or numbers to use. For example:
+
+  # get array of id and name pairs:
+  my $ary_ref = $dbh->selectcol_arrayref("select id, name from table", { Columns=>[1,2] });
+  my %hash = @$ary_ref; # build hash from key-value pairs so $hash{$id} => name
 
 
 =item C<prepare>
@@ -2467,8 +2528,8 @@ Here are some examples of C<prepare_cached>:
     my @values = @{$field_values}{@fields};
     my $qualifier = "";
     $qualifier = "where ".join(" and ", map { "$_=?" } @fields) if @fields;
-    $sth = $dbh->prepare_cached("SELECT * FROM table $qualifier");
-    return $dbh->selectall_arrayref($sth, @values);
+    $sth = $dbh->prepare_cached("SELECT * FROM $table $qualifier");
+    return $dbh->selectall_arrayref($sth, {}, @values);
   }
 
 
@@ -2493,6 +2554,21 @@ changes if the database supports transactions and AutoCommit is off.
 
 If C<AutoCommit> is on, then calling
 C<rollback> will issue a "rollback ineffective with AutoCommit" warning.
+
+See also L</Transactions> in the L</FURTHER INFORMATION> section below.
+
+=item C<begin_work>
+
+  $rc  = $dbh->begin_work   or die $dbh->errstr;
+
+Enable transactions (by turning C<AutoCommit> off) until the next call
+to C<commit> or C<rollback>. After the next C<commit> or C<rollback>,
+C<AutoCommit> will automatically be turned on again.
+
+If C<AutoCommit> is already off when C<begin_work> is called then
+it does nothing except return an error. If the driver does not support
+transactions then when C<begin_work> attempts to set C<AutoCommit> off
+the driver will trigger a fatal error.
 
 See also L</Transactions> in the L</FURTHER INFORMATION> section below.
 
@@ -3383,11 +3459,11 @@ change> in the future to return the same hash ref each time, so don't
 rely on the current behaviour.
 
 
-=item C<fetchall_arrayref>
+=item C<fetchall_arrayref> I<NEW>
 
   $tbl_ary_ref = $sth->fetchall_arrayref;
-  $tbl_ary_ref = $sth->fetchall_arrayref( $slice_array_ref );
-  $tbl_ary_ref = $sth->fetchall_arrayref( $slice_hash_ref  );
+  $tbl_ary_ref = $sth->fetchall_arrayref( $columns_array_ref );
+  $tbl_ary_ref = $sth->fetchall_arrayref( $columns_hash_ref  );
 
 The C<fetchall_arrayref> method can be used to fetch all the data to be
 returned from a prepared and executed statement handle. It returns a
@@ -3401,9 +3477,11 @@ complete or was truncated due to an error.
 
 When passed an array reference, C<fetchall_arrayref> uses L</fetchrow_arrayref>
 to fetch each row as an array ref. If the parameter array is not empty
-then it is used as a slice to select individual columns by index number.
+then it is used as a slice to select individual columns by perl array
+index number (starting at 0, unlike column and parameter numbers which
+start at 1).
 
-With no parameters, C<fetchall_arrayref> acts as if passed an empty array ref.
+With no parameters, C<fotchall_arrayref> acts as if passed an empty array ref.
 
 When passed a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
 to fetch each row as a hash reference. If the parameter hash is empty then
@@ -3412,9 +3490,10 @@ have whatever name lettercase is returned by default from fetchrow_hashref.
 (See L</FetchHashKeyName> attribute.)
 
 If the parameter hash is not empty, then it is used as a slice to
-select individual columns by name. The names should be lower case
-regardless of the letter case in C<$sth->E<gt>C<{NAME}>.  The values of
-the hash should be set to 1.
+select individual columns by name.  The values of the hash should be
+set to 1.  The key names of the returned hashes match the letter case
+of the names in the parameter hash, regardless of the
+L</FetchHashKeyName> attribute.
 
 For example, to fetch just the first column of every row:
 
@@ -3428,12 +3507,45 @@ To fetch all fields of every row as a hash ref:
 
   $tbl_ary_ref = $sth->fetchall_arrayref({});
 
-To fetch only the fields called "foo" and "bar" of every row as a hash ref:
+To fetch only the fields called "foo" and "bar" of every row as a hash ref
+(with keys named "foo" and "BAR"):
 
-  $tbl_ary_ref = $sth->fetchall_arrayref({ foo=>1, bar=>1 });
+  $tbl_ary_ref = $sth->fetchall_arrayref({ foo=>1, BAR=>1 });
 
-The first two examples return a reference to an array of array refs. The last
-returns a reference to an array of hash refs.
+The first two examples return a reference to an array of array refs.
+The third and forth return a reference to an array of hash refs.
+
+
+=item C<fetchall_hashref> I<NEW>
+
+  $hash_ref = $dbh->fetchall_hashref($key_field);
+
+The C<fetchall_hashref> method can be used to fetch all the data to be
+returned from a prepared and executed statement handle. It returns a
+reference to a hash that contains, at most, one entry per row.
+
+If there are no rows to return, C<fetchall_hashref> returns a reference
+to an empty hash. If an error occurs, C<fetchall_hashref> returns the
+data fetched thus far, which may be none.  You should check
+C<$sth->E<gt>C<err> afterwards (or use the C<RaiseError> attribute) to
+discover if the data is complete or was truncated due to an error.
+
+The $key_field parameter provides the name of the field that holds the
+value to be used for the key for the returned hash.  For example:
+
+  $dbh->{FetchHashKeyName} = 'NAME_lc';
+  $sth = $dbh->prepare("SELECT FOO, BAR, ID, NAME, BAZ FROM TABLE");
+  $hash_ref = $sth->fetchall_hashref('id');
+  print "Name for id 42 is $hash_ref->{42}->{name}\n";
+
+The $key_field parameter can also be specified as an integer column
+number (counting from 1).  If $key_field doesn't match any column in
+the statement, as a name first then as a number, then an error is
+returned.
+
+This method is normally used only where the key field value for each
+row is unique.  If multiple rows are returned with the same value for
+the key field then later rows overwrite earlier ones.
 
 
 =item C<finish>
@@ -3631,6 +3743,28 @@ Like L</NAME> but always returns lowercase names.
 =item C<NAME_uc>  (array-ref, read-only)
 
 Like L</NAME> but always returns uppercase names.
+
+=item C<NAME_hash>  (hash-ref, read-only)
+
+=item C<NAME_lc_hash>  (hash-ref, read-only)
+
+=item C<NAME_uc_hash>  (hash-ref, read-only)
+
+The C<NAME_hash>, C<NAME_lc_hash>, and C<NAME_uc_hash> attributes
+return column name information as a reference to a hash.
+
+The keys of the hash are the names of the columns.  The letter case of
+the keys corresponds to the letter case returned by the C<NAME>,
+C<NAME_lc>, and C<NAME_uc> attributes respectively (as described above).
+
+The value of each hash entry is the perl index number of the
+corresponding column (counting from 0). For example:
+
+  $sth = $dbh->prepare("select Id, Name from table");
+  $sth->execute;
+  @row = $sth->fetchrow_array;
+  print "Name $row[ $sth->{NAME_lc_hash}{name} ]\n";
+
 
 =item C<TYPE>  (array-ref, read-only)
 
@@ -4093,6 +4227,11 @@ not be the practical reality it is today.  I'm also especially grateful
 to Alligator Descartes for starting work on the "Programming the Perl
 DBI" book and letting me jump on board.
 
+Much of the DBI and DBD::Oracle was developed while I was Technical
+Director (CTO) of the Paul Ingram Group (www.ig.co.uk).  So I'd
+especially like to thank Paul for his generosity and vision in
+supporting this work for many years.
+
 =head1 TRANSLATIONS
 
 A German translation of this manual (possibly slightly out of date) is
@@ -4115,6 +4254,10 @@ Oraperl modules can be arranged via The Perl Clinic.
 For more details visit:
 
   http://www.perlclinic.com
+
+For direct DBI and DBD::Oracle support, enhancement, and related work
+I am available for consultancy on standard commercial terms.
+
 
 =head1 TRAINING
 
@@ -4251,11 +4394,6 @@ As of DBI 1.02, a complete implementation of a DBD::Proxy driver and the
 DBI::ProxyServer are part of the DBI distribution.
 
 =item SQL Parser
-
-	Hugo van der Sanden <hv@crypt.compulink.co.uk>
-	Stephen Zander <stephen.zander@mckesson.com>
-
-Based on the O'Reilly lex/yacc book examples and C<byacc>.
 
 See also the SQL::Statement module, a very simple SQL parser and engine,
 base of the DBD::CSV driver.

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.19 2001/07/16 16:10:30 timbo Exp $
+/* $Id: DBIXS.h,v 11.2 2001/08/24 22:10:44 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -112,6 +112,7 @@ typedef struct dbih_com_attr_st {
     SV *Handlers;
     U32  LongReadLen;	/* auto read length for long/blob types	*/
     SV *FetchHashKeyName;	/* for fetchrow_hashref		*/
+    /* (new fields?... don't forget to update dbih_clearcom()!)	*/
 } dbih_com_attr_t;
 
 
@@ -229,11 +230,12 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
 #define DBIcf_Taint       0x1000	/* taint fetched data			*/
 #define DBIcf_ShowErrorStatement  0x2000	/* include Statement in error	*/
+#define DBIcf_BegunWork   0x4000	/* between begin_work & commit/rollback */
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
   /* These are for dbh only:	*/						\
-  | DBIcf_AutoCommit	)
+  | DBIcf_AutoCommit | DBIcf_BegunWork	)
 
 /* general purpose bit setting and testing macros			*/
 #define DBIbf_is( bitset,flag)		((bitset) &   (flag))

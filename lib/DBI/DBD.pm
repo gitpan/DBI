@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 10.10 2001/07/16 16:10:30 timbo Exp $
+# $Id: DBD.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 10.10 $
-  $Date: 2001/07/16 16:10:30 $
+  $Revision: 11.2 $
+  $Date: 2001/08/24 22:10:44 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -1764,7 +1764,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = substr(q$Revision: 10.10 $, 10);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir

@@ -23,7 +23,7 @@ package DBI::Format;
 
 use Text::Abbrev;
 
-$DBI::Format::VERSION = $DBI::Format::VERSION = substr(q$Revision: 1.3 $, 10)+0;
+$DBI::Format::VERSION = $DBI::Format::VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
 
 sub available_formatters {

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.34 2001/07/20 22:28:28 timbo Exp $
+/* $Id: DBI.xs,v 11.2 2001/08/24 22:10:44 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -95,6 +95,7 @@ typedef struct dbi_ima_st {
 #define IMA_NO_TAINT_IN   	0x0010	/* don't check for tainted args	*/
 #define IMA_NO_TAINT_OUT   	0x0020	/* don't taint results		*/
 #define IMA_COPY_STMT   	0x0040	/* copy sth Statement to dbh	*/
+#define IMA_END_WORK	   	0x0080	/* set on commit & rollback	*/
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -816,8 +817,8 @@ dbih_dumpcom(imp_xxh, msg, level)
     char *pad = "      ";
     if (!msg)
 	msg = "dbih_dumpcom";
-    PerlIO_printf(DBILOGFP,"    %s (h 0x%lx, com 0x%lx):\n", msg,
-	    (IV)DBIc_MY_H(imp_xxh), (IV)imp_xxh);
+    PerlIO_printf(DBILOGFP,"    %s (h 0x%lx, com 0x%lx):\n",
+	msg, (IV)DBIc_MY_H(imp_xxh), (IV)imp_xxh);
     if (DBIc_COMSET(imp_xxh))			sv_catpv(flags,"COMSET ");
     if (DBIc_IMPSET(imp_xxh))			sv_catpv(flags,"IMPSET ");
     if (DBIc_ACTIVE(imp_xxh))			sv_catpv(flags,"Active ");
@@ -828,6 +829,7 @@ dbih_dumpcom(imp_xxh, msg, level)
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
     if (DBIc_is(imp_xxh, DBIcf_ShowErrorStatement))	sv_catpv(flags,"ShowErrorStatement ");
     if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
+    if (DBIc_is(imp_xxh, DBIcf_BegunWork))	sv_catpv(flags,"BegunWork ");
     if (DBIc_is(imp_xxh, DBIcf_LongTruncOk))	sv_catpv(flags,"LongTruncOk ");
     if (DBIc_is(imp_xxh, DBIcf_MultiThread))	sv_catpv(flags,"MultiThread ");
     if (DBIc_is(imp_xxh, DBIcf_Taint))		sv_catpv(flags,"Taint ");
@@ -946,6 +948,7 @@ dbih_clearcom(imp_xxh)
 	sv_free(_imp2com(imp_xxh, attr.State));
 	sv_free(_imp2com(imp_xxh, attr.Err));
 	sv_free(_imp2com(imp_xxh, attr.Errstr));
+	sv_free(_imp2com(imp_xxh, attr.FetchHashKeyName));
     }
 
 #ifdef DBI_USE_THREADS
@@ -1190,10 +1193,15 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	    DBIc_CACHED_KIDS(imp_dbh) = (HV*)SvREFCNT_inc(SvRV(valuesv));
 	}
     }
-    else if (htype<=DBIt_DB && strEQ(key, "AutoCommit")) {
-	/* The driver should have intercepted this and handled it.	*/
-	croak("DBD driver has not implemented the AutoCommit attribute");
-	/* DBIc_set(imp_xxh,DBIcf_AutoCommit, on); */
+    else if (htype<=DBIt_DB && keylen==10 && strEQ(key, "AutoCommit")) {
+	/* driver should have intercepted this and either handled it	*/
+	/* or set valuesv to either the 'magic' on or off value.	*/
+	if (SvIV(valuesv) != -900 && SvIV(valuesv) != -901)
+	    croak("DBD driver has not implemented the AutoCommit attribute");
+	DBIc_set(imp_xxh,DBIcf_AutoCommit, (SvIV(valuesv)==-901));
+    }
+    else if (htype==DBIt_DB && keylen==9 && strEQ(key, "BegunWork")) {
+	DBIc_set(imp_xxh,DBIcf_BegunWork, on);
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
@@ -1259,36 +1267,51 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     /* XXX needs to be split into separate dr/db/st funcs	*/
     /* XXX probably needs some form of hashing->switch lookup	*/
 
-    if (htype==DBIt_ST && keylen==7 && strnEQ(key, "NAME_", 5)
-	&& (key[5]=='u' || key[5]=='l') && key[6] == 'c'
+    if (htype==DBIt_ST && *key=='N' && (keylen==7 || keylen==9 || keylen==12)
+	&& strnEQ(key, "NAME_", 5)
+	&& (	(keylen==9 && strEQ(key, "NAME_hash"))
+	    ||	((key[5]=='u' || key[5]=='l') && key[6] == 'c'
+		    && (!key[7] || strnEQ(&key[7], "_hash", 5)))
+	)
     ) {
 	D_imp_sth(h);
-	AV *name = NULL;
+	AV *name_av = NULL;
 
 	/* fetch from tied outer handle to trigger FETCH magic	*/
 	svp = hv_fetch((HV*)DBIc_MY_H(imp_sth), "NAME",4, FALSE);
 	sv = (svp) ? *svp : &sv_undef;
 	if (SvGMAGICAL(sv))	/* resolve the magic		*/
 	    mg_get(sv);		/* can core dump in 5.004	*/
-	name = (AV*)SvRV(sv);
+	name_av = (AV*)SvRV(sv);
 
-	if (sv && name) {
-	    int up = (key[5] == 'u');
-	    AV *av = newAV();
+	if (sv && name_av) {
+	    char *name;
+	    int upcase = (key[5] == 'u');
+	    AV *av = Nullav;
+	    HV *hv = Nullhv;
+	    if (strEQ(&key[strlen(key)-5], "_hash"))
+		 hv = newHV();
+	    else av = newAV();
 	    i = DBIc_NUM_FIELDS(imp_sth);
-	    assert(i == AvFILL(name)+1);
+	    assert(i == AvFILL(name_av)+1);
 	    while(--i >= 0) {
-		sv = newSVsv(AvARRAY(name)[i]);
-		for (p = SvPV(sv,lna); p && *p; ++p) {
+		sv = newSVsv(AvARRAY(name_av)[i]);
+		name = SvPV(sv,lna);
+		if (key[5] != 'h') {	/* "NAME_hash" */
+		    for (p = name; p && *p; ++p) {
 #ifdef toUPPER_LC
-		    *p = (up) ? toUPPER_LC(*p) : toLOWER_LC(*p);
+			*p = (upcase) ? toUPPER_LC(*p) : toLOWER_LC(*p);
 #else
-		    *p = (up) ? toUPPER(*p) : toLOWER(*p);
+			*p = (upcase) ? toUPPER(*p) : toLOWER(*p);
 #endif
+		    }
 		}
-		av_store(av, i, sv);
+		if (av)
+		    av_store(av, i, sv);
+		else
+		    hv_store(hv, name, SvCUR(sv), newSViv(i), 0);
 	    }
-	    valuesv = newRV(sv_2mortal((SV*)av));
+	    valuesv = newRV(sv_2mortal( (av ? (SV*)av : (SV*)hv) ));
 	    cacheit = TRUE;	/* can't change */
 	}
     }
@@ -1379,9 +1402,10 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_Taint));
     }
     else if (htype<=DBIt_DB && keylen==10 && strEQ(key, "AutoCommit")) {
-	/* The driver should have intercepted this and handled it.	*/
-	croak("DBD driver has not implemented the AutoCommit attribute");
-	/* valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_AutoCommit)); */
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_AutoCommit));
+    }
+    else if (keylen==9  && strEQ(key, "BegunWork")) {
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_BegunWork));
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -1395,9 +1419,6 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     if (cacheit) {
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, TRUE);
 	sv = *svp;
-if (DBIS->debug >= 9) {
-warn("cacheit %d %s: old: sv%p='%s', new: '%s'", getpid(), key, sv, neatsvpv(sv,0),neatsvpv(valuesv,0));
-}
 	*svp = SvREFCNT_inc(valuesv);
 	sv_free(sv);
     }
@@ -1959,6 +1980,25 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n")); /* add file and line number information */
     skip_meth_return_trace:
 	PerlIO_flush(logfp);
+    }
+
+    if (ima && ima->flags & IMA_END_WORK) { /* commit() or rollback() */
+	if (DBIc_has(imp_xxh, DBIcf_BegunWork)) {
+	    DBIc_off(imp_xxh, DBIcf_BegunWork);
+	    if (!DBIc_has(imp_xxh, DBIcf_AutoCommit)) {
+		/* We only get here if the driver hasn't implemented their own code	*/
+		/* for begin_work, or has but hasn't correctly turned AutoCommit	*/
+		/* back on in their commit or rollback code. So we have to do it.	*/
+		/* This is bad because it'll probably trigger a spurious commit()	*/
+		SPAGAIN;
+		PUSHMARK(SP);
+		XPUSHs(h);
+		XPUSHs(sv_2mortal(newSVpv("AutoCommit",0)));
+		XPUSHs(&sv_yes);
+		PUTBACK;
+		perl_call_method("STORE", G_DISCARD);
+	    }
+	}
     }
 
     if (   !keep_error				/* so would be a new error	*/

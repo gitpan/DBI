@@ -4,9 +4,9 @@
     require DBI;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.4 $, 9,-1);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: NullP.pm,v 10.4 2001/05/29 23:25:55 timbo Exp $
+#   $Id: NullP.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
