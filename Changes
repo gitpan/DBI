@@ -1,4 +1,4 @@
-Changes in DBI 1.17,    4th June 2001
+Changes in DBI 1.18,    4th June 2001
 
   Fixed that altering ShowErrorStatement also altered AutoCommit!
     Thanks to Jeff Boes for spotting that clanger.

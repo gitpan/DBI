@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.36 2001/06/04 17:13:25 timbo Exp $
+# $Id: DBI.pm,v 10.37 2001/06/04 17:20:21 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.17"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.18"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -98,7 +98,7 @@ people who should be able to help you if you need it.
 =head2 NOTE
 
 This is the DBI specification that corresponds to the DBI version 1.17
-(C<$Date: 2001/06/04 17:13:25 $>).
+(C<$Date: 2001/06/04 17:20:21 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -140,7 +140,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.36 $, 10);
+my $Revision = substr(q$Revision: 10.37 $, 10);
 
 use Carp;
 use DynaLoader ();
