@@ -54,7 +54,7 @@ print Dumper($imp_data);
 
 {
 my ($tmp, $warn);
-local $SIG{__WARN__} = sub { ++$warn };
+local $SIG{__WARN__} = sub { ++$warn if $_[0] =~ /after take_imp_data/ };
 ok($tmp=$dbh->{Driver}, undef);
 ok($tmp=$dbh->{TraceLevel}, undef);
 ok($dbh->disconnect, undef);

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.16 2003/05/10 23:30:28 timbo Exp $
+# $Id: Makefile.PL,v 11.17 2003/05/15 17:48:40 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -19,6 +19,7 @@ if ($] < 5.006001 && $^O ne 'darwin') {
   Version $] of perl will NOT BE SUPPORTED by future DBI releases.
   You will have to upgrade your perl or stop upgrading DBI.
   Perl version 5.6.1 will be the lowest version supported.
+  Using perl $] you may notice some test warnings and two failures.
   Press return to continue...
 **************************************************************************
 **************************************************************************

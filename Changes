@@ -17,6 +17,13 @@ Add more macro hooks to Driver.xst: ping, quote etc.
 
 =head1 CHANGES
 
+=head2 Changes in DBI 1.37,    15th May 2003
+
+  Fixed "Can't get dbh->{Statement}: unrecognised attribute" error in test
+    caused by change to perl internals in 5.8.0
+  Fixed to build with latest development perl (5.8.1@19525).
+  Fixed C code to use all ANSI declarations thanks to Steven Lembark.
+
 =head2 Changes in DBI 1.36,    11th May 2003
 
   Fixed DBI->connect to carp instead of croak on 'old-style' usage.

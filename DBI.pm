@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.31 2003/05/13 13:52:05 timbo Exp $
+# $Id: DBI.pm,v 11.32 2003/05/15 17:48:40 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.36"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.37"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.34
-(C<$Date: 2003/05/13 13:52:05 $>).
+(C<$Date: 2003/05/15 17:48:40 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -153,7 +153,7 @@ See L</Naming Conventions and Name Space> and:
 
 package DBI;
 
-my $Revision = substr(q$Revision: 11.31 $, 10);
+my $Revision = substr(q$Revision: 11.32 $, 10);
 
 use Carp;
 use DynaLoader ();

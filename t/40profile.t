@@ -189,7 +189,7 @@ dbi_profile($dbh, "Hi, mom", "fetchhash_bang", $t1, $t1 + 1);
 ok(exists $data->{foo}{"Hi, mom"});
 
 # check that output went into the log file
-DBI->trace(0, File::Spec->devnull); # close current log to flush it
+DBI->trace(0, "STDOUT"); # close current log to flush it
 ok(-s $LOG_FILE);
 
 exit 0;

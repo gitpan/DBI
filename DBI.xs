@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs,v 11.27 2003/05/14 11:08:17 timbo Exp $
+ * $Id: DBI.xs,v 11.28 2003/05/15 17:48:40 timbo Exp $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -52,6 +52,10 @@ extern Pid_t getpid (void);
 #endif
 #ifndef aTHXo_
 #define aTHXo_
+#endif
+
+#if (PERL_VERSION < 8) || ((PERL_VERSION == 8) && (PERL_SUBVERSION == 0))
+#define DBI_save_hv_fetch_ent
 #endif
 
 
@@ -178,15 +182,8 @@ typedef struct {
 /* --- */
 
 static void
-#ifdef CAN_PROTOTYPE
 check_version(char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv, int drc_s, 
 	int dbc_s, int stc_s, int fdc_s)
-#else
-check_version(name, dbis_cv, dbis_cs, need_dbixs_cv, drc_s, dbc_s, stc_s, fdc_s)
-    char *name;
-    int dbis_cv, dbis_cs, need_dbixs_cv;
-    int drc_s, dbc_s, stc_s, fdc_s;
-#endif
 {
     dPERINTERP;
     char *msg = "you probably need to rebuild the DBD driver (or possibly the DBI)";
@@ -275,9 +272,7 @@ dbih_htype_name(int htype)
 
 
 char *
-neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
-    SV * sv;
-    STRLEN maxlen;
+neatsvpv(SV *sv, STRLEN maxlen) /* return a tidy ascii value, for debugging only */
 {
     dPERINTERP;
     STRLEN len;
@@ -409,10 +404,7 @@ set_err(SV *h, imp_xxh_t *imp_xxh, int errval, char *errstr, char *state)
 
 
 static char *
-mkvname(stash, item, uplevel)	/* construct a variable name	*/
-    HV *stash;
-    char *item;
-    int uplevel;
+mkvname( HV *stash, char *item, int uplevel)	/* construct a variable name	*/
 {
     STRLEN lna;
     SV *sv = sv_newmortal();
@@ -459,15 +451,7 @@ dbi_hash(char *key, long type)
 
 
 static int
-#ifdef I_STDARG
 dbih_logmsg(imp_xxh_t *imp_xxh, char *fmt, ...)
-#else
-dbih_logmsg(imp_xxh, fmt, va_alist)
-SV *h;
-imp_xxh_t *imp_xxh;
-char *fmt;
-va_dcl
-#endif
 {
     dPERINTERP;
     va_list args;
@@ -483,8 +467,7 @@ va_dcl
 
 
 static int
-set_trace_file(file)
-    SV *file;
+set_trace_file(SV *file)
 {
     dPERINTERP;
     STRLEN lna;
@@ -525,10 +508,7 @@ set_trace_file(file)
 
 
 static int
-set_trace(h, level, file)
-    SV *h;
-    int	level;
-    SV *file;
+set_trace(SV *h, int level, SV *file)
 {
     dPERINTERP;
     D_imp_xxh(h);
@@ -551,10 +531,8 @@ set_trace(h, level, file)
 
 
 static SV *
-dbih_inner(orv, what)	/* convert outer to inner handle else croak */
-    SV *orv;         	/* ref of outer hash */
-    char *what;		/* error msg, NULL=no croak and return NULL */
-{
+dbih_inner(SV *orv, char *what)
+{   /* convert outer to inner handle else croak(what) if what is not null */
     dPERINTERP;
     MAGIC *mg;
     SV *ohv;		/* outer HV after derefing the RV	*/
@@ -662,12 +640,7 @@ dbih_getcom2(SV *hrv, MAGIC **mgp) /* Get com struct for handle. Must be fast.	*
 
 
 static SV *
-dbih_setup_attrib(h, attrib, parent, read_only, optional)
-    SV *h;
-    char *attrib;
-    SV *parent;
-    int read_only;
-    int optional;
+dbih_setup_attrib(SV *h, char *attrib, SV *parent, int read_only, int optional)
 {
     dPERINTERP;
     STRLEN len = strlen(attrib);
@@ -711,11 +684,7 @@ dbih_setup_attrib(h, attrib, parent, read_only, optional)
 
 
 static SV *
-dbih_make_fdsv(sth, imp_class, imp_size, col_name)
-    SV *sth;
-    char *imp_class;		/* eg "DBD::Driver::fd" */
-    STRLEN imp_size;
-    char *col_name;
+dbih_make_fdsv(SV *sth, char *imp_class, STRLEN imp_size, char *col_name)
 {
     dPERINTERP;
     D_imp_sth(sth);
@@ -825,11 +794,7 @@ dbih_make_com(SV *p_h, imp_xxh_t *p_imp_xxh, char *imp_class, STRLEN imp_size, S
 
 
 static void
-dbih_setup_handle(orv, imp_class, parent, imp_datasv)
-    SV *orv;         /* ref of outer hash */
-    char *imp_class;
-    SV *parent;
-    SV *imp_datasv;
+dbih_setup_handle(SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
 {
     dPERINTERP;
     SV *h;
@@ -906,12 +871,12 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 
 	switch (DBIc_TYPE(imp)) {
 	case DBIt_DB:
-	    /* cache _inner_ handle, but also see quick_FETCH() */
+	    /* cache _inner_ handle, but also see quick_FETCH */
 	    hv_store((HV*)SvRV(h), "Driver", 6, newRV(SvRV(parent)), 0);
 	    hv_store((HV*)SvRV(h), "Statement", 9, &sv_undef, 0);
 	    break;
 	case DBIt_ST:
-	    /* cache _inner_ handle, but also see quick_FETCH() */
+	    /* cache _inner_ handle, but also see quick_FETCH */
 	    hv_store((HV*)SvRV(h), "Database", 8, newRV(SvRV(parent)), 0);
 	    /* copy (alias) Statement from the sth up into the dbh	*/
 	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 1);
@@ -939,10 +904,7 @@ dbih_dumphandle(SV *h, char *msg, int level)
 }
 
 static void
-dbih_dumpcom(imp_xxh, msg, level)
-    imp_xxh_t *imp_xxh;
-    char *msg;
-    int level;
+dbih_dumpcom(imp_xxh_t *imp_xxh, char *msg, int level)
 {
     dPERINTERP;
     SV *flags = sv_2mortal(newSVpv("",0));
@@ -1004,8 +966,7 @@ dbih_dumpcom(imp_xxh, msg, level)
 
 
 static void
-dbih_clearcom(imp_xxh)
-    imp_xxh_t *imp_xxh;
+dbih_clearcom(imp_xxh_t *imp_xxh)
 {
     dPERINTERP;
     dTHR;
@@ -1107,8 +1068,7 @@ dbih_clearcom(imp_xxh)
 /* --- Functions for handling field buffer arrays ---		*/
 
 static AV *
-dbih_setup_fbav(imp_sth)
-    imp_sth_t *imp_sth;
+dbih_setup_fbav(imp_sth_t *imp_sth)
 {
     dPERINTERP;
     int i;
@@ -1139,8 +1099,7 @@ dbih_setup_fbav(imp_sth)
 
 
 static AV *
-dbih_get_fbav(imp_sth)	/* Called once per-fetch: must be fast	*/
-    imp_sth_t *imp_sth;
+dbih_get_fbav(imp_sth_t *imp_sth)
 {
     AV *av;
 
@@ -1159,11 +1118,7 @@ dbih_get_fbav(imp_sth)	/* Called once per-fetch: must be fast	*/
 
 
 static int
-dbih_sth_bind_col(sth, col, ref, attribs)
-    SV *sth;
-    SV *col;
-    SV *ref;
-    SV *attribs;
+dbih_sth_bind_col(SV *sth, SV *col, SV *ref, SV *attribs)
 {
     dPERINTERP;
     D_imp_sth(sth);
@@ -1202,11 +1157,7 @@ dbih_sth_bind_col(sth, col, ref, attribs)
 
 
 static int
-quote_type(sql_type, p, s, t, v)	/* don't use - in a state of flux	*/
-    int sql_type;
-    int p, s;		/* not used (yet?), pass as zero */
-	int *t;
-    void *v;
+quote_type(int sql_type, int p, int s, int *t, void *v)
 {
     /* Returns true if type should be bound as a number else	*/
     /* false implying that binding as a string should be okay.	*/
@@ -1233,11 +1184,7 @@ quote_type(sql_type, p, s, t, v)	/* don't use - in a state of flux	*/
 /* --- Generic Handle Attributes (for all handle types) ---	*/
 
 static int
-dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
-    SV *h;
-    SV *keysv;
-    int dbikey;
-    SV *valuesv;
+dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
 {
     dPERINTERP;
     dTHR;
@@ -1443,10 +1390,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 
 
 static SV *
-dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
-    SV *h;
-    SV *keysv;
-    int dbikey;
+dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
 {
     dPERINTERP;
     dTHR;
@@ -1693,6 +1637,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	else if (!isUPPER(*key))	/* dbd_*, private_* etc */
 	    valuesv = &sv_undef;
 	else if (	(*key=='H' && strEQ(key, "HandleError"))
+		||	(*key=='S' && strEQ(key, "Statement"))
 		||	(*key=='P' && strEQ(key, "ParamValues"))
 		||	(*key=='P' && strEQ(key, "Profile"))
 		||	(*key=='C' && strEQ(key, "CursorName"))
@@ -1718,11 +1663,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 
 
 static SV *			/* find attrib in handle or its parents	*/
-dbih_find_attr(h, keysv, copydown, spare)
-    SV *h;
-    SV *keysv;
-    int copydown;		/* copydown attribute down from parent	*/
-    int spare;
+dbih_find_attr(SV *h, SV *keysv, int copydown, int spare)
 {
     D_imp_xxh(h);
     SV *ph;
@@ -1748,10 +1689,7 @@ dbih_find_attr(h, keysv, copydown, spare)
 
 
 static SV *
-dbih_event(hrv, evtype, a1, a2)
-    SV *hrv;
-    char *evtype;
-    SV *a1, *a2;
+dbih_event(SV *hrv, char *evtype, SV *a1, SV *a2)
 {
     /* We arrive here via DBIh_EVENT* macros (see DBIXS.h) called from	*/
     /* DBD driver C code OR $h->event() method (in DBD::_::common)	*/
@@ -1762,49 +1700,6 @@ dbih_event(hrv, evtype, a1, a2)
 
 
 /* ----------------------------------------------------------------- */
-/* Functions implementing DBI dispatcher shortcuts.                  */
-
-/* This function implements the DBI FETCH shortcut mechanism.
-Any handle attribute FETCH will come to this function (see dispatch).
-This function returns either an SV for the fetched value or NULL.
-If NULL is returned the dispatcher will call the full FETCH method.
- - If key =~ /^_/ then return NULL (so driver can hide private attribs)
- - If the key does not exist return NULL (may be a virtual attribute).
- - If value is not a ref then return value (the main shortcut).
- - If it's a CODE ref then run CODE and return it's result value!
-     (actually it sets a flag so dispatch will run code for us).
- - If it's a ref to a CODE ref then return the CODE ref
-     (an escape mechanism to allow real code refs to be stored).
- - Else return the ref.
-*/
-
-static SV * 
-quick_FETCH(hrv, keysv, imp_msv)
-    SV *hrv;	/* ref to inner hash */
-    SV *keysv;
-    SV **imp_msv;	/* Code GV or CV */
-{
-    void *tmp;
-    SV *sv;
-    STRLEN lp;
-    char *key = SvPV(keysv,lp);
-    int type;
-    if (*key == '_')
-	return NULL;	/* never quick_FETCH a '_' prefixed attribute */
-    if ( (tmp = hv_fetch((HV*)SvRV(hrv), key, lp, 0)) == NULL)
-	return NULL;	/* does not exist */
-    sv = *(SV**)tmp;
-    if (!SvROK(sv))	/* return value of all non-refs directly	*/
-	return sv;	/* this is the main shortcut	*/
-    if ( (type=SvTYPE(SvRV(sv))) == SVt_RV
-	&& SvTYPE(SvRV(SvRV(sv))) == SVt_PVCV) {
-	/* XXX remove this whole block?
-	D_imp_xxh(hrv);
-	warn("quick_FETCH rv-rv-cv"); */
-	return SvRV(sv); /* return deref if ref to CODE ref */
-    }
-    return sv;
-}
 
 
 STATIC I32
@@ -1909,11 +1804,7 @@ log_where(int trace_level, SV *buf, int append, char *suffix)
 
 
 static void
-clear_cached_kids(h, imp_xxh, meth_name, trace_level)
-    SV *h;
-    imp_xxh_t *imp_xxh;
-    char *meth_name;
-    int trace_level;
+clear_cached_kids(SV *h, imp_xxh_t *imp_xxh, char *meth_name, int trace_level)
 {
     dPERINTERP;
     if (DBIc_TYPE(imp_xxh) <= DBIt_DB && DBIc_CACHED_KIDS((imp_drh_t*)imp_xxh)) {
@@ -2184,8 +2075,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     char	*meth_name = GvNAME(CvGV(cv));
     dbi_ima_t	*ima       = (dbi_ima_t*)CvXSUBANY(cv).any_ptr;
     imp_xxh_t	*imp_xxh   = NULL;
-    SV		*imp_msv   = NULL; /* handle implementors method (GV or CV) */
-    SV		*qsv       = NULL; /* quick result from a shortcut method   */
+    SV		*imp_msv   = Nullsv;
+    SV		*qsv       = Nullsv; /* quick result from a shortcut method   */
 
 
     if (debug >= 9) {
@@ -2284,6 +2175,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		if (*meth_name == 'c' && strEQ(meth_name,"can")) {
 		    char *can_meth = SvPV(st1,lna);
 		    SV *dbi_msv = Nullsv;
+		    SV	*imp_msv; /* handle implementors method (GV or CV) */
 		    if ( (imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), can_meth)) ) {
 			/* return DBI's CV, not the implementors CV (else we'd bypass dispatch) */
 			/* and anyway, we may have hit a private method not part of the DBI	*/
@@ -2414,17 +2306,16 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     if (!keep_error)
 	DBIh_CLEAR_ERROR(imp_xxh);
 
+    /* The "quick_FETCH" logic...					*/
     /* Shortcut for fetching attributes to bypass method call overheads */
-    if ( (is_FETCH = (*meth_name=='F' && strEQ(meth_name,"FETCH"))) ) {
-
-	if (!DBIc_COMPAT(imp_xxh))
-	    qsv = quick_FETCH(h, ST(1), &imp_msv);
-
-	/* disable FETCH from cache for special attributes */
-	if (qsv && SvROK(qsv) && SvTYPE(SvRV(qsv))==SVt_PVHV) {
-	    STRLEN kl;
-	    char *key = SvPV(ST(1), kl);
-	    if (*key=='D' &&
+    if ( (is_FETCH = (*meth_name=='F' && strEQ(meth_name,"FETCH"))) && !DBIc_COMPAT(imp_xxh)) {
+	STRLEN kl;
+	char *key = SvPV(st1, kl);
+	SV **attr_svp;
+	if (*key != '_' && (attr_svp=hv_fetch((HV*)SvRV(h), key, kl, 0))) {
+	    qsv = *attr_svp;
+	    /* disable FETCH from cache for special attributes */
+	    if (SvROK(qsv) && SvTYPE(SvRV(qsv))==SVt_PVHV && *key=='D' &&
 		(  (kl==6 && DBIc_TYPE(imp_xxh)==DBIt_DB && strEQ(key,"Driver"))
 		|| (kl==8 && DBIc_TYPE(imp_xxh)==DBIt_ST && strEQ(key,"Database")) )
 	    ) {
@@ -2440,9 +2331,11 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     }
     else {
+#ifdef DBI_save_hv_fetch_ent
 	HE save_mh;
 	if (is_FETCH)
 	    save_mh = PL_hv_fetch_ent_mh; /* XXX nested tied FETCH bug17575 workaround */
+#endif
 
 	if (debug) {
 	    SAVEI32(DBIS->debug);	/* fall back to orig value later */
@@ -2452,9 +2345,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    DBIS->debug = debug;	/* make value global (for now)	 */
 	}
 
-	if (!imp_msv) {
-	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
-	}
+	imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
 
 	if (debug >= 2) {
 	    PerlIO *logfp = DBILOGFP;
@@ -2539,10 +2430,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    sp -= outitems; ax = (sp - stack_base) + 1; 
 	}
 
-	if (is_FETCH) {
+#ifdef DBI_save_hv_fetch_ent
+	if (is_FETCH)
 	    PL_hv_fetch_ent_mh = save_mh;	/* see start of block */
-	    /* if (debug) sv_dump(ST(0)); */
-	}
+#endif
     }
 
     post_dispatch:
@@ -3495,7 +3386,9 @@ FETCH(sv)
 	/* default to method call via stash of implementor of DBI_LAST_HANDLE */
 	GV *imp_gv;
 	HV *imp_stash = DBIc_IMP_STASH(imp_xxh);
+#ifdef DBI_save_hv_fetch_ent
 	HE save_mh = PL_hv_fetch_ent_mh; /* XXX nested tied FETCH bug17575 workaround */
+#endif
 	profile_t1 = 0.0; /* profile this via dispatch only (else we'll double count) */
 	if (DBIS->debug >= 2)
 	    PerlIO_printf(DBILOGFP,"    >> %s::%s\n", HvNAME(imp_stash), meth);
@@ -3506,7 +3399,9 @@ FETCH(sv)
 	}
 	PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
 	perl_call_sv((SV*)GvCV(imp_gv), GIMME);
+#ifdef DBI_save_hv_fetch_ent
 	PL_hv_fetch_ent_mh = save_mh;
+#endif
     }
     if (trace)
 	PerlIO_printf(DBILOGFP,"    <- $DBI::%s= %s\n", meth, neatsvpv(ST(0),0));
@@ -3663,7 +3558,7 @@ fetchrow_array(sth)
     SV *retsv;
     if (CvDEPTH(cv) == 99) {
 	ix = ix;	/* avoid 'unused variable' warning'		*/
-        croak("Deep recursion. Probably fetchrow-fetch-fetchrow loop.");
+        croak("Deep recursion, probably fetchrow-fetch-fetchrow loop");
     }
     PUSHMARK(sp);
     XPUSHs(sth);
@@ -3688,7 +3583,7 @@ fetchrow_array(sth)
 	if (bound_av && av != bound_av) {
 	    /* let dbih_get_fbav know what's going on	*/
 	    bound_av = dbih_get_fbav(imp_sth);
-	    if (DBIS->debug >= 3) {
+	    if (DBIc_DEBUGIV(imp_sth) >= 3) {
 		PerlIO_printf(DBILOGFP,
 		    "fetchrow: updating fbav 0x%lx from 0x%lx\n",
 		    (long)bound_av, (long)av);
