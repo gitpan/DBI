@@ -1,8 +1,11 @@
 #!perl -w
 
+use strict;
+
 $|=1;
 $^W=1;
 
+use vars qw($tests);
 my $calls = 0;
 
 
@@ -15,10 +18,10 @@ my $calls = 0;
 # This whole mechanism is new and experimental - it may change!
 
 package MyDBI;
-@ISA = qw(DBI);
+@MyDBI::ISA = qw(DBI);
 
 package MyDBI::dr;
-@ISA = qw(DBI::dr);
+@MyDBI::dr::ISA = qw(DBI::dr);
 
 sub connect {
     my ($drh, $dsn, $user, $pass, $attr) = @_;
@@ -28,7 +31,7 @@ sub connect {
 }
 
 package MyDBI::db;
-@ISA = qw(DBI::db);
+@MyDBI::db::ISA = qw(DBI::db);
 
 sub prepare {
     my($dbh, @args) = @_;
@@ -39,7 +42,7 @@ sub prepare {
 
 
 package MyDBI::st;
-@ISA = qw(DBI::st);
+@MyDBI::st::ISA = qw(DBI::st);
 
 sub fetch {
     my($sth, @args) = @_;
@@ -65,6 +68,7 @@ sub fetch {
 package main;
 
 print "1..$tests\n";
+my $t;
 
 sub ok ($$$) {
     my($n, $got, $want) = @_;
@@ -85,8 +89,10 @@ package main;
 
 use DBI;
 
+my $tmp;
+
 #DBI->trace(2);
-$dbh = MyDBI->connect("dbi:Sponge:foo","","", {
+my $dbh = MyDBI->connect("dbi:Sponge:foo","","", {
 	PrintError => 0,
 	RaiseError => 1,
 	CompatMode => 1, # just for clone test
@@ -95,7 +101,7 @@ ok(0, ref $dbh, 'MyDBI::db');
 ok(0, $dbh->{CompatMode}, 1);
 
 #$dbh->trace(5);
-$sth = $dbh->prepare("foo",
+my $sth = $dbh->prepare("foo",
     # data for DBD::Sponge to return via fetch
     { rows => [
 	[ 40, "AAA", 9 ],
@@ -146,5 +152,13 @@ ok(0, $dbh3 != $dbh2, 1);
 ok(0, ref $dbh3, 'MyDBI::db');
 ok(0, $dbh3->{CompatMode}, 1);
 
+print "installed method\n";
+$tmp = $dbh->sponge_test_installed_method('foo','bar');
+ok(0, ref $tmp, "ARRAY");
+ok(0, join(':',@$tmp), "foo:bar");
+$tmp = eval { $dbh->sponge_test_installed_method() };
+ok(0, !$tmp, 1);
+ok(0, $dbh->err, 42);
+ok(0, $dbh->errstr, "not enough parameters");
 
-BEGIN { $tests = 23 }
+BEGIN { $tests = 28 }

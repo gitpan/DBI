@@ -1,7 +1,7 @@
 ########################################################################
-package DBI;
+package		# hide from PAUSE
+	DBI;
 # vim: ts=8:sw=4
-
 ########################################################################
 #
 # Copyright (c) 2002,2003  Tim Bunce  Ireland.
@@ -18,14 +18,13 @@ package DBI;
 
 # TODO:
 #	recheck code against DBI
-#	support TraceLevel and other attributes
 
 use strict;
 use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.16 $, 10);
+$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.92 $ ' =~ /(\d+)\.(\d+)/;
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -101,6 +100,9 @@ use constant IMA_NO_TAINT_OUT   => 0x0020; #/* don't taint results	*/
 use constant IMA_COPY_STMT   	=> 0x0040; #/* copy sth Statement to dbh */
 use constant IMA_END_WORK	=> 0x0080; #/* set on commit & rollback	*/
 use constant IMA_STUB		=> 0x0100; #/* donothing eg $dbh->connected */
+#define IMA_CLEAR_STMT             0x0200  /* clear Statement before call  */
+#define IMA_PROF_EMPTY_STMT        0x0400  /* profile as empty Statement   */
+use constant IMA_NOT_FOUND_OKAY	=> 0x0800; #/* not error if not found */
 
 my %is_flag_attribute = map {$_ =>1 } qw(
 	Active
@@ -294,12 +296,6 @@ sub  _install_method {
       sub {
         my $h = shift;
 	my $h_inner = tied(%$h);
-
-	]
-	# ignore DESTROY for outer handle
-	. ($method_name eq 'DESTROY' ? q{return if $h_inner;} : "")
-	. q[
-
 	$h = $h_inner if $h_inner;
 	# XXX this eval isn't good because it overwrites $@
         my $imp = eval { $h->{"ImplementorClass"} } or return; # probably global destruction
@@ -309,10 +305,15 @@ sub  _install_method {
 	my $call_depth = $h->{'_call_depth'} + 1;
 	local ($h->{'_call_depth'}) = $call_depth;
 
-        my $sub = $imp->can($method_name) or croak "Can't find $method_name method for $h";
-
 	my @ret;
-        (wantarray) ? (@ret = &$sub($h,@_)) : (@ret = scalar &$sub($h,@_));
+        my $sub = $imp->can($method_name);
+	if ($sub) {
+	    (wantarray) ? (@ret = &$sub($h,@_)) : (@ret = scalar &$sub($h,@_));
+	}
+	else {
+	    croak "Can't find DBI method $method_name for $h"
+		if ] . ((IMA_NOT_FOUND_OKAY & $bitmask) ? 0 : 1) . q[;
+	}
 
 	] . join("\n", '', @post_call_frag, '') . q[
 
@@ -349,10 +350,6 @@ sub _setup_handle {
 	if (ref($parent) =~ /::db$/) {
 	    $h_inner->{Database} = $parent;
 	    $parent->{Statement} = $h_inner->{Statement};
-	    if (0) {
-		require Data::Dumper; $Data::Dumper::Indent=1;
-		warn Dumper([ "PARENT: $parent:", $parent, "CHILD:  $h_inner:", $h_inner, ]) if 1;
-	    }
 	}
 	elsif (ref($parent) =~ /::dr$/){
 	    $h_inner->{Driver} = $parent;
@@ -484,7 +481,8 @@ sub neat {
     return "'$v'";
 }
 
-package DBI::var;              # ============ DBI::var
+package
+	DBI::var;
 
 sub FETCH {
     my($key)=shift;
@@ -493,7 +491,8 @@ sub FETCH {
     Carp::croak("FETCH $key not supported when using DBI::PurePerl");
 }
 
-package DBD::_::common;		# ============ DBD::_::common
+package
+	DBD::_::common;
 
 sub trace {	# XXX should set per-handle level, not global
     my ($h, $level, $file) = @_;
@@ -609,7 +608,8 @@ sub rows {
 sub DESTROY {
 }
 
-package DBD::_::st;		# ============ DBD::_::st
+package
+	DBD::_::st;
 
 sub fetchrow_arrayref	{
     my $h = shift;
@@ -805,7 +805,6 @@ functionality:
   Taint
   TaintIn
   TaintOut
-  TraceLevel
 
 (and probably others)
 

@@ -71,11 +71,13 @@ ok(ref $dbh->{Profile}, "DBI::Profile");
 ok(ref $dbh->{Profile}{Data}, 'HASH');
 ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 
-# do a little work
+# do a (hopefully) measurable amount of work
 my $sql = "select mode,size,name from ?";
 my $sth = $dbh->prepare($sql);
-$sth->execute(".");
-while ( my $hash = $sth->fetchrow_hashref ) {}
+for my $loop (1..20) { # enough work for low-resolution timers
+    $sth->execute(".");
+    while ( my $hash = $sth->fetchrow_hashref ) {}
+}
 
 print Dumper($dbh->{Profile});
 

@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs,v 11.21 2003/02/27 00:22:28 timbo Exp $
+ * $Id: DBI.xs,v 11.22 2003/02/28 17:50:06 timbo Exp $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -108,6 +108,7 @@ typedef struct dbi_ima_st {
 #define IMA_STUB		0x0100	/* donothing eg $dbh->connected */
 #define IMA_CLEAR_STMT   	0x0200	/* clear Statement before call	*/
 #define IMA_PROF_EMPTY_STMT   	0x0400	/* profile as empty Statement	*/
+#define IMA_NOT_FOUND_OKAY   	0x0800	/* no error if not found	*/
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -1255,6 +1256,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	if (SvNV(valuesv) < 0 || SvNV(valuesv) > MAX_LongReadLen)
 	    croak("Can't set LongReadLen < 0 or > %ld",MAX_LongReadLen);
 	DBIc_LongReadLen(imp_xxh) = SvIV(valuesv);
+	cacheit = 1;	/* save it for clone */
     }
     else if (strEQ(key, "LongTruncOk")) {
 	DBIc_set(imp_xxh,DBIcf_LongTruncOk, on);
@@ -1818,6 +1820,10 @@ dbi_time() {
     return when.tv_sec + (when.tv_usec / 1000000.0);
 # else	/* per-second is almost useless */
 # ifdef _WIN32 /* use _ftime() on Win32 (MS Visual C++ 6.0) */
+#  if defined(__BORLANDC__)
+#   define _timeb timeb
+#   define _ftime ftime
+#  endif
     struct _timeb when;
     _ftime( &when );
     return when.time + (when.millitm / 1000.0);
@@ -2146,6 +2152,20 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (ima->flags & (IMA_STUB|IMA_FUNC_REDIRECT|IMA_KEEP_ERR|IMA_KEEP_ERR_SUB|IMA_CLEAR_STMT)) {
 
 	    if (ima->flags & IMA_STUB) {
+		if (*meth_name == 'c' && strEQ(meth_name,"can")) {
+		    char *can_meth = SvPV(st1,lna);
+		    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), can_meth);
+		    if (debug >= 9) {
+			PerlIO *logfp = DBILOGFP;
+			PerlIO_printf(logfp,"    <- %s(%s) = %p\n", meth_name, can_meth, imp_msv);
+		    }
+		    if (imp_msv) {
+			if (isGV(imp_msv))
+			    imp_msv = (SV*)GvCV(imp_msv);
+			ST(0) = sv_2mortal(newRV(imp_msv));
+			XSRETURN(1);
+		    }
+		}
 		XSRETURN(0);
 	    }
 	    if (ima->flags & IMA_FUNC_REDIRECT) {
@@ -2299,6 +2319,14 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		if (dirty || is_DESTROY) {
 		    XSRETURN(0);
 		}
+		if (ima && ima->flags & IMA_NOT_FOUND_OKAY) {
+		    if (debug) {
+			PerlIO *logfp = DBILOGFP;
+			PerlIO_printf(logfp,"    <- %s (not implemented)\n", meth_name);
+		    }
+		    outitems = 0;
+		    goto post_dispatch;
+		}
 		croak("Can't locate DBI object method \"%s\" via package \"%s\"",
 		    meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
 	    }
@@ -2376,6 +2404,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     }
 
+    post_dispatch:
+
     if (debug >= 1) {
 	PerlIO *logfp = DBILOGFP;
 	int is_fetch  = (*meth_name=='f' && DBIc_TYPE(imp_xxh)==DBIt_ST && strnEQ(meth_name,"fetch",5));
@@ -2429,6 +2459,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
 	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
 	    PerlIO_printf(logfp," (%s from cache)", neatsvpv(st1,0));
+	else if (!imp_msv)
+	    PerlIO_printf(logfp," (not implemented)");
 	/* XXX add flag to show pid here? */
 	PerlIO_puts(logfp, log_where(debug, 0, 0, "\n")); /* add file and line number information */
     skip_meth_return_trace:

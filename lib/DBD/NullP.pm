@@ -4,9 +4,9 @@
     require DBI;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: NullP.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
+#   $Id: NullP.pm,v 11.3 2003/02/28 17:50:06 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -39,7 +39,6 @@
     use strict;
     # we use default (dummy) connect method
 
-    sub disconnect_all { }
     sub DESTROY { undef }
 }
 

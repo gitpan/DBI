@@ -2,10 +2,10 @@ package DBI::DBD;
 
 use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.12 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.13 $ =~ /(\d+)\.(\d+)/o);
 
 
-# $Id: DBD.pm,v 11.12 2003/02/26 17:56:01 timbo Exp $
+# $Id: DBD.pm,v 11.13 2003/02/28 17:50:06 timbo Exp $
 #
 # Copyright (c) 1997-2002 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -58,8 +58,8 @@ DBI::DBD - Perl DBI Database Driver Writer's Guide
 
 =head2 Version and volatility
 
-  $Revision: 11.12 $
-  $Date: 2003/02/26 17:56:01 $
+  $Revision: 11.13 $
+  $Date: 2003/02/28 17:50:06 $
 
 This document is I<still> a minimal draft which is in need of further work.
 
@@ -712,7 +712,7 @@ version 1.10 to precede version 1.9, so that using a raw CVS, RCS or
 SCCS version number is probably not appropriate (despite being very
 common). For RCS or CVS you can use this code:
 
-  $VERSION = sprintf "%d.%02d", '$Revision: 11.12 $ ' =~ /(\d+)\.(\d+)/;
+  $VERSION = sprintf "%d.%02d", '$Revision: 11.13 $ ' =~ /(\d+)\.(\d+)/;
 
 which pads out the fractional part with leading zeros so all is well
 (so long as you don't go past x.99)
@@ -3027,20 +3027,22 @@ database system catalogue).
 The exposition above ignores the DBI MetaData methods.
 The metadata methods are all associated with a database handle.
 
-=head2 Using DBI::DBD::GetInfo
+=head2 Using DBI::DBD::Metadata
 
-This is a good semi-automatic way for the developer of a DBD module to
-write the get_info function quickly and accurately.
+The DBI::DBD::Metadata module is a good semi-automatic way for the developer of a DBD module to
+write the get_info and type_info functions quickly and accurately.
+
+=head3 Generating the get_info method
 
 Prior to DBI v1.33, this existed as the method write_getinfo_pm in the
 DBI::DBD module.
 From DBI v1.33, it exists as the method write_getinfo_pm in the
-DBI::DBD::GetInfo module.
+DBI::DBD::Metadata module.
 This discussion assumes you have DBI v1.33 or later.
 
-You examine the documentation for DBI::DBD::GetInfo using:
+You examine the documentation for write_getinfo_pm using:
 
-    perldoc DBI::DBD::GetInfo
+    perldoc DBI::DBD::Metadata
 
 To use it, you need a Perl DBI driver for your database which implements
 the get_info method.
@@ -3048,7 +3050,7 @@ In practice, this means you need to install DBD::ODBC, an ODBC driver
 manager, and an ODBC driver for your database.
 With the pre-requisites in place, you might type:
 
-    perl -MDBI::DBD::GetInfo -e write_getinfo_pm \
+    perl -MDBI::DBD::Metadata -e write_getinfo_pm \
             dbi:ODBC:foo_db username password Driver
 
 The procedure writes to standard output the code that should be added to
@@ -3056,22 +3058,22 @@ your Driver.pm file and the code that should be written to
 DBD/Driver/GetInfo.pm.
 You should review the output to ensure that it is sensible.
 
-=head2 Using DBI::DBD::TypeInfo
+=head2 Generating the type_info method
 
 Given the idea of the write_getinfo_pm method, it was not hard to devise
-a parallel method, write_typeinfo, which does the analogous job for the
+a parallel method, write_typeinfo_pm, which does the analogous job for the
 DBI type_info_all metadata method.
-The TypeInfo module was added to DBI v1.33.
+The the write_typeinfo_pm method was added to DBI v1.33.
 
-You examine the documentation for DBI::DBD::TypeInfo using:
+You examine the documentation for write_typeinfo_pm using:
 
-    perldoc DBI::DBD::TypeInfo
+    perldoc DBI::DBD::Metadata
 
 The setup is exactly analogous to the mechanism descibed in
-L</Using DBI::DBD::GetInfo>.
+L</Generating the get_info method>
 With the pre-requisites in place, you might type:
 
-    perl -MDBI::DBD::TypeInfo -e write_typeinfo \
+    perl -MDBI::DBD::Metadata -e write_typeinfo \
             dbi:ODBC:foo_db username password Driver
 
 The procedure writes to standard output the code that should be added to
@@ -3622,6 +3624,6 @@ __END__
 Jonathan Leffler <jleffler@us.ibm.com> (previously <jleffler@informix.com>),
 Jochen Wiedmann <joe@ispsoft.de>,
 Steffen Goeldner <s.goeldner@eurodata.de>,
-and Tim Bunce <tim.bunce@pobox.com>.
+and Tim Bunce <dbi-users@perl.org>.
 
 =cut

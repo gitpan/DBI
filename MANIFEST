@@ -14,7 +14,6 @@ dbi_sql.h			Definitions based on SQL CLI / ODBC (#inc'd by DBIXS.h)
 dbipport.h			Perl portability macros (from Devel::PPort)
 dbiprof.PL
 dbiproxy.PL			Frontend for DBI::ProxyServer
-dbish.PL			Frontend for DBI::Shell
 lib/Bundle/DBI.pm		A bundle for automatic installation via CPAN.
 lib/DBD/ExampleP.pm		A very simple example Driver module
 lib/DBD/NullP.pm		An empty example Driver module
@@ -34,7 +33,6 @@ lib/DBI/ProfileDumper.pm
 lib/DBI/ProfileDumper/Apache.pm
 lib/DBI/ProxyServer.pm		The proxy drivers server
 lib/DBI/PurePerl.pm		A DBI.xs emulation in Perl
-lib/DBI/Shell.pm		An interactive command-line shell for the DBI
 lib/DBI/W32ODBC.pm		An experimental DBI emulation layer for Win32::ODBC
 lib/Win32/DBIODBC.pm		An experimental Win32::ODBC emulation layer for DBI
 t/01basics.t
@@ -53,6 +51,5 @@ t/40profile.t
 t/41prof_dump.t
 t/42prof_data.t
 t/60preparse.t
-t/70shell.t
 t/80proxy.t
 test.pl				A very simple test harness using ExampleP.pm

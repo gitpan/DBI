@@ -2,7 +2,7 @@
 
 package Bundle::DBI;
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
 
 1;
 
@@ -14,21 +14,21 @@ Bundle::DBI - A bundle to install DBI and required modules.
 
 =head1 SYNOPSIS
 
-C<perl -MCPAN -e 'install Bundle::DBI'>
+  perl -MCPAN -e 'install Bundle::DBI'
 
 =head1 CONTENTS
 
-Storable - for DBD::Proxy and DBI::ProxyServer
-
-Net::Daemon 0.22 - for DBD::Proxy and DBI::ProxyServer
-
-RPC::PlServer 0.2001 - for DBD::Proxy and DBI::ProxyServer
-
-Getopt::Long 2.17 - for DBI::Shell
-
 DBI - for to get to know thyself
 
-DBD::Multiplex
+DBI::Shell 11.91 - the DBI command line shell
+
+Storable 2.06 - for DBD::Proxy and DBI::ProxyServer
+
+Net::Daemon 0.37 - for DBD::Proxy and DBI::ProxyServer
+
+RPC::PlServer 0.2016 - for DBD::Proxy and DBI::ProxyServer
+
+DBD::Multiplex 1.19 - treat multiple db handles as one
 
 =head1 DESCRIPTION
 
@@ -47,9 +47,5 @@ yourself.
 =head1 AUTHORS
 
 Jonathan Leffler, Jochen Wiedmann and Tim Bunce.
-
-=head1 THANKS
-
-To Graham Barr for the Bundle::libnet example.
 
 =cut

@@ -31,9 +31,11 @@ my $dbh = DBI->connect("dbi:ExampleP:", '', '',
 # do a little work
 foreach (1,2,3) {
   my $sth = $dbh->prepare($sql);
-  $sth->execute(".");
-  $sth->fetchrow_hashref;
-  $sth->finish;
+  for my $loop (1..20) {  
+    $sth->execute(".");
+    $sth->fetchrow_hashref;
+    $sth->finish;
+  }
   $sth->{Profile}->flush_to_disk();
 }
 undef $dbh;

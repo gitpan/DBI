@@ -17,10 +17,29 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
 
 =head1 CHANGES
 
+=head2 Changes in DBI 1.34,    28th February 2003
+
+  Fixed DBI::DBD docs to refer to DBI::DBD::Metadata thanks to Jonathan Leffler.
+  Fixed dbi_time() compile using BorlandC on Windows thanks to Steffen Goeldner.
+  Fixed profile tests to do enough work to measure on Windows.
+  Fixed disconnect_all() to not be required by drivers.
+
+  Added $okay = $h->can($method_name) to check if a method exists.
+  Added DBD::*::*->install_method($method_name, \%attr) so driver private
+    methods can be 'installed' into the DBI dispatcher and no longer
+    need to be called using $h->func(..., $method_name).
+
+  Enhanced $dbh->clone() and documentation.
+  Enhanced docs to note that dbi_time(), and thus profiling, is limited
+    to only millisecond (seconds/1000) resolution on Windows.
+  Removed old DBI::Shell from distribution and added Tom Lowery's improved
+    version to the Bundle::DBI file.
+  Updated minimum version numbers for modules in Bundle::DBI.
+
 =head2 Changes in DBI 1.33,    27th February 2003
 
   NOTE: Future versions of the DBI *will not* support perl 5.6.0 or earlier.
-  : perl 5.6.1 will be the minimum supported version.
+  : Perl 5.6.1 will be the minimum supported version.
 
   NOTE: The "old-style" connect: DBI->connect($database, $user, $pass, $driver);
   : has been deprecated for several years and will now generate a warning.
@@ -35,7 +54,7 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
   Fixed Taint bug with fetchrow_hashref with help from Bradley Baetz.
   Fixed $dbh->{Active} for DBD::Proxy, reported by Bob Showalter.
   Fixed STORE to not clear error during nested DBI call,
-   thanks to Tony Bowden for the report and helpful test case.
+    thanks to Tony Bowden for the report and helpful test case.
   Fixed DBI::PurePerl error clearing behaviour.
   Fixed dbi_time() and thus DBI::Profile on Windows thanks to Smejkal Petr.
   Fixed problem that meant ShowErrorStatement could show wrong statement,

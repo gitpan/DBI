@@ -392,7 +392,7 @@ into the profile data tree. For example:
     use DBI;
     use DBI::Profile (dbi_profile dbi_time);
 
-    my $t1 = dbi_time(); # returns floatingpoint high-resolution time
+    my $t1 = dbi_time(); # floating point high-resolution time
 
     ... execute code you want to profile here ...
 
@@ -449,6 +449,13 @@ A few platforms don't support the gettimeofday() high resolution
 time function used by the DBI (and available via the dbi_time() function).
 In which case you'll get integer resolution time which is mostly useless.
 
+On Windows platforms the dbi_time() function is limited to millisecond
+resolution. Which isn't sufficiently fine for our needs, but still
+much better than integer resolution. This limited resolution means
+that fast method calls will often register as taking 0 time. And
+timings in general will have much more 'jitter' depending on where
+within the 'current millisecond' the start and and timing was taken.
+
 This documentation could be more clear. Probably needs to be reordered
 to start with several examples and build from there.  Trying to
 explain the concepts first seems painful and to lead to just as
@@ -465,7 +472,7 @@ use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge);
 
-$VERSION = sprintf "%d.%02d", '$Revision: 1.5 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 1.6 $ ' =~ /(\d+)\.(\d+)/;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(

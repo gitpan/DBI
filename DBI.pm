@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.26 2003/02/27 00:22:28 timbo Exp $
+# $Id: DBI.pm,v 11.27 2003/02/28 17:50:06 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.33"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.34"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.33
-(C<$Date: 2003/02/27 00:22:28 $>).
+This is the DBI specification that corresponds to the DBI version 1.34
+(C<$Date: 2003/02/28 17:50:06 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -151,10 +151,9 @@ See L</Naming Conventions and Name Space> and:
 # The POD text continues at the end of the file.
 
 
-{
 package DBI;
 
-my $Revision = substr(q$Revision: 11.26 $, 10);
+my $Revision = substr(q$Revision: 11.27 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -296,13 +295,53 @@ tie $DBI::rows,   'DBI::var', '&rows';   # call &rows   in last used pkg
 sub DBI::var::TIESCALAR{ my $var = $_[1]; bless \$var, 'DBI::var'; }
 sub DBI::var::STORE    { Carp::croak("Can't modify \$DBI::${$_[0]} special variable") }
 
-{   package DBI::DBI_tie;	# used to catch DBI->{Attrib} mistake
-    sub TIEHASH { bless {} }
-    sub STORE   { Carp::carp("DBI->{$_[1]} is invalid syntax (you probably want \$h->{$_[1]})");}
-    *FETCH = \&STORE;
+{   # used to catch DBI->{Attrib} mistake
+    sub DBI::DBI_tie::TIEHASH { bless {} }
+    sub DBI::DBI_tie::STORE   { Carp::carp("DBI->{$_[1]} is invalid syntax (you probably want \$h->{$_[1]})");}
+    *DBI::DBI_tie::FETCH = \&DBI::DBI_tie::STORE;
 }
 tie %DBI::DBI => 'DBI::DBI_tie';
 
+# --- Driver Specific Prefix Registry ---
+
+my $dbd_prefix_registry = {
+  ad_      => { class => 'DBD::AnyData',	},
+  ado_     => { class => 'DBD::ADO',		},
+  best_    => { class => 'DBD::BestWins',	},
+  csv_     => { class => 'DBD::CSV',		},
+  db2_     => { class => 'DBD::DB2',		},
+  dbi_     => { class => 'DBI',			},
+  df_      => { class => 'DBD::DF',		},
+  f_       => { class => 'DBD::File',		},
+  file_    => { class => 'DBD::TextFile',	},
+  ib_      => { class => 'DBD::InterBase',	},
+  ing_     => { class => 'DBD::Ingres',		},
+  ix_      => { class => 'DBD::Informix',	},
+  msql_    => { class => 'DBD::mSQL',		},
+  mysql_   => { class => 'DBD::mysql',		},
+  odbc_    => { class => 'DBD::ODBC',		},
+  ora_     => { class => 'DBD::Oracle',		},
+  pg_      => { class => 'DBD::Pg',		},
+  proxy_   => { class => 'DBD::Proxy',		},
+  rdb_     => { class => 'DBD::RDB',		},
+  sapdb_   => { class => 'DBD::SAP_DB',		},
+  solid_   => { class => 'DBD::Solid',		},
+  sql_     => { class => 'SQL::Statement',	},
+  syb_     => { class => 'DBD::Sybase',		},
+  sponge_  => { class => 'DBD::Sponge',		},
+  tdat_    => { class => 'DBD::Teradata',	},
+  tmpl_    => { class => 'DBD::Template',	},
+  tmplss_  => { class => 'DBD::TemplateSS',	},
+  tuber_   => { class => 'DBD::Tuber',		},
+  uni_     => { class => 'DBD::Unify',		},
+  xbase_   => { class => 'DBD::XBase',		},
+  xl_      => { class => 'DBD::Excel',		},
+};
+
+sub dump_dbd_registry {
+    require Data::Dumper;
+    print Data::Dumper::Dump($dbd_prefix_registry);
+}
 
 # --- Dynamically create the DBI Standard Interface
 
@@ -328,6 +367,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	state   =>	{ U =>[1,1],	O=>0x0004 },
 	set_err =>	{		O=>0x0010 },
 	_not_impl =>	undef,
+	can	=>	{ O=>0x0100 }, # special case, see dispatch
 );
 
 %DBI::DBI_methods = ( # Define the DBI interface methods per class:
@@ -337,8 +377,8 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	@TieHash_IF,
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
 	'connect_cached'=>{U=>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
-	'disconnect_all'=>{ U =>[1,1] },
-	data_sources => { U =>[1,2,'[\%attr]' ] },
+	'disconnect_all'=>{ U =>[1,1], O=>0x0800 },
+	data_sources => { U =>[1,2,'[\%attr]' ], O=>0x0800 },
 	default_user => { U =>[3,4,'$user, $pass [, \%attr]' ] },
     },
     db => {		# Database Session Class Interface
@@ -347,8 +387,8 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	clone   	=> { U =>[1,1,''] },
 	connected   	=> { O=>0x0100 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
-	commit     	=> { U =>[1,1], O=>0x0480 },
-	rollback   	=> { U =>[1,1], O=>0x0480 },
+	commit     	=> { U =>[1,1], O=>0x0480|0x0800 },
+	rollback   	=> { U =>[1,1], O=>0x0480|0x0800 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x0200 },
 	preparse    	=> {  }, # XXX
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'], O=>0x0200 },
@@ -360,20 +400,20 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'] },
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	ping       	=> { U =>[1,1], O=>0x0404 },
-	disconnect 	=> { U =>[1,1], O=>0x0400 },
+	disconnect 	=> { U =>[1,1], O=>0x0400|0x0800 },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
 	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ],    O=>0x0430 },
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x0200 },
-	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x0200 },
-	column_info     => { U =>[1,6,'$catalog, $schema, $table, $column [, \%attr ]' ], O=>0x0200 },
-	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200 },
+	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x0200|0x0800 },
+	column_info     => { U =>[1,6,'$catalog, $schema, $table, $column [, \%attr ]'],O=>0x0200|0x0800 },
+	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200|0x0800 },
 	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x0200 },
-	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ], O=>0x0200 },
-	type_info_all	=> { U =>[1,1], O=>0x0200 },
+	foreign_key_info=> { U =>[1,7,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table' ], O=>0x0200|0x0800 },
+	type_info_all	=> { U =>[1,1], O=>0x0200|0x0800 },
 	type_info	=> { U =>[1,2,'$data_type'], O=>0x0200 },
-	get_info	=> { U =>[2,2,'$info_type'], O=>0x0200 },
+	get_info	=> { U =>[2,2,'$info_type'], O=>0x0200|0x0800 },
     },
     st => {		# Statement Class Interface
 	@Common_IF,
@@ -402,7 +442,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	dump_results => { U =>[1,5,'$maxfieldlen, $linesep, $fieldsep, $filehandle'] },
 	more_results => { U =>[1,1] },
 	finish     => 	{ U =>[1,1] },
-	cancel     => 	{ U =>[1,1] },
+	cancel     => 	{ U =>[1,1], O=>0x0800 },
 	rows       =>	$keeperr,
 
 	_get_fbav	=> undef,
@@ -418,6 +458,7 @@ foreach $class (keys %DBI::DBI_methods){
 			$pkgif{$method});
     }
 }
+
 
 # End of init code
 
@@ -629,7 +670,10 @@ sub install_driver {		# croaks on failure
 
     # --- load the code
     my $driver_class = "DBD::$driver";
-    eval "package DBI::_firesafe; require $driver_class";
+    eval qq{package			# hide from PAUSE
+		DBI::_firesafe;		# just in case
+	    require $driver_class;	# load the driver
+    };
     if ($@) {
 	my $err = $@;
 	my $advice = "";
@@ -1035,20 +1079,21 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 }
 
 
-} # end of DBI package scope
+# end of DBI package
 
 
 
 # --------------------------------------------------------------------
 # === The internal DBI Switch pseudo 'driver' class ===
 
-{   package DBD::Switch::dr;
+{   package	# hide from PAUSE
+	DBD::Switch::dr;
     DBI::_setup_driver('DBD::Switch');	# sets up @ISA
     require Carp;
 
-    $imp_data_size = 0;
-    $imp_data_size = 0;	# avoid typo warning
-    $err = 0;
+    $DBD::Switch::dr::imp_data_size = 0;
+    $DBD::Switch::dr::imp_data_size = 0;	# avoid typo warning
+    my $drh;
 
     sub driver {
 	return $drh if $drh;	# a package global
@@ -1058,9 +1103,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		'Name'    => 'Switch',
 		'Version' => $DBI::VERSION,
 		'Attribution' => "DBI $DBI::VERSION by Tim Bunce",
-	    }, \$err);
+	    });
 	Carp::croak("DBD::Switch init failed!") unless ($drh && $inner);
 	return $drh;
+    }
+    sub CLONE {
+	undef $drh;
     }
 
     sub FETCH {
@@ -1089,7 +1137,8 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 # We only define default methods for harmless functions.
 # We don't, for example, define a DBD::_::st::prepare()
 
-{   package DBD::_::common; # ====== Common base class methods ======
+{   package		# hide from PAUSE
+	DBD::_::common; # ====== Common base class methods ======
     use strict;
 
     # methods common to all handle types:
@@ -1107,11 +1156,32 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     sub CLEAR    { Carp::carp "Can't CLEAR $_[0] (DBI)" }
 
     *dump_handle = \&DBI::dump_handle;
+
+    sub install_method {
+	# special class method called directly by apps and/or drivers
+	# to install new methods into the DBI dispatcher
+	# DBD::Foo::db->install_method("foo_mumble", { usage => [...], options => '...' });
+	my ($class, $method, $attr) = @_;
+	croak("Class '$class' must begin with DBD:: and end with ::db or ::st")
+	    unless $class =~ /^DBD::(\w+)::(dr|db|st)$/;
+	my ($driver, $subtype) = ($1, $2);
+	croak("invalid method name '$method'")
+	    unless $method =~ m/^([a-z]+_)\w+$/;
+	my $prefix = $1;
+	my $reg_info = $dbd_prefix_registry->{$prefix};
+	croak("method name prefix '$prefix' is not registered") unless $reg_info;
+	my %attr = %{$attr||{}}; # copy so we can edit
+	# XXX reformat $attr as needed for _install_method
+	my ($caller_pkg, $filename, $line) = caller;
+	DBI->_install_method("DBI::${subtype}::$method", "$filename at line $line", \%attr);
+    }
+
 }
 
 
-{   package DBD::_::dr;  # ====== DRIVER ======
-    @ISA = qw(DBD::_::common);
+{   package		# hide from PAUSE
+	DBD::_::dr;	# ====== DRIVER ======
+    @DBD::_::dr::ISA = qw(DBD::_::common);
     use strict;
 
     sub default_user {
@@ -1158,41 +1228,39 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return $dbh;
     }
 
-
-    sub disconnect_all {	# Driver must take responsibility for this
-	# XXX Umm, may change later.
-	Carp::croak("Driver has not implemented the disconnect_all method.");
-    }
-
-    sub data_sources {
-	shift->_not_impl('data_sources');
-    }
-
 }
 
 
-{   package DBD::_::db;  # ====== DATABASE ======
-    @ISA = qw(DBD::_::common);
+{   package		# hide from PAUSE
+	DBD::_::db;	# ====== DATABASE ======
+    @DBD::_::db::ISA = qw(DBD::_::common);
     use strict;
-
-    sub disconnect  {
-	shift->_not_impl('disconnect');
-    }
 
     sub clone {
 	my ($old_dbh, $attr) = @_;
 	my $closure = $old_dbh->{dbi_connect_closure} or return;
 	unless ($attr) {
-	    # copy all the attributes visible in the attribute cache
-	    @{$attr||={}}{keys %$old_dbh} = values %$old_dbh;
+	    # copy attributes visible in the attribute cache
+	    while ( my ($k, $v) = each %$old_dbh ) {
+		# ignore non-code refs, i.e., caches
+		next if ref $v && ref $v ne 'CODE'; # HandleError etc
+		$attr->{$k} = $v;
+	    }
 	    # explicitly set attributes which are unlikely to be in the
+	    # attribute cache, i.e., boolean's and some others
 	    $attr->{$_} = $old_dbh->FETCH($_) for (qw(
-		AutoCommit ChopBlanks HandleError InactiveDestroy
-		LongTruncOk MultiThread PrintError Profile RaiseError
+		AutoCommit ChopBlanks InactiveDestroy
+		LongTruncOk PrintError Profile RaiseError
 		ShowErrorStatement TaintIn TaintOut
 	    ));
 	}
-	return &$closure($old_dbh, $attr);
+	my $new_dbh = &$closure($old_dbh, $attr);
+	unless ($new_dbh) {
+	    # need to copy err/errstr from driver back into $old_dbh
+	    my $drh = $old_dbh->{Driver};
+	    return $old_dbh->set_err($drh->err, $drh->errstr, $drh->state);
+	}
+	return $new_dbh;
     }
 
     sub quote_identifier {
@@ -1363,28 +1431,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	$dbh->STORE('AutoCommit', 0); # will croak if driver doesn't support it
 	$dbh->STORE('BegunWork',  1); # trigger post commit/rollback action
     }
-    sub commit {
-	shift->_not_impl('commit');
-    }
-    sub rollback {
-	shift->_not_impl('rollback');
-    }
-
-    sub get_info {
-	shift->_not_impl("get_info @_");
-    }
-
-    sub table_info {
-	shift->_not_impl('table_info');
-    }
-
-    sub column_info {
-	shift->_not_impl('column_info');
-    }
-
-    sub primary_key_info {
-	shift->_not_impl('primary_key_info');
-    }
 
     sub primary_key {
 	my ($dbh, @args) = @_;
@@ -1394,10 +1440,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	croak("primary_key method not called in list context")
 		unless wantarray; # leave us some elbow room
 	return @col;
-    }
-
-    sub foreign_key_info {
-	shift->_not_impl('foreign_key_info');
     }
 
     sub tables {
@@ -1421,13 +1463,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    } @$tables;
 	}
 	return @tables;
-    }
-
-    sub type_info_all {	# drivers need to supply their own
-	my ($dbh) = @_;
-	$dbh->_not_impl('type_info_all');
-	my $ti = [ {} ];
-	return $ti;
     }
 
     sub type_info {	# this should be sufficient for all drivers
@@ -1477,11 +1512,11 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 }
 
 
-{   package DBD::_::st;  # ====== STATEMENT ======
-    @ISA = qw(DBD::_::common);
+{   package		# hide from PAUSE
+	DBD::_::st;	# ====== STATEMENT ======
+    @DBD::_::st::ISA = qw(DBD::_::common);
     use strict;
 
-    sub cancel  { undef }
     sub bind_param { Carp::croak("Can't bind_param, not implement by driver") }
 
 #
@@ -1692,9 +1727,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 }
 
 unless ($DBI::PurePerl) {   # See install_driver
-    { package DBD::_mem::dr; @ISA = qw(DBD::_mem::common);	}
-    { package DBD::_mem::db; @ISA = qw(DBD::_mem::common);	}
-    { package DBD::_mem::st; @ISA = qw(DBD::_mem::common);	}
+    { @DBD::_mem::dr::ISA = qw(DBD::_mem::common);	}
+    { @DBD::_mem::db::ISA = qw(DBD::_mem::common);	}
+    { @DBD::_mem::st::ISA = qw(DBD::_mem::common);	}
     # DBD::_mem::common::DESTROY is implemented in DBI.xs
 }
 
@@ -1918,49 +1953,13 @@ lowercase attribute names when defining private attributes. Private
 attribute names must be prefixed with the driver name or suitable
 abbreviation (e.g., "C<ora_>" for Oracle, "C<ing_>" for Ingres, etc).
 
-Driver Specific Prefix Registry:
-
-  ad_      DBD::AnyData
-  ado_     DBD::ADO
-  best_    DBD::BestWins
-  csv_     DBD::CSV
-  db2_     DBD::DB2
-  df_      DBD::DF
-  f_       DBD::File
-  file_    DBD::TextFile
-  ib_      DBD::InterBase
-  ing_     DBD::Ingres
-  ix_      DBD::Informix
-  msql_    DBD::mSQL
-  mysql_   DBD::mysql
-  odbc_    DBD::ODBC
-  ora_     DBD::Oracle
-  pg_      DBD::Pg
-  proxy_   DBD::Proxy
-  rdb_     DBD::RDB
-  sapdb_   DBD::SAP_DB
-  solid_   DBD::Solid
-  sql_     SQL::Statement (used by some drivers)
-  syb_     DBD::Sybase
-  tdat_    DBD::Teradata
-  tmpl_    DBD::Template
-  tmplss_  DBD::TemplateSS
-  tuber_   DBD::Tuber
-  uni_     DBD::Unify
-  xbase_   DBD::XBase
-  xl_      DBD::Excel
-
 
 =head2 SQL - A Query Language
 
 Most DBI drivers require applications to use a dialect of SQL
 (Structured Query Language) to interact with the database engine.
-The following links provide useful information and further links about
-SQL:
-
-  http://www.altavista.com/query?q=sql+tutorial
-  http://www.jcc.com/sql_stnd.html
-  http://www.contrib.andrew.cmu.edu/~shadow/sql.html
+The L</"SQL Standards Reference Information"> section provides links
+to useful information about SQL.
 
 The DBI itself does not mandate or require any particular language to
 be used; it is language independent. In ODBC terms, the DBI is in
@@ -2537,7 +2536,7 @@ level is equal to or greater than that level. C<$min_level> defaults to 1.
 
 The C<func> method can be used to call private non-standard and
 non-portable methods implemented by the driver. Note that the function
-name is given as the last argument.
+name is given as the I<last> argument.
 
 It's also important to note that the func() method does not clear
 a previous error ($DBI::err etc.) and it does not trigger automatic
@@ -2548,6 +2547,16 @@ status and/or $h->err to detect errors.
 Calling stored procedures is currently not defined by the DBI.
 Some drivers, such as DBD::Oracle, support it in non-portable ways.
 See driver documentation for more details.)
+
+See also L</install_method> for how you can avoid needing to
+use func() and gain.
+
+=item C<can>
+
+  $is_implemented = $h->can($method_name);
+
+Returns true if $method_name is implemented by the driver or a
+default method is provided by the DBI.
 
 =back
 
@@ -2933,20 +2942,31 @@ The following methods are specified for DBI database handles:
 
 =item C<clone>
 
-  $new_dbh = $dbh->clone() or die $dbh->errstr;
+  $new_dbh = $dbh->clone();
+  $new_dbh = $dbh->clone(\%attr);
 
 The C<clone> method duplicates the $dbh connection by connecting
 with the same parameters ($dsn, $user, $password) as originally used.
 
-The attributes used for the cloned connect are determined by merging
-the attributes used originally, the values of certain key attributes
-(specifically RaiseError, PrintError, HandleError), and any values
-in the handles' attribute cache.
+The attributes for the cloned connect are the same as those used
+for the original connect, with some other attribute merged over
+them depending on the \%attr parameter.
+
+If \%attr is given then the attributes it contains are merged into
+the original attributes and override any with the same names.
+Effectively the same as doing:
+
+  %attribues_used = ( %original_attributes, %attr );
+
+If \%attr is not given then it defaults to a hash containing all
+the attributes in the attribute cache of $dbh excluding any non-code
+references, plus the main boolean attributes (RaiseError, PrintError,
+AutoCommit, etc.). This behaviour is subject to change.
 
 The clone method can be used even if the database handle is disconnected.
 
 The C<clone> method was added in DBI 1.33. It is very new and likely
-to change (specifically to control the attributes used).
+to change.
 
 =item C<do>
 
@@ -4991,6 +5011,36 @@ See also the L</RowCacheSize> database handle attribute.
 
 =back
 
+=head1 OTHER METHODS
+
+=over 4
+
+=item C<install_method>
+
+    DBD::Foo::db->install_method($method_name, \%attr);
+
+Installs the driver-private method named by $method_name into the
+DBI method dispatcher so it can be called directly, avoiding the
+need to use the func() method.
+
+It is called as a static method on the driver class to which the
+method belongs. The method name must begin with the corresponding
+registered driver-private prefix. For example, for DBD::Oracle
+$method_name must being with 'C<ora_>', and for DBD::AnyData it
+must begin with 'C<ad_>'.
+
+The attributes can be used to provide fine control over how the DBI
+dispatcher handles the dispatching of the method. However, at this
+point, it's undocumented and very liable to change. (Volunteers to
+polish up and document the interface are very welcome to get in
+touch via dbi-dev@perl.org)
+
+Methods installed using install_method default to the standard error
+handling behaviour for DBI methods: clearing err and errstr before
+calling the method, and checking for errors to trigger RaiseError
+etc. on return. This differs from the default behaviour of func().
+
+=back
 
 =head1 FURTHER INFORMATION
 
@@ -5521,7 +5571,7 @@ Refer to the documentation for the DBD driver that you are using.
 
 Refer to the SQL Language Reference Manual for the database engine that you are using.
 
-=head2 Standards Reference Information
+=head2 ODBC and SQL/CLI Standards Reference Information
 
 More detailed information about the semantics of certain DBI methods
 that are based on ODBC and SQL/CLI standards is available on-line
@@ -5554,6 +5604,7 @@ the (very large) SQL/CLI Working Draft available from:
 
   http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/7E3B41486BD99C3488256B410064C877/$FILE/32N0744T.PDF
 
+=head2 SQL Standards Reference Information
 
 A hyperlinked, browsable version of the BNF syntax for SQL92 (plus
 Oracle 7 SQL and PL/SQL) is available here:
@@ -5563,6 +5614,13 @@ Oracle 7 SQL and PL/SQL) is available here:
 A BNF syntax for SQL3 is available here:
 
   http://www.sqlstandards.org/SC32/WG3/Progression_Documents/Informal_working_drafts/iso-9075-2-1999.bnf
+
+The following links provide further useful information about SQL.
+Some of these are rather dated now but may still be useful.
+
+  http://www.jcc.com/SQLPages/jccs_sql.htm
+  http://www.contrib.andrew.cmu.edu/~shadow/sql.html
+  http://www.altavista.com/query?q=sql+tutorial
 
 
 =head2 Books and Journals

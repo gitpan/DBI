@@ -5,11 +5,11 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.7 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.6 2002/10/29 10:00:44 timbo Exp $
+#   $Id: Sponge.pm,v 11.7 2003/02/28 17:50:06 timbo Exp $
 #
-#   Copyright (c) 1994, Tim Bunce
+#   Copyright (c) 1994-2003 Tim Bunce Ireland
 #
 #   You may distribute under the terms of either the GNU General Public
 #   License or the Artistic License, as specified in the Perl README file.
@@ -19,6 +19,9 @@
 
     sub driver{
 	return $drh if $drh;
+
+	DBD::Sponge::db->install_method("sponge_test_installed_method");
+
 	my($class, $attr) = @_;
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
@@ -38,7 +41,6 @@
 {   package DBD::Sponge::dr; # ====== DRIVER ======
     $imp_data_size = 0;
     # we use default (dummy) connect method
-    sub disconnect_all { }
 }
 
 
@@ -141,6 +143,11 @@
         return $dbh->SUPER::STORE($attrib, $value);
     }
 
+    sub sponge_test_installed_method {
+	my ($dbh, @args) = @_;
+	return $dbh->set_err(42, "not enough parameters") unless @args >= 2;
+	return \@args;
+    }
 }
 
 

@@ -189,8 +189,6 @@ sub connect ($$;$$) {
 }
 
 
-sub disconnect_all { }
-
 sub DESTROY { undef }
 
 
