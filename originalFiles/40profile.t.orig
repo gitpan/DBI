@@ -73,7 +73,7 @@ ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 # do a little work
 my $sql = "select mode,size,name from ?";
 my $sth = $dbh->prepare($sql);
-$sth->execute(":");
+$sth->execute(".");
 while ( my $hash = $sth->fetchrow_hashref ) {}
 
 print Dumper($dbh->{Profile});
@@ -119,7 +119,7 @@ ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 # do a little work
 $sql = "select name from .";
 $sth = $dbh->prepare($sql);
-$sth->execute(":");
+$sth->execute();
 while ( my $hash = $sth->fetchrow_hashref ) {}
 
 # check that the resulting tree fits the expected layout
@@ -147,7 +147,7 @@ ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 # do a little work
 $sql = "select name from .";
 $sth = $dbh->prepare($sql);
-$sth->execute(":");
+$sth->execute();
 while ( my $hash = $sth->fetchrow_hashref ) {}
 
 # check that the resulting tree fits the expected layout

@@ -31,7 +31,7 @@ ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 # do a little work
 my $sql = "select mode,size,name from ?";
 my $sth = $dbh->prepare($sql);
-$sth->execute(":");
+$sth->execute(".");
 
 $sth->{Profile}->flush_to_disk();
 while ( my $hash = $sth->fetchrow_hashref ) {}

@@ -75,7 +75,7 @@ ok(0, $dbh->{PrintError} == 0);
 #$dbh->trace(0); die;
 
 ok(0, $dbh->{FetchHashKeyName} eq 'NAME');
-ok(0, $dbh->{example_driver_path} =~ m|DBD:ExampleP.pm$|, $dbh->{example_driver_path});
+ok(0, $dbh->{example_driver_path} =~ m:DBD/ExampleP.pm$:, $dbh->{example_driver_path});
 #$dbh->trace(2);
 
 print "quote\n";
@@ -497,7 +497,7 @@ ok(0, $dbh->{Statement}     eq "select mode from ?");
 my $se_sth2 = $dbh->prepare("select name from ?");
 ok(0, $se_sth2->{Statement} eq "select name from ?");
 ok(0, $dbh->{Statement}     eq "select name from ?");
-$se_sth1->execute(':');
+$se_sth1->execute('.');
 ok(0, $dbh->{Statement}     eq "select mode from ?");
 
 # show error param values
