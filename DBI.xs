@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.60 1997/01/14 17:45:23 timbo Exp $
+/* $Id: DBI.xs,v 1.61 1997/01/27 22:35:54 timbo Exp $
  *
  * Copyright (c) 1994, 1995  Tim Bunce
  *
@@ -895,7 +895,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	ST(0) = sv_mortalcopy(qsv);
 	outitems = 1;
 
-    }else{
+    }
+    else {
 	if (!imp_msv) {
 	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
 	    if (!imp_msv)
@@ -947,12 +948,14 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    stack_sp = stack_base + markix;
 		}
 		outitems = 1;
-	    } else {
+	    }
+	    else {
 		outitems = stack_sp - (stack_base + markix);
 	    }
 
-	} else {
-	    outitems = perl_call_sv(imp_msv, gimme);
+	}
+	else {
+	    outitems = perl_call_sv(isGV(imp_msv) ? GvCV(imp_msv) : imp_msv, gimme);
 	}
 
 	if (debug >= 2) { /* XXX restore local vars so ST(n) works below	*/

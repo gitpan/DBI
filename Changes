@@ -3,8 +3,12 @@ Current DBI Implementation Notes:
 	$ary_ref = $sth->fetch; currently always returns the same array ref.
 	This may be a feature that stays, then again it may not.
 
-    *** MANY THINGS MAY CHANGE *** See README file ***
+    *** THINGS MAY CHANGE *** See README file ***
 
+Changes in DBI 0.75,	27th Jan 1996
+
+	Fix problem introduced by a change in Perl5.003_XX.
+	Updated README and DBI.pm docs.
 
 Changes in DBI 0.74,	14th Jan 1996
 

@@ -3,11 +3,11 @@ require 5.003;
 {
 package DBI;
 
-$VERSION = '0.74';
+$VERSION = '0.75';
 
-my $Revision = substr(q$Revision: 1.60 $, 10);
+my $Revision = substr(q$Revision: 1.61 $, 10);
 
-# $Id: DBI.pm,v 1.60 1997/01/14 17:45:23 timbo Exp $
+# $Id: DBI.pm,v 1.61 1997/01/27 22:35:54 timbo Exp $
 #
 # Copyright (c) 1995, Tim Bunce
 #
@@ -55,7 +55,8 @@ tie $DBI::lasth,  'DBI::var', '!lasth';  # special case: return boolean
 tie $DBI::errstr, 'DBI::var', '&errstr'; # call &errstr in last used pkg
 tie $DBI::rows,   'DBI::var', '&rows';   # call &rows   in last used pkg
 sub DBI::var::TIESCALAR{ my($var) = $_[1]; bless \$var, 'DBI::var'; }
-sub DBI::var::STORE{ Carp::carp "Can't modify \$DBI::${$_[0]} special variable" }
+sub DBI::var::STORE    { Carp::carp "Can't modify \$DBI::${$_[0]} special variable" }
+sub DBI::var::DESTROY  { }
 
 
 # --- Dynamically create the DBI Standard Interface
@@ -458,6 +459,8 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub NEXTKEY  { undef }
     sub EXISTS   { defined($_[0]->FETCH($_[1])) } # to be sure
     sub CLEAR    { Carp::carp "Can't CLEAR $_[0] (DBI)" }
+
+    sub DESTROY  { }
 }
 
 
@@ -596,10 +599,11 @@ $drh = DBI->internal; # return $drh for internal Switch 'driver'
 $drh = DBI->install_driver($driver_name [, \%attributes ] );
 $rv  = DBI->install_method($class_method, $filename [, \%attribs]);
 
-$DBI::err     same as DBI->internal->{LastDbh}->{Error}
-$DBI::errstr  same as DBI->internal->{LastDbh}->{ErrorStr}
+$DBI::lasth   the last handle used
+$DBI::err     same as DBI::lasth->{Error}
+$DBI::errstr  same as DBI::lasth->{ErrorStr}
 $DBI::state   ISO SQL/92 style SQLSTATE value
-$DBI::rows    same as DBI->internal->{LastSth}->{ROW_COUNT}
+$DBI::rows    same as DBI::lasth->{ROW_COUNT}
 
 DBI->connect calls DBI->install_driver if the driver has not been
 installed yet. It then returns the result of $drh->connect.
@@ -624,9 +628,6 @@ Additional Attributes for internal DBI Switch 'driver'
 
 $drh->{DebugDispatch}
 $drh->{InstalledDrivers} (@)
-$drh->{LastAdh}
-$drh->{LastDbh}
-$drh->{LastSth}
 
 
 ---------------------------------------------------------------
@@ -635,7 +636,7 @@ DATABASE OBJECTS
 $rc  = $dbh->disconnect;			undef or 1
 $rc  = $dbh->commit;				undef or 1
 $rc  = $dbh->rollback;				undef or 1
-$rc  = $dbh->do($statement [, \%attr]);
+$rc  = $dbh->do($statement [, \%attr, [ @params ]]);
 
 $sth = $dbh->prepare($statement [, \%attr]);
 $sth = $dbh->tables();

@@ -6,10 +6,11 @@ You may distribute under the terms of either the GNU General Public
 License or the Artistic License, as specified in the Perl README file.
 
 
-WARNING: THIS IS ALPHA SOFTWARE.
-         IT IS POSSIBLY UNRELIABLE (but not known to be)
+WARNING: THIS IS ALPHA SOFTWARE. It is *only* 'Alpha' because the
+         interface (api) is not finalised. The Alpha status does
+         not reflect code quality or stability.
 
-WARNING: THIS SOFTWARE IS DUE TO CHANGE DRAMATICALLY.
+WARNING: THIS SOFTWARE IS DUE TO CHANGE/BE EXTENDED DRAMATICALLY.
          See the 'New Directions' message at the end of this file.
 
 
@@ -83,21 +84,7 @@ Tim Bunce.
 
 =======================================================================
 
-Drivers planned or being developed:
-
-Oracle		- Tim Bunce <Tim.Bunce@ig.co.uk> (used widely)
-Ingres		- Tim Bunce <Tim.Bunce@ig.co.uk> (no current plans to implement)
-mSQL		- Alligator Descartes <descarte@mcqueen.com>
-Informix	- Alligator Descartes <descarte@mcqueen.com> 
-Interbase	- Bill Karwin <bkarwin@interbase.borland.com>
-DB2  		- Mike <mhm@austin.ibm.com>
-
-Please communicate about these via the dbi-users mailing list.
-Thanks.
-
-Tim.
-
-=======================================================================
+[ Please also read the additional notes at the end of the message. ]
 
 From: Tim.Bunce@ig.co.uk
 Date: Tue Dec 12 01:29:26 1995
@@ -209,4 +196,20 @@ Tim.
 
 (Sympathy for throwing away much of the DBI and DBD::Oracle would
  be appreciated. Merry Christmas :-)
+
+-------------------------------------------------------------------------
+
+Further notes (giving a revised position and direction):         Jan 1997
+
+The strategy for the forseeable future is one of co-existance with both
+existing DBD::* drivers and ODBC drivers. The existing DBD::* drivers
+will continue to be developed and enhanced.
+
+My original statement (above) implied that DBD::Oracle, for example,
+would be replaced. That's not the case. I believe that more functionality
+can be added more easily to drivers such as DBD::Oracle once SQL CLI
+concepts and definitions are being used within the DBI as a whole.
+
+
+
 

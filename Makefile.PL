@@ -1,5 +1,4 @@
-#!/usr/local/bin/perl -w
-# $Id: Makefile.PL,v 1.55 1996/09/23 18:20:45 timbo Exp $
+# $Id: Makefile.PL,v 1.56 1997/01/27 22:35:54 timbo Exp $
 
 BEGIN { require 5.003 }
 
