@@ -6,9 +6,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 11.4 2002/02/07 03:00:53 timbo Exp $
+#   $Id: ExampleP.pm,v 11.5 2002/06/14 13:11:26 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -101,7 +101,8 @@
 	return $dbh->DBI::set_err(1, "Unknown field names: @bad")
 		if @bad;
 
-	$inner->{'dbd_param'}->[1] = $dir if $dir !~ /\?/;
+	$inner->{dbd_param} = [];
+	@{ $inner->{'dbd_param'} } = ($dir) if $dir !~ /\?/;
 
 	$outer->STORE('NAME' => \@fields);
 	$outer->STORE('NULLABLE' => [ (0) x @fields ]);
@@ -258,9 +259,7 @@
 
     sub bind_param {
 	my($sth, $param, $value, $attribs) = @_;
-	return $sth->DBI::set_err(2, "Can't bind_param $param, only one parameter")
-	    unless $param == 1;
-	$sth->{'dbd_param'}->[$param] = $value;
+	$sth->{'dbd_param'}->[$param-1] = $value;
 	return 1;
     }
 
@@ -270,13 +269,17 @@
 	my $dir;
 
 	if (@dir) {
-	    $dir = $dir[0];
+	    $sth->bind_param($_, $dir[$_-1]) or return
+		foreach (1..@dir);
 	}
-	else {
-	    $dir = $sth->{'dbd_param'}->[1];
-	    return $sth->DBI::set_err(2, "No bind parameter supplied")
-		unless defined $dir;
-	}
+
+	my $dbd_param = $sth->{'dbd_param'} || [];
+	return $sth->DBI::set_err(2, @$dbd_param." values bound when 1 expected")
+	    unless @$dbd_param == 1;
+
+	$dir = $dbd_param->[0];
+	return $sth->DBI::set_err(2, "No bind parameter supplied")
+	    unless defined $dir;
 
 	$sth->finish;
 
@@ -295,9 +298,8 @@
 	    opendir($sth->{dbd_datahandle}, $dir)
 		or return $sth->DBI::set_err(2, "opendir($dir): $!");
 	}
-#return 1;
 	$sth->STORE(Active => 1);
-	1;
+	return 1;
     }
 
 
@@ -356,6 +358,11 @@
 	if ($attrib eq 'TYPE'){
 	    my @t = @DBD::ExampleP::stattypes{ @{ $sth->{NAME} } };
 	    return \@t;
+	}
+	elsif ($attrib eq 'ParamValues') {
+	    my $dbd_param = $sth->{dbd_param} || [];
+	    my %pv = map { $_ => $dbd_param->[$_-1] } 1..@$dbd_param;
+	    return \%pv;
 	}
 	# else pass up to DBI to handle
 	return $sth->SUPER::FETCH($attrib);

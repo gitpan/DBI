@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.11 2002/06/13 12:25:54 timbo Exp $
+/* $Id: DBI.xs,v 11.12 2002/06/14 13:11:26 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -1553,9 +1553,11 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
 	if (svp)
 	    valuesv = *svp;
-	else if (!isUPPER(*key))
-	    valuesv = &sv_undef;	/* dbd_*, private_* etc	*/
-	else if (strEQ(key, "HandleError") || strEQ(key, "Profile"))
+	else if (!isUPPER(*key))	/* dbd_*, private_* etc */
+	    valuesv = &sv_undef;
+	else if (	(*key=='H' && strEQ(key, "HandleError"))
+		||	(*key=='P' && strEQ(key, "ParamValues"))
+		||	(*key=='P' && strEQ(key, "Profile"))	)
 	    valuesv = &sv_undef;
 	else
 	    croak("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
@@ -1613,9 +1615,8 @@ dbih_event(hrv, evtype, a1, a2)
 {
     /* We arrive here via DBIh_EVENT* macros (see DBIXS.h) called from	*/
     /* DBD driver C code OR $h->event() method (in DBD::_::common)	*/
-    /* If an array of handlers is defined then call them in reverse	*/
-    /* order until one returns true */
     /* XXX VERY OLD INTERFACE/CONCEPT MAY GO SOON */
+    /* OR MAY EVOLVE INTO A WAY TO HANDLE 'SUCCESS_WITH_INFO'/'WARNINGS' from db */
     return &sv_undef;
 }
 
@@ -2449,7 +2450,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     ) {
 	SV *msg;
 	SV **hook_svp = 0;
-	SV **statement = NULL;
+	SV **statement_svp = NULL;
 	char *err_meth_name = meth_name;
 	char intro[200];
 
@@ -2465,15 +2466,40 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 	if (    DBIc_has(imp_xxh, DBIcf_ShowErrorStatement)
 	    && (DBIc_TYPE(imp_xxh) == DBIt_ST
-		|| strEQ(err_meth_name,"prepare")
+		|| strEQ(err_meth_name,"prepare")	/* XXX use IMA flag for this */
 		|| strEQ(err_meth_name,"do")
+		|| strnEQ(err_meth_name,"select",6)
 		)
-	    && (statement = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
-	    &&  statement && SvOK(*statement)
+	    && (statement_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
+	    &&  statement_svp && SvOK(*statement_svp)
 	) {
+	    SV **svp;
 	    sv_catpv(msg, " [for statement ``");
-	    sv_catsv(msg, *statement);
-	    sv_catpv(msg, "''])");
+	    sv_catsv(msg, *statement_svp);
+
+	    /* fetch from tied outer handle to trigger FETCH magic  */
+	    /* could add DBIcf_ShowErrorParams (default to on?)		*/
+	    svp = hv_fetch((HV*)DBIc_MY_H(imp_xxh),"ParamValues",11,FALSE);
+	    if (svp && SvMAGICAL(*svp))
+		mg_get(*svp);
+	    if (svp && SvRV(*svp) && SvTYPE(SvRV(*svp)) == SVt_PVHV ) {
+		HV *bvhv = (HV*)SvRV(*svp);
+		SV *sv;
+		char *key;
+		I32 keylen;
+		I32 param_idx = 0;
+		hv_iterinit(bvhv);
+		sv_catpv(msg, "'' with params: ");
+		while ( (sv = hv_iternextsv(bvhv, &key, &keylen)) ) {
+		    sv_catpvf(msg, "%s%s=%s",
+			(param_idx++==0 ? "" : ", "),
+			key, neatsvpv(sv,0));
+		}
+		sv_catpv(msg, "])");
+	    }
+	    else {
+		sv_catpv(msg, "''])");
+	    }
 	}
 
 	if (DBIc_has(imp_xxh, DBIcf_HandleError)

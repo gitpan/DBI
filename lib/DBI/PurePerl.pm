@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = substr(q$Revision: 1.10 $, 10);
+$DBI::PurePerl::VERSION = substr(q$Revision: 1.11 $, 10);
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -125,6 +125,7 @@ my %is_valid_attribute = map {$_ =>1 } qw(
 	NUM_OF_FIELDS
 	NUM_OF_PARAMS
 	Name
+	ParamValues
 	PrintError
 	Provider
 	RaiseError
@@ -224,10 +225,20 @@ sub  _install_method {
             my $last = ($DBI::last_method_except{$method_name})
 		? ($h->{'_last_method'}||$method_name) : $method_name;
             my $errstr = $h->{errstr} || $DBI::errstr || $DBI::err || '';
-            my $msg = sprintf "%s %s failed: %s\n", $imp, $last, $errstr;
-            if ($h->{'ShowErrorStatement'} && $h->{'Statement'}) {
-               $msg .= " for [\"".$h->{'Statement'}."\"]";
+            my $msg = sprintf "%s %s failed: %s", $imp, $last, $errstr;
+            if ($h->{'ShowErrorStatement'} and my $Statement = $h->{Statement}) {
+		$msg .= ' for [``' . $Statement . "''";
+		my $ParamValues = $h->FETCH('ParamValues');
+		if ($ParamValues) {
+		    my $pv_idx = 0;
+		    $msg .= " with params: ";
+		    while ( my($k,$v) = each %$ParamValues ) {
+			$msg .= sprintf "%s%s=%s", ($pv_idx++==0) ? "" : ", ", $k, DBI::neat($v);
+		    }
+		}
+		$msg .= "]";
 	    }
+	    $msg .= "\n";
             my $do_croak = 1;
             if (my $subsub = $h->{'HandleError'}) {
 		$do_croak = 0 if &$subsub($msg,$h,$ret[0]);
@@ -269,9 +280,10 @@ sub  _install_method {
       }
     ];
     no strict qw(refs);
-    my $code_ref = eval $method_code;
-    *$method = eval qq{#line 1 "$method"\n$method_code};
+    my $code_ref = eval qq{#line 1 "$method"\n$method_code};
+    warn "$@\n$method_code\n" if $@;
     die "$@\n$method_code\n" if $@;
+    *$method = $code_ref;
     if (0 && $method =~ 'set_err') { # debuging tool
 	my $l=0; # show line-numbered code for method
 	warn join("\n", map { ++$l.": $_" } split/\n/,$method_code);
@@ -282,27 +294,36 @@ sub _setup_handle {
     my($h, $imp_class, $parent, $imp_data) = @_;
     my $h_inner = tied(%$h) || $h;
     warn "\n_setup_handle(@_)" if $DBI::dbi_debug >= 4;
-    if (ref($parent) =~ /^[^:]+::dr/){
-        #$h_inner->{$_} ||= $parent->{$_} foreach (qw(Name Version Attribution));
-        $h_inner->{Driver} = $parent;
-    }
-    $h_inner->{"_call_depth"} = 0;
     $h_inner->{"imp_data"} = $imp_data;
     $h_inner->{"ImplementorClass"} = $imp_class;
     $h_inner->{"Kids"} = $h_inner->{"ActiveKids"} = 0;	# XXX not maintained
-    $h_inner->{"Active"} = 1;
-    $h_inner->{"FetchHashKeyName"} ||= $parent->{"FetchHashKeyName"} || 'NAME';
-    $h_inner->{"Taint"}= 0 unless defined $h_inner->{"Taint"};
-    $h_inner->{"Warn"} = 1 unless defined $h_inner->{"Warn"};
-    if (ref($parent) =~ /^[^:]+::db/){
-        $h_inner->{'Database'}    = $parent;
-        $h_inner->{'RaiseError'}  = $parent->{'RaiseError'};
-        $h_inner->{'PrintError'}  = $parent->{'PrintError'};
-        $h_inner->{'HandleError'} = $parent->{'HandleError'};
-        $parent->{Statement} = $h_inner->{Statement};
-	#use Data::Dumper; $Data::Dumper::Indent=1;
-	#warn Dumper([ "$h_inner, $parent", $h_inner->{Database}]);
+    if ($parent) {
+	foreach (qw(
+	    RaiseError PrintError HandleError
+	    Warn LongTruncOk ChopBlanks AutoCommit
+	    ShowErrorStatement FetchHashKeyName LongReadLen
+	)) {
+	    $h_inner->{$_} = $parent->{$_} unless exists $h_inner->{$_};
+	}
+	if (ref($parent) =~ /^[^:]+::db/) {
+	    $h_inner->{Database} = $parent;
+	    $parent->{Statement} = $h_inner->{Statement};
+	    if (0) {
+		require Data::Dumper; $Data::Dumper::Indent=1;
+		warn Dumper([ "PARENT: $parent:", $parent, "CHILD:  $h_inner:", $h_inner, ]) if 1;
+	    }
+	}
+	elsif (ref($parent) =~ /^[^:]+::dr/){
+	    $h_inner->{Driver} = $parent;
+	}
     }
+    else {	# setting up a driver handle
+        $h_inner->{Warn}		= 1;
+	$h_inner->{FetchHashKeyName}	||= 'NAME';
+	$h_inner->{LongReadLen}		||= 80;
+    }
+    $h_inner->{"_call_depth"} = 0;
+    $h_inner->{"Active"} = 1;
 }
 sub constant {
     warn "constant @_"; return;
@@ -440,7 +461,7 @@ sub trace {	# XXX should set per-handle level, not global
 	$DBI::dbi_debug = $level;
 	printf $DBI::tfh
             "    %s trace level set to %d in DBI $DBI::VERSION (PurePerl)\n",
-	    $h, $level if $file;
+	    $h, $level if $level;
     }
     _set_trace_file($file) if defined $file;
     return $old_level;
@@ -469,6 +490,7 @@ sub FETCH {
     }
     my $v = $h->{$key};
     if (!defined $v && !exists $h->{$key}) {
+	local $^W; # hide undef warnings
 	Carp::croak( sprintf "Can't get %s->{%s}: unrecognised attribute (@{[ %$h ]})",$h,$key)
 	    if !$is_valid_attribute{$key} and $key =~ m/^[A-Z]/;
     }

@@ -396,8 +396,11 @@ ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
 ok(0, $@ =~ m/\Q$error_sql/, $@); # ShowErrorStatement
 ok(0, $@ =~ m/.*Unknown field names: unknown_field_name2/, $@);
 
-# check that $dbh->{Statement} tracks last _executed_ sth
 my $se_sth1 = $dbh->prepare("select mode from ?");
+ok(0, $se_sth1->{RaiseError});
+ok(0, $se_sth1->{ShowErrorStatement});
+
+# check that $dbh->{Statement} tracks last _executed_ sth
 ok(0, $se_sth1->{Statement} eq "select mode from ?");
 ok(0, $dbh->{Statement}     eq "select mode from ?");
 my $se_sth2 = $dbh->prepare("select name from ?");
@@ -405,6 +408,12 @@ ok(0, $se_sth2->{Statement} eq "select name from ?");
 ok(0, $dbh->{Statement}     eq "select name from ?");
 $se_sth1->execute('.');
 ok(0, $dbh->{Statement}     eq "select mode from ?");
+
+# show error param values
+ok(0, ! eval { $se_sth1->execute('first','second') });	# too many params
+ok(0, $@ =~ /\b1='first'/, $@);
+ok(0, $@ =~ /\b2='second'/, $@);
+
 $se_sth1->finish;
 $se_sth2->finish;
 
@@ -565,4 +574,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 210; }
+BEGIN { $tests = 215; }

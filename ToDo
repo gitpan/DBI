@@ -19,7 +19,7 @@ Update DBI::DBD with overview (at least) recommend Driver.xst strongly.
 Find XS drivers that don't use it and talk to authors.
 Ship separate DBD::TemplateP and DBD::TemplateXS drivers as examples.
 
-Check/fix: local($h->{PrintError})=0; resets $DBI::errstr at end of scope
+Check: local($h->{PrintError})=0; resets $DBI::errstr at end of scope?
 
 ShowTracePid attrib	( or just add to trace level change message)
 Add UnimpMethodHook (in XS)
@@ -33,10 +33,6 @@ make lasth return outer handle
 
 Add $h->swap_internal_handle($other_h)
 
-Add DBI::hash2
-
-make ShowErrorStatement also show the st1 etc? for execute() and do().
-
 Add a C call to return boolean for is a number' for a given SV.
 Needs to do the right thing for a non-numeric string SV that's been
 tested in a numeric context (eg $a='S23'; foo() if $a==-1; $sth->execute($a))
@@ -45,7 +41,6 @@ to be sure.
 
 Rename finish to discard_pending_rows :-) [or just add an alias and docs :-]
 
-begin_work
 add details of the DBI book to the docs
 test shell /connect user etc
 
@@ -80,18 +75,9 @@ index to not be used! (Find real examples first)
 Okay. I'll take that as a vote for bind_param_by_ref as an alias for
 bind_param_inout. >>todo.
 
-Get bind values from statement handle via an attribute.
-Useful for diagnostics. Also probably useful for pure-perl drivers.
-Also some people want to try to log sql statements with the placeholders
-'filled in'.
-
 LOGGING:
 
-Use PerlIO? Change fprintf's to PerlIO_printf's etc.
-
 Seperate log for sql statements?
-
-If trace log_where() says DBI.pm then use caller(1)?
 
 Add per-handle debug file pointer (or at least a macro that _looks_ like that).
 Or, better yet, a function pointer so we can do more clever things.
@@ -104,7 +90,7 @@ Enable warnings in default_user().
 Add prompt for user/pass in default_user()?
 
 Change bind_column to save the info for get_fbav to use when
-first called. Thus making bind before execute reliable.
+first called. Thus making bind before execute work for all drivers.
 
 Add a handle flag to say that the driver has a hash that maps error
 codes into SQLSTATE values. The error event mechanism could check for
@@ -113,22 +99,11 @@ the flag and lookup the SQLSTATE value for the error from the hash.
 ODBC attribute defining if transactions are supported
 http://www.vpservices.com/jeff/programs/SQL/docs/odbc-getinfo-msdn.html
 
-> I had to override
-> tables from DBD::_::db because it doesn't handle the quoting
-> conventions used by Informix databases.  Basically, table owners
-> are case sensitive in some databases, and therefore need to be
-> enclosed in double quotes (delimited identifier).
-: Needs attribute to say that a) double-quotes can be used
-: and b) that names are case sensitive.
-
 $dbh-level __WARN__ and __DIE__. Initially just provide DBIXS hooks
 for DBD's to use (and pass h and imp_xxh to). Thus $dbh can redirect
 errors etc from all children in one go.
 
 Informix inspired changes.
-
-Detect it in eval block for when PrintError and RaiseError are both set
-to avoid duplicated error msg.
 
 Add hook to DBI::DBD to write a myconfig.txt file into the
 source directory containing key driver and config info.
@@ -162,11 +137,7 @@ work. Maybe auto load a module that defines a private hash
 that just serves to list known attributes.
 Or DBI->SQL_FOO and/or DBI::SQL_FOO.
 
-t/shell uninit var at 5.00502/Term/Cap.pm line 284.
-
 check out http://tegan.deltanet.com/~phlip/DBUIframe.html
-
-FAQ check 80 col max
 
 Auto proxying for individual drivers: DBI_PROXY_foo=...
 Else more generic dsn-rewrite via env vars
@@ -175,13 +146,10 @@ Check DBD::Proxy connect&fetch latency (e.g. CGI use).
 
 Add SCALE to DBD::Sponge
 
-$dbh->get_info?
-
 Rework handle creation for
 $h->clone ?, and maybe
 $dbh->connect([$user, $passwd])	# to reconnect, possibly as a different user
 
-generic dbd_preparse (for both C and perl)
 Add (ODBC) attribute to indicate if placeholders are supported.
 http://www.vpservices.com/jeff/programs/SQL/docs/odbc-getinfo-msdn.html
 
@@ -189,16 +157,10 @@ Fix shared error codes between (dbh) handles, maybe.
 
 Add problem reporting info to DBI.pm
 
-Metadata! (DBI::Metadata?)
-
 Add 'break handling' when field values change? Use two fbav's so 'previous
 record' is available. Define break fields and handlers. Call them via
 an alternate fetch_with_break method.
 Jan 2002: Also now see DBIx::FetchLoop (Brendan Fagan)
-
-Add mechanism to optimise
-  $sth2->execute(@$row) while ($row = $sth1->fetchrow_arrayref);
-maybe just offer an XS method that does just that.
 
 ---
 > > Is there any way to know whether a particular DBD needs a separate
