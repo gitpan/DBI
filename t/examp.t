@@ -89,17 +89,21 @@ ok(0, !defined $csr_c);
 ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/);
 
 $dbh->{RaiseError} = 1;
+ok(0, $dbh->{RaiseError});
 ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; });
 ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
 $dbh->{RaiseError} = 0;
+ok(49, !$dbh->{RaiseError});
 
 {
   my @warn;
   local($SIG{__WARN__}) = sub { push @warn, @_ };
   $dbh->{PrintError} = 1;
+  ok(0, $dbh->{PrintError});
   ok(0, ! $dbh->prepare("select unknown_field_name3 from ?"));
   ok(0, "@warn" =~ m/Unknown field names: unknown_field_name3/);
   $dbh->{PrintError} = 0;
+  ok(0, !$dbh->{PrintError});
 }
 
-BEGIN { $tests = 49; }
+BEGIN { $tests = 53; }

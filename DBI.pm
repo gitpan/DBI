@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.84';
+$DBI::VERSION = '0.85';
 
 =head1 NAME
 
@@ -42,10 +42,7 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
 
 =head2 NOTE
 
-This documentation is a new draft $Revision: 1.73 $ dated $Date: 1997/06/20 17:18:01 $
-
-It is expected to evolve and expand quite quickly (relative to previous
-drafts :-) so it is important to check that you have the latest copy.
+This documentation is a new draft $Revision: 1.74 $ dated $Date: 1997/06/25 12:20:10 $
 
 Please also read the DBI FAQ which is installed as a DBI::FAQ module so
 you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
@@ -57,9 +54,9 @@ you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.73 $, 10);
+my $Revision = substr(q$Revision: 1.74 $, 10);
 
-# $Id: DBI.pm,v 1.73 1997/06/20 17:18:01 timbo Exp $
+# $Id: DBI.pm,v 1.74 1997/06/25 12:20:10 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -244,10 +241,15 @@ sub connect {
     my $dbh = $drh->$connect_via($dsn, $user, $passwd, $attr);
     warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
 
-    $dbh->{PrintError} = 1 if $dsn_driver;
+    if ($dsn_driver) {	# new-style connect so new default semantics
+	$dbh->{PrintError} = 1;
+	$dbh->{AutoCommit} = 1;
+    }
     if (ref $attr) {
-	$dbh->{PrintError} = $attr->{PrintError} if exists $attr->{PrintError};
-	$dbh->{RaiseError} = $attr->{RaiseError} if exists $attr->{RaiseError};
+	my $a;
+	foreach $a (qw(PrintError RaiseError AutoCommit)) {
+	    $dbh->{$a} = $attr->{$a} if exists $attr->{$a};
+	}
     }
 
     $dbh;
@@ -270,7 +272,7 @@ sub install_driver {
     my($driver, $attribs) = @_;
     my $drh;
 
-    $driver  ||= $ENV{DBI_DRIVER} || '';
+    $driver ||= $ENV{DBI_DRIVER} || '';
 
     # allow driver to be specified as a 'dbi:driver:' string
     $driver = $1 if $driver =~ s/^DBI:(.*?)://i;
@@ -810,7 +812,7 @@ if all references to them are deleted.
 
 Handle object attributes are shown as:
 
-  $h->{attribute_name}   (I<type>)
+C<  $h-E<gt>{attribute_name}>   (I<type>)
 
 where I<type> indicates the type of the value of the attribute (if it's
 not a simple scalar):
@@ -823,13 +825,13 @@ not a simple scalar):
 =head2 General Interface Rules & Caveats
 
 The DBI does not have a concept of a `current session'. Every session
-has a handle object (e.g., a $dbh) returned from the connect method and
+has a handle object (i.e., a $dbh) returned from the connect method and
 that handle object is used to invoke database related methods.
 
-Most data is returned to the perl script as perl strings (null values
-are returned as undef).  This allows arbitrary precision numeric data
-to be handled without loss of accuracy.  Be aware that perl may not
-preserve the same accuracy when the string is used as a number.
+Most data is returned to the perl script as strings (null values are
+returned as undef).  This allows arbitrary precision numeric data to be
+handled without loss of accuracy.  Be aware that perl may not preserve
+the same accuracy when the string is used as a number.
 
 Dates and times are returned as character strings in the native format
 of the corresponding Engine.  Time Zone effects are Engine/Driver
@@ -851,10 +853,11 @@ See the description of the CursorName attribute for an alternative.
 
 Individual Driver implementors are free to provide any private
 functions and/or handle attributes that they feel are useful.  Private
-functions can be invoked using the DBI C<call> method. Private
-attributes are accessed just like standard attributes.
+functions can be invoked using the DBI C<func> method (which is
+currently not documented). Private attributes are accessed just like
+standard attributes.
 
-Character sets: Most databases which understand charaacter sets have a
+Character sets: Most databases which understand character sets have a
 default global charset and text stored in the database is, or should
 be, stored in that charset (if it's not then that's the fault of either
 the database or the application that inserted the data). When text is
@@ -866,8 +869,8 @@ the application to do that.
 
 =head2 Naming Conventions
 
-The DBI package and all packages below it (DBI::*) are are reserved for
-use by the DBI. Package names begining with DBD:: are reserved for use
+The DBI package and all packages below it (DBI::*) are reserved for
+use by the DBI. Package names beginning with DBD:: are reserved for use
 by DBI database drivers.  All environment variables used by the DBI
 or DBD's begin with 'DBI_' or 'DBD_'.
 
@@ -932,34 +935,36 @@ If driver is not specified, the environment variable DBI_DRIVER is
 used. If that variable is not set then the connect dies.
 
 DBI->connect automatically installs the driver if it has not been
-installed yet. It is important to note that driver installation always
-returns a valid driver handle or it I<dies> with an error message which
-includes the string 'install_driver' and the underlying problem. So,
-DBI->connect will die on a driver installation failure and will only
-return undef on a connect failure, for which $DBI::errstr will hold the
-error.
+installed yet. Driver installation I<always> returns a valid driver
+handle or it I<dies> with an error message which includes the string
+'install_driver' and the underlying problem. So, DBI->connect will die
+on a driver installation failure and will only return undef on a
+connect failure, for which $DBI::errstr will hold the error.
 
 The $data_source argument (with the 'dbi:...:' prefix removed) and the
 $username and $password arguments are then passed to the driver for
 processing. The DBI does not define I<any> interpretation for the
-contents of these fields.
+contents of these fields.  The driver is free to interpret the
+data_source, username and password fields in any way and supply
+whatever defaults are appropriate for the engine being accessed
+(Oracle, for example, uses the ORACLE_SID and TWO_TASK env vars if no
+data_source is specified).
 
-The driver is free to interpret the data_source, username and password
-fields in any way and supply whatever defaults are appropriate for the
-engine being accessed (Oracle, for example, uses the ORACLE_SID and
-TWO_TASK env vars if no data_source is specified).
+The AutoCommit and PrintError attributes for each connection default to
+default to I<on> (see L</AutoCommit> and L</PrintError> for more information).
 
-By default the PrintError attribute is I<on> for each connection (see
-L</PrintError> for more information). To turn PrintError off you can do:
+The \%attr parameter can be used to alter the default settings of the
+PrintError, RaiseError and AutoCommit attributes. For example:
 
-  DBI->connect($data_source, $user, $pass, { PrintError => 0 });
+  $dbh = DBI->connect($data_source, $user, $pass, {
+	PrintError => 0,
+	AutoCommit => 0
+  });
 
-The RaiseError attribute can also be specified in the same way.  These
-are currently the I<only> defined uses for the DBI->connect \%attr.
+These are currently the I<only> defined uses for the DBI->connect \%attr.
 
 Portable applications should not assume that a single driver will be
-able to support multiple simultaneous sessions and also should check
-the value of $dbh->{AutoCommit} (see AutoCommit below).
+able to support multiple simultaneous sessions.
 
 Where possible each session ($dbh) is independent from the transactions
 in other sessions. This is useful where you need to hold cursors open
@@ -968,14 +973,15 @@ cursors (typically read-only) and another for your short update
 transactions.
 
 For compatibility with old DBI scripts the driver can be specified by
-passing it's name as the fourth argument to connect (instead of \%attr):
+passing its name as the fourth argument to connect (instead of \%attr):
 
   $dbh = DBI->connect($data_source, $user, $pass, $driver);
 
-in this case the $data_source doesn't need to start with 'dbi:driver_name:'
-and, even if it does, the embedded driver_name will be ignored. Also
-the DBI_DBNAME env var is checked if DBI_DSN is not defined.
-
+In this 'old-style' form of connect the $data_source should not start
+with 'dbi:driver_name:' and, even if it does, the embedded driver_name
+will be ignored. The $dbh->{AutoCommit} attribute is I<undefined>. The
+$dbh->{PrintError} attribute is off. And the old DBI_DBNAME env var is
+checked if DBI_DSN is not defined.
 
 =item B<available_drivers>
 
@@ -1113,14 +1119,24 @@ If $trace_filename is specified then the file is opened in append
 mode and I<all> trace output (including that from other handles)
 is redirected to that file.
 
-See also L</DEBUGGING> and the PERL_DBI_DEBUG environment variable.
+See also L</DEBUGGING> for information about the PERL_DBI_DEBUG
+environment variable.
+
+
+=item B<func>
+
+  $h->func(@func_arguments, $func_name);
+
+The func method can be used to call private non-standard and
+non-portable methods implemented by the driver. Note that the function
+name is given as the I<last> argument.
 
 =back
 
 
 =head1 ATTRIBUTES COMMON TO ALL HANDLES
 
-These attributes are common to all types of DBI handle.
+These attributes are common to all types of DBI handles.
 
 Some attributes are inherited by I<child> handles. That is, the value
 of an inherited attribute in a newly created statement handle is the
@@ -1129,7 +1145,7 @@ in the new statement handle do not affect the parent database handle
 and changes to the database handle do not affect I<existing> statement
 handles, only future ones.
 
-Attempting to set of get the value of an undefined attribute is fatal
+Attempting to set or get the value of an undefined attribute is fatal
 (except for private driver specific attributes which all have names
 starting with a lowercase letter).
 
@@ -1174,7 +1190,7 @@ that may change and should not be relied upon.
 By default DBI->connect sets PrintError on (except for old-style connect
 usage, see connect for more details).
 
-If desired, the warnings can be caught and processed using $SIG{__WARN__}
+If desired, the warnings can be caught and processed using a $SIG{__WARN__}
 handler or modules like CGI::ErrorWrap.
 
 =item B<RaiseError> (inherited)
@@ -1198,7 +1214,7 @@ characters from fixed width char fields. No other field types are
 affected.
 
 The default is false (it is possible that that may change).
-Applications that needs specific behaviour should set the attribute as
+Applications that need specific behaviour should set the attribute as
 needed. Emulation interfaces should set the attribute to match the
 behaviour of the interface they are emulating.
 
@@ -1278,7 +1294,7 @@ if the database supports transactions.
 
   $rc  = $dbh->rollback   || die $dbh->errstr;
 
-Roll-back (undo) the most recent series of uncommited database
+Roll-back (undo) the most recent series of uncommitted database
 changes if the database supports transactions.
 
 
@@ -1289,7 +1305,7 @@ changes if the database supports transactions.
 Disconnects the database from the database handle. Typically only used
 before exiting the program. The handle is of little use after disconnecting.
 
-The transaction behaviour is of disconnect is undefined.  Some database
+The transaction behaviour of disconnect is undefined.  Some database
 systems (such as Oracle and Ingres) will automatically commit any
 outstanding changes, but others (such as Informix) will rollback any
 outstanding changes.  Applications should explicitly call commit or
@@ -1298,8 +1314,8 @@ rollback before calling disconnect.
 The database is automatically disconnected (by the DESTROY method) if
 still connected when there are no longer any references to the handle.
 The DESTROY method for each driver should explicitly call rollback to
-undo any uncommited changes. This is I<vital> behaviour to ensure that
-incomplete transactions don't get commited simply because Perl calls
+undo any uncommitted changes. This is I<vital> behaviour to ensure that
+incomplete transactions don't get committed simply because Perl calls
 DESTROY on every object before exiting.
 
 
@@ -1343,11 +1359,11 @@ marks).
 
 =item B<AutoCommit>
 
-  $sth->{AutoCommit}     ($)
+  $dbh->{AutoCommit}     ($)
 
 If true then database changes cannot be rolledback (undone).  If false
 then database changes occur within a 'transaction' which must either be
-commited or rolledback using the commit or rollback methods.
+committed or rolledback using the commit or rollback methods.
 
 Drivers for databases which support transactions should always
 default to AutoCommit mode.
@@ -1395,8 +1411,8 @@ advance).
   $ary_ref = $sth->fetch;    # alias
 
 Fetches the next row of data and returns a reference to an array
-holding the field values. If there are no more rows fetch returns
-undef.  Null values are returned as undef. This is the fastest
+holding the field values. If there are no more rows fetchrow_arrayref
+returns undef.  Null values are returned as undef. This is the fastest
 way to fetch data, particularly if used with $sth->bind_columns.
 
 =item B<fetchrow_array>
@@ -1405,8 +1421,8 @@ way to fetch data, particularly if used with $sth->bind_columns.
 
 An alternative to C<fetchrow_arrayref>. Fetches the next row of data
 and returns it as an array holding the field values. If there are no
-more rows fetchrow returns an empty list.  Null values are returned as
-undef.
+more rows fetchrow_array returns an empty list.  Null values are
+returned as undef.
 
 =item B<fetchrow_hashref>
 
@@ -1421,11 +1437,11 @@ The keys of the hash are the same names returned by $sth->{NAME}. If
 more than one field has the same name there will only be one entry in
 the returned hash.
 
-Because of the extra work fetchrow_hashref and Perl have to perform it
-is not as efficient as fetch or fetchrow and not recommended where
-performance is very important. Currently a new hash reference is
-returned for each row.  This is likely to change in the future so don't
-rely on it.
+Because of the extra work fetchrow_hashref and perl have to perform it
+is not as efficient as fetchrow_arrayref or fetchrow_array and is not
+recommended where performance is very important. Currently a new hash
+reference is returned for each row.  This is likely to change in the
+future so don't rely on it.
 
 
 =item B<fetchall_arrayref>
@@ -1434,7 +1450,8 @@ rely on it.
 
 The C<fetchall_arrayref> method can be used to fetch all the data to be
 returned from a prepared statement. It returns a reference to an array
-which contains one array reference per row (as returned by C<fetch>).
+which contains one array reference per row (as returned by
+C<fetchrow_arrayref>).
 
 If there are no rows to return, fetchall_arrayref returns a reference to an
 empty array.
@@ -1572,7 +1589,7 @@ This section has not yet been formalised.
 
 =head1 SIMPLE EXAMPLE
 
-  my $dbh = DBI->connect($data_source, $user, $password, 'Oracle')
+  my $dbh = DBI->connect("dbi:Oracle:$data_source", $user, $password)
       || die "Can't connect to $data_source: $DBI::errstr";
 
   my $sth = $dbh->prepare( q{

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.36 1997/06/20 17:18:01 timbo Exp $
+/* $Id: DBIXS.h,v 1.37 1997/06/25 12:20:10 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -146,6 +146,7 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIcf_ChopBlanks 0x0040	/* rtrim spaces from fetch char columns	*/
 #define DBIcf_RaiseError 0x0080	/* throw exception (croak) on error	*/
 #define DBIcf_PrintError 0x0100	/* warn() on error			*/
+#define DBIcf_AutoCommit 0x0200	/* dbh only. used by drivers		*/
 
 #define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
     (	DBIcf_WARN | DBIcf_COMPAT |		\
@@ -153,9 +154,10 @@ typedef struct {		/* -- STATEMENT --			*/
 
 /* general purpose flag setting and testing macros */
 #define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
-#define DBIc_has(imp, flag)	(DBIc_FLAGS(imp) &   (flag)) /* alias for _is */
+#define DBIc_has(imp,flag)	DBIc_is(imp, flag) /* alias for _is */
 #define DBIc_on(imp, flag)	(DBIc_FLAGS(imp) |=  (flag))
 #define DBIc_off(imp,flag)	(DBIc_FLAGS(imp) &= ~(flag))
+#define DBIc_set(imp,flag,on)	((on) ? DBIc_on(imp, flag) : DBIc_off(imp,flag))
 
 #define DBIc_COMSET(imp)	DBIc_is(imp, DBIcf_COMSET)
 #define DBIc_COMSET_on(imp)	DBIc_on(imp, DBIcf_COMSET)

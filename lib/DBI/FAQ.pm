@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 1.2 1997/06/16 17:23:18 timbo Exp $
+### $Id: FAQ.pm,v 1.4 1997/06/25 12:20:10 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,11 +19,8 @@
 ### made to Alligator Descartes <I<descarte@hermetica.com>>.
 ### 
 ### $Log: FAQ.pm,v $
-# Revision 1.2  1997/06/16  17:23:18  timbo
-# Updated by Al.
-#
-# Revision 1.2  1997/06/16  17:23:18  timbo
-# Updated by Al.
+# Revision 1.4  1997/06/25  12:20:10  timbo
+# *** empty log message ***
 #
 
 package DBI::FAQ;
@@ -36,7 +33,7 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <HTML>
 <HEAD>
 <!-- -->
-<!-- $Id: FAQ.pm,v 1.2 1997/06/16 17:23:18 timbo Exp $ -->
+<!-- $Id: FAQ.pm,v 1.4 1997/06/25 12:20:10 timbo Exp $ -->
 <!-- -->
 <TITLE>Frequently Asked Questions for DBI</TITLE>
 </HEAD>
@@ -48,18 +45,22 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <P>
 <CENTER>
 <FONT SIZE="+2">
-DBI Frequently Asked Questions v.0.34
+DBI Frequently Asked Questions v.0.35
 </FONT>
 <BR>
 <FONT SIZE="-1">
-<I>Last updated: June 15th, 1997</I>
+<I>Last updated: June 20th, 1997</I>
 </FONT>
 </CENTER>
 <P>
 
+=head1 SYNOPSIS
+
+    perldoc DBI::FAQ
+
 =head1 VERSION
 
-This document is currently at version I<0.34>, as of I<June 15th, 1997>.
+This document is currently at version I<0.35>, as of I<June 20th, 1997>.
 
 =head1 DESCRIPTION
 
@@ -80,7 +81,7 @@ To quote Tim Bunce, the architect and author of DBI:
 In simple language, the DBI interface allows users to access multiple database
 types transparently. So, if you connecting to an Oracle, Informix, mSQL, Sybase
 or whatever database, you don't need to know the underlying mechanics of the
-3GL layer. The API defined by DBI will work on I<all> these database types.
+interface. The API defined by DBI will work on I<all> these database types.
 
 A similar benefit is gained by the ability to connect to two I<different>
 databases of different vendor within the one perl script, I<ie>, I want
@@ -88,9 +89,9 @@ to read data from an Oracle database and insert it back into an Informix
 database all within one program. The DBI layer allows you to do this simply
 and powerfully.
 
-Here's a diagram that demonstrates the principle:
 
 =for html
+Here's a diagram that demonstrates the principle:
 <P>
 <CENTER>
 <IMG SRC="img/dbiarch.gif" WIDTH=451 HEIGHT=321 ALT="[ DBI Architecture ]">
@@ -102,53 +103,54 @@ now used to denote perlI<4> modules on database interfacing, such as,
 I<oraperl>, I<isqlperl>, I<ingperl> and so on. These interfaces
 didn't have a standard API and are generally I<not> supported.
 
-Here's a list of DBperl modules, their corresponding DBI counterparts and
+Here's a list of old DBperl's, their corresponding DBI counterparts and
 support information. I<Please note>, the author's listed here generally
 I<do not> maintain the DBI module for the same database. These email
 addresses are unverified and should only be used for queries concerning the
 perl4 modules listed below. DBI driver queries should be directed to the
 I<dbi-users> mailing list.
 
-    Module Name	Database Required   Author          DBI
-    -----------	-----------------   ------          ---
-    Sybperl     Sybase              Michael Peppler DBD::Sybase
-                                    <mpeppler@itf.ch>
-    Oraperl     Oracle 6 & 7        Kevin Stock     DBD::Oracle
-                                    <dbi-users@fugue.com>
-    Ingperl     Ingres              Tim Bunce &     DBD::Ingres
-                                    Ted Lemon
-                                    <dbi-users@fugue.com>
-    Interperl   Interbase           Buzz Moschetti  DBD::Interbase
-                                    <buzz@bear.com>
-    Uniperl     Unify 5.0           Rick Wargo      None
-                                    <rickers@coe.drexel.edu>
-    Pgperl      Postgres            Igor Metz       DBD::Pg
-                                    <metz@iam.unibe.ch>
-    Btreeperl   NDBM                John Conover    SDBM?
-                                    <john@johncon.com>
-    Ctreeperl   C-Tree              John Conover    None
-                                    <john@johncon.com>
-    Cisamperl   Informix C-ISAM     Mathias Koerber None
-                                    <mathias@unicorn.swi.com.sg>
-    Duaperl     X.500 Directory     Eric Douglas    None
-                User Agent
+  Perl4 Name  Database          Author                  DBI Driver
+  ----------  --------          ------                  ----------
+  Sybperl     Sybase            Michael Peppler         DBD::Sybase
+                                <mpeppler@itf.ch>
+  Oraperl     Oracle 6 & 7      Kevin Stock             DBD::Oracle
+                                <dbi-users@fugue.com>
+  Ingperl     Ingres            Tim Bunce &             DBD::Ingres
+                                Ted Lemon
+                                <dbi-users@fugue.com>
+  Interperl   Interbase         Buzz Moschetti          DBD::Interbase
+                                <buzz@bear.com>
+  Uniperl     Unify 5.0         Rick Wargo              None
+                                <rickers@coe.drexel.edu>
+  Pgperl      Postgres          Igor Metz               DBD::Pg
+                                <metz@iam.unibe.ch>
+  Btreeperl   NDBM              John Conover            SDBM?
+                                <john@johncon.com>
+  Ctreeperl   C-Tree            John Conover            None
+                                <john@johncon.com>
+  Cisamperl   Informix C-ISAM   Mathias Koerber         None
+                                <mathias@unicorn.swi.com.sg>
+  Duaperl     X.500 Directory   Eric Douglas            None
+              User Agent
 
 However, some DBI modules have DBperl emulation layers, so, I<DBD::Oracle>
-comes with an Oraperl emulation layer, which allows you to run legacy oraperl
-scripts without modification. The emulation layer translates the oraperl API
-calls into DBI calls and executes them through the DBI switch.
+for example comes with an Oraperl emulation layer, which allows you to
+run legacy oraperl scripts without modification. The emulation layer
+translates the oraperl API calls into the corresponding DBI calls.
 
 Here's a table of emulation layer information:
 
-    Module		    Emulation Layer     Status
+    Module          Emulation Layer     Status
     ------          ---------------     ------
     DBD::Oracle     Oraperl             Complete
+    DBD::Ingres     Ingperl             Complete
     DBD::Informix   Isqlperl            Under development
     DBD::Sybase     Sybperl             Working? ( Needs verification )
     DBD::mSQL       Msqlperl            Experimentally released with 
                                         DBD::mSQL-0.61
 
-The I<Msqlperl> emulation is a special case. I<Msqlperl> is a perlI<5> driver
+The I<Msqlperl> emulation is a special case. I<Msqlperl> is a perl5 driver
 for I<mSQL> databases, but does not conform to the DBI Specification. It's
 use is being deprecated in favour of I<DBD::mSQL>. I<Msqlperl> may be downloaded
 from CPAN I<via>:
@@ -161,10 +163,10 @@ DBI is primarily distributed from:
 
     ftp://ftp.demon.co.uk/pub/perl/db
 
-The Comprehensive Perl Archive Network
-resources should be used for retrieving up-to-date versions of the drivers,
-since local mirror sites usually lag. CPAN may be accessed I<via> Tom
-Christiansen's splendid I<CPAN multiplexer> program located at:
+The Comprehensive Perl Archive Network resources should be used for
+retrieving up-to-date versions of the drivers.  Local CPAN sites may be
+accessed I<via> Tom Christiansen's splendid I<CPAN multiplexer> program
+located at:
 
     http://www.perl.com/CPAN/
 
@@ -184,9 +186,10 @@ There are a few information sources on DBI.
     http://www.hermetica.com/technologia/perl/DBI/doc/dbispec
 
 There are two specifications available at this link, the new DBI Draft
-Specification which is a rapidly changing document as the development team
-drive towards a stable interface, and the old historical I<DBperl>
-Specification out of which the current DBI interface evolved.
+Specification which is a rapidly evolving document as Tim Bunce and the
+development team drive towards a stable interface, and the old
+historical DBperl Specification out of which the current DBI interface
+evolved.
 
 The latter document should be regarded as being of historical interest 
 only and should not serve as a programming manual, or authoratative in any 
@@ -210,6 +213,16 @@ The POD for the DBI Specification can be read with the:
 
 command.
 
+=item Frequently Asked Questions
+
+This document, the I<Frequently Asked Questions> is also available as POD
+documentation! You can read this on your own system by typing:
+
+    perldoc DBI::FAQ
+
+This may be more convenient to persons not permanently, or conveniently,
+connected to the Internet but the document may not be the latest version.
+
 =item Oraperl
 
 Users of the Oraperl emulation layer bundled with I<DBD::Oracle>, may read
@@ -226,16 +239,6 @@ Users of the I<DBD::mSQL> module may read about some of the private functions
 and quirks of that driver by typing:
 
     perldoc DBD::mSQL
-
-=item Frequently Asked Questions
-
-This document, the I<Frequently Asked Questions> is also available as POD
-documentation! You can read this on your own system by typing:
-
-    perldoc DBI::FAQ
-
-This may be more convenient to persons not permanently, or conveniently,
-connected to the Internet.
 
 =item POD in general
 
@@ -276,19 +279,64 @@ not bother to contact any of the DBI development team members for verification
 of the information contained within his article. Several reviews of the
 article on the I<dbi-users> mailing list were disparaging, to say the least.
 The fact the article was written about I<DBperl> instead of I<DBI> hints
-at the staleness of the information.
+at the staleness of the information.  However, we include the reference
+for completeness' sake.
 
-However, we include the reference for completeness' sake.
+=item I<``The Perl5 Database Interface''>
 
-=item I<A Book........>
+This item is a book to be written by Alligator Descartes ( for it is me )
+and published by O'Reilly and Associates this coming Winter. 
 
-A book, to be written by Alligator Descartes is currently in a proposal 
-stage to a publisher. We'll keep you posted...
+Here is the putative table of contents for the book.
+
+     * Introduction
+          + Databases
+          + CGI / WWW
+          + perl
+     * Basic Database Concepts
+          + Types of Database
+               o Flat File
+               o AnyDBM
+               o RDBMS
+          + Using Which Database For What...
+     * SQL
+          + Why SQL?
+          + Structuring Information In Databases
+          + Retrieving Data From Databases
+          + Manipulating Data and Data Structures
+     * DBI Architecture
+     * Programming with DBI
+          + DBI Initialization
+          + Handles
+               o Driver Handles
+               o Database Handles
+               o Statement Handles
+          + Connection and Disconnection
+          + Handling Errors
+          + Issuing Simple Queries
+          + Executing Atomic Statements
+          + Statement MetaData
+          + More perl-ish Statements
+          + Binding
+          + Transaction Handling
+          + Utility Methods
+          + Handle Attributes and Dynamic Variables
+     * DBI and ODBC
+     * The Database Drivers
+          + DBD::Oracle and oraperl
+          + DBD::Informix and isqlperl
+          + DBD::mSQL and Msqlperl
+     * Case Studies
+          + DBI and the WWW
+          + Data Migration and Warehousing
+          + Administration Software
+     * Appendix: API Reference / Specification
+     * Appendix: Resources
 
 =item I<README files>
 
 The I<README> files included with each driver occasionally contains 
-some useful information ( no, really! ) that may be pertinent to the user.
+some very useful information ( no, really! ) that may be pertinent to the user.
 Please read them. It makes our worthless existences more bearable. These
 can all be read from the main DBI WWW page at:
 
@@ -302,6 +350,16 @@ URL of:
 
     http://www.fugue.com/dbi
 
+If you cannot successfully use the WWW form on the above page, please
+subscribe to the list in the following manner:
+
+    Email: 'dbi-XXX-request@fugue.com' with a message body of
+    'subscribe'
+
+Where 'dbi-XXX' is the name of the mailing list you are interested in.
+But note that your request will be handled by a human and may take some
+time.
+
 The lists that users may participate in are:
 
 =over 4
@@ -311,34 +369,16 @@ The lists that users may participate in are:
 This mailing list is for announcements only. Very low traffic. The
 announcements are usually posted on the main DBI WWW page.
 
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-announce-request@fugue.com' with a message body of
-    'subscribe'
-
 =item I<dbi-dev>
 
 This mailing list is intended for the use of developers discussing
 ideas and concepts for the DBI interface, API and driver mechanics.
 Only any use for developers, or interested parties. Low traffic.
 
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-dev-request@fugue.com' with a message body of
-    'subscribe'
-
 =item I<dbi-users>
 
 This mailing list is a general discussion list used for bug reporting,
 problem discussion and general enquiries. Medium traffic.
-
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-users-request@fugue.com' with a message body of
-    'subscribe'
 
 =back
 
@@ -396,8 +436,8 @@ What you needed to do to fix it. Please make sure you mention everything.
 
 =item *
 
-Platform information, database version, perl version, module version and 
-DBI version.
+Platform information, database version, perl version (perl -V), module
+version and DBI version.
 
 =back
 
@@ -405,7 +445,8 @@ DBI version.
 
 Please email the address listed in the WWW pages for whichever driver you
 are having problems with. Do I<not> directly email the author at a
-known address unless it corresponds with the one listed.
+known address unless it corresponds with the one listed. Some authors,
+including Tim Bunce, specifically do not want mail sent directly to them.
 
 We tend to have real jobs to do, and we do read the mailing lists for
 problems. Besides, we may not have access to <I<insert your
@@ -424,7 +465,7 @@ as possible, I<ie>:
 
 =item *
 
-I<ALL> the information off the README file in
+I<ALL> the information asked for in the README file for
 the problematic module. And we mean I<ALL> of it. We don't
 put lines like that in documentation for the good of our health, or
 to meet obscure README file standards of length.
@@ -445,7 +486,7 @@ and I<any other pertinent information>.
 =back
 
 Remember, the more information you send us, the quicker we can track 
-problems down. If you send us nothing, expect nothing back.
+problems down. If you send us no useful information, expect nothing back.
 
 =item I<Email the dbi-users Mailing List>
 
@@ -459,7 +500,8 @@ by mailing there.
 
 =head2 3.1 What's the difference between ODBC and DBI?
 
-Good question! To be filled in more detail!
+Good question! To be filled in more detail! Meanwhile see the notes at the
+end of the DBI README file.
 
 =head2 3.2 Is DBI supported under Windows 95 / NT platforms?
 
@@ -468,10 +510,12 @@ I<DBI> and I<DBD::Oracle> under these platforms, and, with the
 advent of a stabler perl and a port of I<MakeMaker>, the project has
 come on by great leaps and bounds.
 
-The I<DBI> and I<DBD::Oracle> Win32 ports are now a standard part of DBI,
-so, downloading I<DBI> of version higher than I<0.81> should work fine.
-For the I<DBD::Oracle> patches required, please read the Win32 porting page
-at:
+Recent I<DBI> and I<DBD::Oracle> modules will build and work out-of-the-box
+on Win32 with the standard perl 5.004 (or later) version of perl.
+
+If you have to use the old non-standard ActiveWare perl port you can't use
+the standard DBI and DBD::Oracle modules out-of-the-box. Details of the 
+changes required and pre-patched versions can be found at:
 
     http://www.hermetica.com/technologia/perl/DBI/win32
 
@@ -489,8 +533,6 @@ available from:
 Given its status, problem reports without fixes are likely to be ignored. 
 You will also need the I<Win32 DBI patch kit> as supplied by Jeff Urlwin,
 which you can locate by reading the previous question's answer.
-
-Jeff Urlwin is currently working hard on the ODBC layer.
 
 To get back to the question, theoretically, yes, you can access Microsoft 
 Access and SQL-Server databases from DBI I<via> ODBC!
@@ -538,9 +580,9 @@ Extracted from ``I<DBI - The Database Interface for Perl 5>'':
     AnyDBM_File module.''
 
 To sum up, DBM is a perfectly satisfactory solution for essentially read-only
-databases, or small and simple datasets. However, for more powerful and
-scaleable datasets, not to mention robust transactional locking, users are
-recommended to use I<DBI>.
+databases, or small and simple datasets with a single user. However,
+for more powerful and scaleable datasets, not to mention robust
+transactional locking, users are recommended to use I<DBI>.
 
 =head2 3.6 When will mSQL-2 be supported?
 
@@ -571,7 +613,7 @@ Technology WWW site at:
     http://www.hughes.com.au
 
 If the dataset is larger than 1 million row tables or 1000 tables, or if you
-have either more money, or larger machines, I would recommend I<Oracle7 RDBMS>.
+have either more money, or larger machines, I would recommend the I<Oracle RDBMS>.
 Oracle's WWW site is an excellent source of more information.
 
     http://www.oracle.com
@@ -598,7 +640,7 @@ Given that we're making the assumption that the feature you have requested
 is a non-standard database-specific feature, then the answer will be I<no>.
 
 DBI reflects a I<generic> API that will work for most databases, and has
-no database-specific functionality.
+no database-specific functionality defined.
 
 However, driver authors may, if they so desire, include hooks to database-specific
 functionality through the C<func()> method defined in the DBI API.
@@ -652,7 +694,7 @@ I<Apache::DBI> can be downloaded from CPAN I<via>:
 
     http://www.perl.com/cgi-bin/cpan_mod?module=Apache::DBI
 
-=head2 4.4 ``When I run a perl script from the command line, it works, but, when I run it under the C<httpd>, it fails!'' Why?
+=head2 4.4 ``My perl script runs from the command line, but fails under the C<httpd>!'' Why?
 
 Basically, a good chance this is occurring is due to the fact that the user
 that you ran it from the command line as has a correctly configured set of
@@ -664,11 +706,11 @@ which implies there is no configured environment. Any scripts attempting to
 execute in this situation will correctly fail.
 
 To solve this problem, set the environment for your database in a C<BEGIN { }>
-block at the top of your script. This will solve the problem.
+block at the top of your script. This will generally solve the problem.
 
-Similarly, you should check your C<httpd> error logfile for any clues,
-as well as the ``Idiot's Guide To Solving Perl / CGI Problems'' and
-``Perl CGI Programming FAQ'' for further information. It is
+Similarly, you should check your C<httpd> error logfile for any clues, as
+well as the very valuable ``Idiot's Guide To Solving Perl / CGI Problems''
+and ``Perl CGI Programming FAQ'' for further information. It is
 unlikely the problem is DBI-related.
 
 The ``Idiot's Guide To Solving Perl / CGI Problems'' can be located at:
@@ -676,7 +718,7 @@ The ``Idiot's Guide To Solving Perl / CGI Problems'' can be located at:
     http://www.perl.com/perl/faq/index.html
 
 as can the ``Perl CGI Programming FAQ''. Read I<BOTH> these documents 
-carefully!
+carefully! They will probably save you many hours of work.
 
 =head2 5.1 Can I do multi-threading with DBI?
 
@@ -696,20 +738,39 @@ To be written.
 
 =head2 5.3 How can I invoke stored procedures with DBI?
 
-To be written.
+There is currently no standard way to call stored procedures with DBI.
+However, if the database lets you use SQL to call stored procedures
+then the DBI and DBD driver probably will to.
+
+For example, assuming that you have created a stored procedure within
+an Oracle database, you can use C<$dbh>->C<do()> to immediately execute
+the procedure:
+
+    $dbh->do( "BEGIN someProcedure END;" );	# Oracle specific
 
 =head2 5.4 How can I get return values from stored procedures with DBI?
 
-To be written.
+    Note: This is Oracle specific. Contributed by Jeff Urlwin
+
+    $sth = $dbh->prepare( "BEGIN foo(:1, :2, :3); END;" )  # Oracle specific
+               || die $sth->errstr;
+    $sth->bind_param(1, $a) || die $sth->errstr;
+    $sth->bind_param_inout(2, \$path, 2000)    || die $sth->errstr;
+    $sth->bind_param_inout(3, \$success, 2000) || die $sth->errstr;
+    $sth->execute || die $sth->errstr;
+
+Note the error checking, it may seem like extra work but it'll probably save
+you hours in the long run. See $sth->{RaiseError} and $sth->{printError}
+in the DBI docs for easier ways to get the same effect.
 
 =head2 5.5 How can I create or drop a database with DBI?
 
-Database creation and deletion are concepts that are entirely too abstract
+Database creation and deletion are concepts that are too abstract
 to be adequately supported by DBI. For example, Oracle does not support the
 concept of dropping a database at all! Also, in Oracle, the database
 I<server> essentially I<is> the database, whereas in mSQL, the
 server process runs happily without any databases created in it. The
-problem is too disparate to attack.
+problem is too disparate to attack easily.
 
 Some drivers, therefore, support database creation and deletion through
 the private C<func()> methods. You should check the documentation for
@@ -717,15 +778,14 @@ the drivers you are using to see if they support this mechanism.
 
 =head2 5.6 How can I C<commit> or C<rollback> a statement with DBI?
 
-To be written.
+To be written. See the C<commit> or C<rollback> methods in the DBI docs.
 
 =head2 5.7 How are C<NULL> values handled by DBI?
 
 C<NULL> values in DBI are specified to be treated as the value C<undef>.
 C<NULL>s can be inserted into databases as C<NULL>, for example:
 
-    $rv =
-        $dbh->do( "INSERT INTO table VALUES( NULL )" );
+    $rv = $dbh->do( "INSERT INTO table VALUES( NULL )" );
 
 but when queried back, the C<NULL>s should be tested against C<undef>.
 This is standard across all drivers.
@@ -738,8 +798,7 @@ drop databases. Invoking these driver-specific methods is simple, for example,
 to invoke a C<createDatabase> method that has one argument, we would
 write:
 
-    $rv =
-        $dbh->func( 'argument', 'createDatabase' );
+    $rv = $dbh->func( 'argument', 'createDatabase' );
 
 Software developers should note that the C<func()> methods are
 non-portable between databases.
@@ -747,7 +806,7 @@ non-portable between databases.
 =head1 Support and Training
 
 The Perl5 Database Interface is I<FREE> software. IT COMES WITHOUT WARRANTY
-OF ANY KIND.
+OF ANY KIND. See the DBI README and DBI documentation for more details.
 
 However, some organizations are providing either technical support or
 training programs on DBI. The present author has no knowledge as
@@ -762,8 +821,8 @@ purposes only.
 
 The Perl Clinic can arrange commercial support contracts for I<Perl>, I<DBI>,
 I<DBD::Oracle> and I<Oraperl>. Support is provided by the company with whom
-Tim Bunce, author of DBI, works. For more information on their services,
-please see:
+Tim Bunce, author of DBI and DBD::Oracle, works. For more information
+on their services, please see:
 
     http://www.perl.co.uk/tpc
 

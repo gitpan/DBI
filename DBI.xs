@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.69 1997/06/20 17:18:01 timbo Exp $
+/* $Id: DBI.xs,v 1.70 1997/06/25 12:20:10 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -444,6 +444,7 @@ dbih_dumpcom(imp_xxh, msg)
     if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
     if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
+    if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
     fprintf(DBILOGFP,"    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
     fprintf(DBILOGFP,"    TYPE %d\n",	DBIc_TYPE(imp_xxh));
     fprintf(DBILOGFP,"    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
@@ -638,13 +639,16 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
 	(on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
     }
     else if (strEQ(key, "ChopBlanks")) {
-	(on) ? DBIc_on(imp_xxh,DBIcf_ChopBlanks) : DBIc_off(imp_xxh,DBIcf_ChopBlanks);
+	DBIc_set(imp_xxh,DBIcf_ChopBlanks, on);
     }
     else if (strEQ(key, "RaiseError")) {
-	(on) ? DBIc_on(imp_xxh,DBIcf_RaiseError) : DBIc_off(imp_xxh,DBIcf_RaiseError);
+	DBIc_set(imp_xxh,DBIcf_RaiseError, on);
     }
     else if (strEQ(key, "PrintError")) {
-	(on) ? DBIc_on(imp_xxh,DBIcf_PrintError) : DBIc_off(imp_xxh,DBIcf_PrintError);
+	DBIc_set(imp_xxh,DBIcf_PrintError, on);
+    }
+    else if (strEQ(key, "AutoCommit")) {
+	DBIc_set(imp_xxh,DBIcf_AutoCommit, on);
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
@@ -708,13 +712,16 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
 	valuesv = boolSV(DBIc_IADESTROY(imp_xxh));
     }
     else if (keylen==10 && strEQ(key, "ChopBlanks")) {
-	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_ChopBlanks));
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_ChopBlanks));
     }
     else if (keylen==10 && strEQ(key, "RaiseError")) {
-	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_RaiseError));
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_RaiseError));
     }
     else if (keylen==10 && strEQ(key, "PrintError")) {
-	valuesv = boolSV(DBIc_on(imp_xxh,DBIcf_PrintError));
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_PrintError));
+    }
+    else if (keylen==10 && strEQ(key, "AutoCommit")) {
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_AutoCommit));
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -1467,7 +1474,8 @@ MODULE = DBI   PACKAGE = DBD::_::common
 
 
 void
-DESTROY()
+DESTROY(imp_xxh_rv)
+    SV *	imp_xxh_rv
     CODE:
     /* the interesting stuff happens in DBD::_mem::common::DESTROY */
     ST(0) = &sv_undef;

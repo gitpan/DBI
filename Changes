@@ -1,4 +1,17 @@
 
+Changes in DBI 0.85,	25th June 1997
+
+	NOTE: New-style connect now defaults to AutoCommit mode unless
+	{ AutoCommit => 0 } specified in connect attributes. See the docs.
+	AutoCommit attribute now defined and tracked by DBI core.
+	Drivers should use/honour this and not implement their own.
+	Added pod doc changes from Andreas and Jonathan.
+	New DBI_DSN env var default for connect method. See docs.
+	Documented the func method.
+	Fixed "Usage: DBD::_::common::DESTROY" error.
+	Fixed bug which set some attributes true when there value was fetched.
+	Added new internal DBIc_set() macro for drivers to use.
+
 Changes in DBI 0.84,	20th June 1997
 
 	Added $h->{PrintError} attribute which, if set true, causes all errors to

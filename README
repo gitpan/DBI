@@ -105,6 +105,12 @@ It is important to check that you are using the latest version before
 posting. If you're not then I'm *very* likely to simply say "upgrade to
 the latest". You would do yourself a favour by upgrading beforehand.
 
+Do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
+just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
+Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
+mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
+in the Makefile to see what GCC is using.
+
 Please remember that I'm _very_ busy. Try to help yourself first,
 then try to help me help you by following these guidelines carefully.
 
