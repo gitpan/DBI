@@ -1,4 +1,14 @@
 
+Changes in DBI 0.90,	6th September 1997
+
+  The DBI class can be subclassed more easily now.
+  InactiveDestroy fixed for drivers using the *.xst template.
+  Can once again be built with Perl 5.003.
+  Slightly faster handle creation.
+  Changed prototype for dbd_*_*_attrib() to add extra param.
+  Note: 0.90, 0.89 and possibly some other recent versions have
+  a small memory leak. This will be fixed in the next release.
+
 Changes in DBI 0.89,	25th July 1997
 
   Minor fix to neatsvpv (mainly used for debug trace) to workaround

@@ -1,0 +1,125 @@
+#  $Id: DriverDB.xst,v 1.2 1997/09/05 19:16:40 timbo Exp $
+#
+#  Copyright (c) 1994,1995,1996,1997  Tim Bunce
+#
+# See COPYRIGHT section in DBI.pm for usage and distribution rights.
+
+# ------------------------------------------------------------
+# database level interface
+# ------------------------------------------------------------
+MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::db
+
+void
+_login(dbh, dbname, uid, pwd)
+    SV *	dbh
+    char *	dbname
+    char *	uid
+    char *	pwd
+    CODE:
+    D_imp_dbh(dbh);
+    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, uid, pwd) ? &sv_yes : &sv_no;
+
+
+void
+commit(dbh)
+    SV *	dbh
+    CODE:
+    D_imp_dbh(dbh);
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
+	    warn("commit ineffective with AutoCommit");
+    ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
+
+void
+rollback(dbh)
+    SV *	dbh
+    CODE:
+    D_imp_dbh(dbh);
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
+	    warn("rollback ineffective with AutoCommit");
+    ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
+
+void
+disconnect(dbh)
+    SV *	dbh
+    CODE:
+    D_imp_dbh(dbh);
+    if ( !DBIc_ACTIVE(imp_dbh) ) {
+	XSRETURN_YES;
+    }
+    /* Check for disconnect() being called whilst refs to cursors	*/
+    /* still exists. This possibly needs some more thought.			*/
+    if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
+	warn("disconnect(%s) invalidates %d active cursor(s)",
+	    SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
+    }
+    ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
+
+
+void
+STORE(dbh, keysv, valuesv)
+    SV *	dbh
+    SV *	keysv
+    SV *	valuesv
+    CODE:
+    D_imp_dbh(dbh);
+    int dbikey = 0;
+    ST(0) = &sv_yes;
+    if (!dbd_db_STORE_attrib(dbh, imp_dbh, keysv, dbikey, valuesv))
+	if (!DBIS->set_attr_keyed(dbh, keysv, dbikey, valuesv))
+	    ST(0) = &sv_no;
+
+void
+FETCH(dbh, keysv)
+    SV *	dbh
+    SV *	keysv
+    CODE:
+    D_imp_dbh(dbh);
+    int dbikey = 0;
+    SV *valuesv = dbd_db_FETCH_attrib(dbh, imp_dbh, keysv, dbikey);
+    if (!valuesv)
+	valuesv = DBIS->get_attr_keyed(dbh, keysv, dbikey);
+    ST(0) = valuesv;	/* dbd_db_FETCH_attrib did sv_2mortal	*/
+
+
+void
+DESTROY(dbh)
+    SV *	dbh
+    PPCODE:
+    D_imp_dbh(dbh);
+    ST(0) = &sv_yes;
+    if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
+	if (DBIc_WARN(imp_dbh) && !dirty && dbis->debug >= 2)
+	     warn("Database handle %s DESTROY ignored - never set up",
+		SvPV(dbh,na));
+    }
+    else {
+        if (DBIc_IADESTROY(imp_dbh)) { /* want's ineffective destroy    */
+            DBIc_ACTIVE_off(imp_dbh);
+        }
+	if (DBIc_ACTIVE(imp_dbh)) {
+	    static int auto_rollback = -1;
+	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3))
+		 warn("Database handle destroyed without explicit disconnect");
+	    /* The application has not explicitly disconnected. That's bad.	*/
+	    /* To ensure integrity we *must* issue a rollback. This will be	*/
+	    /* harmless	if the application has issued a commit. If it hasn't	*/
+	    /* then it'll ensure integrity. Consider a Ctrl-C killing perl	*/
+	    /* between two statements that must be executed as a transaction.	*/
+	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
+	    /* the server will automatically commit! Bham! Corrupt database!	*/ 
+	    if (auto_rollback == -1) {		/* need to determine behaviour	*/
+		/* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to	*/
+		/* those who can't fix their code in a short timescale.		*/
+		char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
+		auto_rollback = (p) ? atoi(p) : 1;
+	    }
+	    if (auto_rollback)
+		dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
+	    dbd_db_disconnect(dbh, imp_dbh);
+	}
+	dbd_db_destroy(dbh, imp_dbh);
+    }
+
+
+# -- end of DBD::~DRIVER~::db
+

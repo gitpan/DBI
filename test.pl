@@ -1,18 +1,17 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.21 1997/06/20 17:18:01 timbo Exp $
+# $Id: test.pl,v 1.22 1997/09/05 19:16:40 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
-# You may distribute under the terms of either the GNU General Public
-# License or the Artistic License, as specified in the Perl README file.
+# See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 # This is now mostly an empty shell. The tests have moved to t/*.t
 # See t/*.t for more detailed tests.
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.21 $}."\n";
+	print q{DBI test application $Revision: 1.22 $}."\n";
 	$| = 1;
 }
 

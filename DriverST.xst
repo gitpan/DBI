@@ -1,160 +1,8 @@
-#  $Id: Driver.xst,v 1.2.1.1 1997/09/05 19:16:40 timbo Exp $
+#  $Id: DriverST.xst,v 1.2 1997/09/05 19:16:40 timbo Exp $
+#
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce
 #
-#  You may distribute under the terms of either the GNU General Public
-#  License or the Artistic License, as specified in the Perl README file.
-
-
-MODULE = DBD::~DRIVER~	PACKAGE = DBD::~DRIVER~
-
-REQUIRE:    1.929
-PROTOTYPES: DISABLE
-
-BOOT:
-    items = 0;  /* avoid 'unused variable' warning */
-    DBISTATE_INIT;
-    /* XXX this interface will change: */
-    DBI_IMP_SIZE("DBD::~DRIVER~::dr::imp_data_size", sizeof(imp_drh_t));
-    DBI_IMP_SIZE("DBD::~DRIVER~::db::imp_data_size", sizeof(imp_dbh_t));
-    DBI_IMP_SIZE("DBD::~DRIVER~::st::imp_data_size", sizeof(imp_sth_t));
-    dbd_init(DBIS);
-
-
-
-# ------------------------------------------------------------
-# driver level interface
-# ------------------------------------------------------------
-MODULE = DBD::~DRIVER~	PACKAGE = DBD::~DRIVER~::dr
-
-# disconnect_all renamed and ALIAS'd to avoid length clash on VMS :-(
-void
-discon_all_(drh)
-    SV *	drh
-    ALIAS:
-	disconnect_all = 1
-    CODE:
-    D_imp_drh(drh);
-    ST(0) = dbd_discon_all(drh, imp_drh) ? &sv_yes : &sv_no;
-
-
-
-# ------------------------------------------------------------
-# database level interface
-# ------------------------------------------------------------
-MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::db
-
-void
-_login(dbh, dbname, uid, pwd)
-    SV *	dbh
-    char *	dbname
-    char *	uid
-    char *	pwd
-    CODE:
-    D_imp_dbh(dbh);
-    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, uid, pwd) ? &sv_yes : &sv_no;
-
-
-void
-commit(dbh)
-    SV *	dbh
-    CODE:
-    D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
-	    warn("commit ineffective with AutoCommit");
-    ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
-
-void
-rollback(dbh)
-    SV *	dbh
-    CODE:
-    D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
-	    warn("rollback ineffective with AutoCommit");
-    ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
-
-void
-disconnect(dbh)
-    SV *	dbh
-    CODE:
-    D_imp_dbh(dbh);
-    if ( !DBIc_ACTIVE(imp_dbh) ) {
-	XSRETURN_YES;
-    }
-    /* Check for disconnect() being called whilst refs to cursors	*/
-    /* still exists. This possibly needs some more thought.			*/
-    if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
-	warn("disconnect(%s) invalidates %d active cursor(s)",
-	    SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
-    }
-    ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
-
-
-void
-STORE(dbh, keysv, valuesv)
-    SV *	dbh
-    SV *	keysv
-    SV *	valuesv
-    CODE:
-    D_imp_dbh(dbh);
-    ST(0) = &sv_yes;
-    if (!dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv))
-	if (!DBIS->set_attr(dbh, keysv, valuesv))
-	    ST(0) = &sv_no;
-
-void
-FETCH(dbh, keysv)
-    SV *	dbh
-    SV *	keysv
-    CODE:
-    D_imp_dbh(dbh);
-    SV *valuesv = dbd_db_FETCH_attrib(dbh, imp_dbh, keysv);
-    if (!valuesv)
-	valuesv = DBIS->get_attr(dbh, keysv);
-    ST(0) = valuesv;	/* dbd_db_FETCH_attrib did sv_2mortal	*/
-
-
-void
-DESTROY(dbh)
-    SV *	dbh
-    PPCODE:
-    D_imp_dbh(dbh);
-    ST(0) = &sv_yes;
-    if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
-	if (DBIc_WARN(imp_dbh) && !dirty && dbis->debug >= 2)
-	     warn("Database handle %s DESTROY ignored - never set up",
-		SvPV(dbh,na));
-    }
-    else {
-        if (DBIc_IADESTROY(imp_dbh)) { /* want's ineffective destroy    */
-            DBIc_ACTIVE_off(imp_dbh);
-        }
-	if (DBIc_ACTIVE(imp_dbh)) {
-	    static int auto_rollback = -1;
-	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3))
-		 warn("Database handle destroyed without explicit disconnect");
-	    /* The application has not explicitly disconnected. That's bad.	*/
-	    /* To ensure integrity we *must* issue a rollback. This will be	*/
-	    /* harmless	if the application has issued a commit. If it hasn't	*/
-	    /* then it'll ensure integrity. Consider a Ctrl-C killing perl	*/
-	    /* between two statements that must be executed as a transaction.	*/
-	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
-	    /* the server will automatically commit! Bham! Corrupt database!	*/ 
-	    if (auto_rollback == -1) {		/* need to determine behaviour	*/
-		/* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to	*/
-		/* those who can't fix their code in a short timescale.		*/
-		char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
-		auto_rollback = (p) ? atoi(p) : 1;
-	    }
-	    if (auto_rollback)
-		dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
-	    dbd_db_disconnect(dbh, imp_dbh);
-	}
-	dbd_db_destroy(dbh, imp_dbh);
-    }
-
-
-# -- end of DBD::~DRIVER~::db
-
+# See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 # ------------------------------------------------------------
 # statement interface
@@ -170,7 +18,18 @@ _prepare(sth, statement, attribs=Nullsv)
     CODE:
     {
     D_imp_sth(sth);
-    DBD_ATTRIBS_CHECK("_prepare", sth, attribs);
+    if (attribs) {
+	DBD_ATTRIBS_CHECK("_prepare", sth, attribs);
+	/* XXX for each elem with an uppercase first letter
+	while(hv_iternextsv) {
+	    if (!isUPPER())
+		continue;
+	    if (!dbd_st_STORE_attrib(sth, imp_sth, keysv, dbikey, valuesv))
+		if (!DBIS->set_attr_keyed(sth, keysv, dbikey, valuesv))
+		    croak(...) ?
+	}
+	*/
+    }
     ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
     }
 
@@ -211,20 +70,26 @@ bind_param(sth, param, value, attribs=Nullsv)
 
 
 void
-bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
+bind_param_inout(sth, param, value_ref, maxlen_sv, attribs=Nullsv)
     SV *	sth
     SV *	param
     SV *	value_ref
-    IV 		maxlen
+    SV *	maxlen_sv
     SV *	attribs
     CODE:
     {
+    IV maxlen = 0;
     IV sql_type = 0;
     D_imp_sth(sth);
     if (!SvROK(value_ref) || SvTYPE(SvRV(value_ref)) > SVt_PVMG)
 	croak("bind_param_inout needs a reference to a scalar value");
     if (SvREADONLY(SvRV(value_ref)))
 	croak(no_modify);
+    /* catch undef or ref etc being used as maxlen param	*/
+    maxlen = SvIV(maxlen_sv);
+    if ((!SvNIOK(maxlen_sv) && !SvPOK(maxlen_sv)) || maxlen <= 0)
+	croak("Invalid bind_param_inout max_len parameter: %s",
+		neatsvpv(maxlen_sv,0));
     if (attribs) {
 	if (SvIOK(attribs)) {
 	    sql_type = SvIV(attribs);
@@ -351,9 +216,10 @@ STORE(sth, keysv, valuesv)
     SV *	valuesv
     CODE:
     D_imp_sth(sth);
+    int dbikey = 0;
     ST(0) = &sv_yes;
-    if (!dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv))
-	if (!DBIS->set_attr(sth, keysv, valuesv))
+    if (!dbd_st_STORE_attrib(sth, imp_sth, keysv, dbikey, valuesv))
+	if (!DBIS->set_attr_keyed(sth, keysv, dbikey, valuesv))
 	    ST(0) = &sv_no;
 
 
@@ -366,9 +232,10 @@ FETCH_attrib(sth, keysv)
     FETCH = 1
     CODE:
     D_imp_sth(sth);
-    SV *valuesv = dbd_st_FETCH_attrib(sth, imp_sth, keysv);
+    int dbikey = 0;
+    SV *valuesv = dbd_st_FETCH_attrib(sth, imp_sth, keysv, dbikey);
     if (!valuesv)
-	valuesv = DBIS->get_attr(sth, keysv);
+	valuesv = DBIS->get_attr_keyed(sth, keysv, dbikey);
     ST(0) = valuesv;	/* dbd_st_FETCH_attrib did sv_2mortal	*/
 
 
@@ -393,5 +260,4 @@ DESTROY(sth)
     }
 
 
-
-# end of ~DRIVER~.xh
+# end of ~DRIVER~.xs

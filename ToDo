@@ -4,3 +4,39 @@ SQL Parser
   CPAN/authors/id/JAKE/perl5-byacc-patches-0.5.tar.gz
 
 $dbh->quote($value, [ $field_type_num_to_quote_for ]) ? (int=none, date=?)
+
+
+
+-----------
+> > > I would prefer to set this attributes on statement level [as 
+> > > an attribute to prepare()] instead of setting it via $dbh,
+> > > but this is only a detail. 
+> > 
+> > You can set it any any level. Isn't that clear from the docs?
+> 
+> As I understand the doc, it is possible to do
+> 
+>     $sth = $dbh->prepare("....");
+>     $sth->execute();
+>     $sth->{LongReadLen} = 80;
+>     @foo = $sth->fetchrow();
+>     $sth->{LongReadLen} = 4096;
+>     @bar = $sth->fetchrow(); 
+> 
+> so that the fetch of the second row is done with a different 
+> {LongReadLen} value ? 
+> 
+> This sounds complicated with the current structure of DBD::Solid,
+> as I have only one buffer for the entire row allocated during
+> prepare(), but I must admit that I had no time [yet] to look 
+> into the last DBD::ODBC how you handle this case.
+
+Umm. I see what you mean. It's reasonable to assume that a driver
+will 'freeze' the value of applicable attributes at prepare or execute
+time. The driver should probably document that kind of thing.
+
+I think the DBI's template .xst file will probably grow some code
+to handle attributes to prepare semi-automatically, sometime.
+
+Tim.
+----------- 

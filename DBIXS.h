@@ -1,9 +1,8 @@
-/* $Id: DBIXS.h,v 1.42 1997/07/22 23:17:50 timbo Exp $
+/* $Id: DBIXS.h,v 1.43 1997/09/05 19:16:40 timbo Exp $
  *
- * Copyright (c) 1994, 1995 Tim Bunce
+ * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
- * You may distribute under the terms of either the GNU General Public
- * License or the Artistic License, as specified in the Perl README file.
+ * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
 
 /* DBI Interface Definitions for DBD Modules */
@@ -57,7 +56,7 @@ typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
 
 typedef struct dbih_com_std_st {
     U32  flags;		/* XXX will change to U32 at some point		*/
-    U16  call_depth;	/* used by DBI to track nested calls		*/
+    int  call_depth;/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
     SV   *my_h;		/* copy of owner inner handle (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
@@ -279,7 +278,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 typedef struct {
 
-#define DBISTATE_VERSION  9	/* Must change whenever dbistate_t does	*/
+#define DBISTATE_VERSION  10	/* Must change whenever dbistate_t does	*/
 
     /* this must be the first member in structure			*/
     void (*check_version) _((char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv));
@@ -298,16 +297,20 @@ typedef struct {
     imp_xxh_t * (*getcom)	_((SV *h));	/* see DBIh_COM macro	*/
     void        (*clearcom)	_((imp_xxh_t *imp_xxh));
     SV        * (*event)	_((SV *h, char *name, SV*, SV*));
-    int         (*set_attr)	_((SV *h, SV *keysv, SV *valuesv));
-    SV        * (*get_attr)	_((SV *h, SV *keysv));
+    int         (*set_attr_k)	_((SV *h, SV *keysv, int dbikey, SV *valuesv));
+    SV        * (*get_attr_k)	_((SV *h, SV *keysv, int dbikey));
     AV        * (*get_fbav)	_((imp_sth_t *imp_sth));
     SV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
     int         (*bind_as_num)	_((int sql_type, int p, int s));
-    U32         (*hash)		_((char *string, long i));
+    int         (*hash)		_((char *string, long i));
     AV        * (*preparse)	_((SV *sth, char *statement, U32 flags, U32 spare));
 
     void *pad[10];
 } dbistate_t;
+
+/* macros for backwards compatibility */
+#define set_attr(h, k, v)	set_attr_k(h, k, 0, v)
+#define get_attr(h, k)		get_attr_k(h, k, 0)
 
 #ifndef DBIS
 #define DBIS              dbis /* default name for dbistate_t variable	*/

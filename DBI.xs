@@ -1,9 +1,8 @@
-/* $Id: DBI.xs,v 1.77 1997/07/25 11:17:49 timbo Exp $
+/* $Id: DBI.xs,v 1.78 1997/09/05 19:16:40 timbo Exp $
  *
- * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
+ * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
- * You may distribute under the terms of either the GNU General Public
- * License or the Artistic License, as specified in the Perl5 README file.
+ * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
 
 #define IN_DBI_XS 1	/* see DBIXS.h */
@@ -36,11 +35,11 @@ static imp_xxh_t *dbih_getcom _((SV *h));
 static void       dbih_clearcom _((imp_xxh_t *imp_xxh));
 static SV	 *dbih_event _((SV *h, char *name, SV*, SV*));
 static SV	 *dbi_last_h;
-static int        dbih_set_attr  _((SV *h, SV *keysv, SV *valuesv));
-static SV        *dbih_get_attr  _((SV *h, SV *keysv));
+static int        dbih_set_attr_k  _((SV *h, SV *keysv, int dbikey, SV *valuesv));
+static SV        *dbih_get_attr_k  _((SV *h, SV *keysv, int dbikey));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
 static int	  bind_as_num _((int sql_type, int p, int s));
-static U32	  dbi_hash _((char *string, long i));
+static int	  dbi_hash _((char *string, long i));
 static SV *dbih_make_com _((SV *parent_h, char *imp_class, STRLEN imp_size, STRLEN extra));
 static SV *dbih_make_fdsv _((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
 char *neatsvpv _((SV *sv, STRLEN maxlen));
@@ -123,8 +122,8 @@ dbi_bootinit()
     dbis->getcom    = dbih_getcom;
     dbis->clearcom  = dbih_clearcom;
     dbis->event     = dbih_event;
-    dbis->set_attr  = dbih_set_attr;
-    dbis->get_attr  = dbih_get_attr;
+    dbis->set_attr_k= dbih_set_attr_k;
+    dbis->get_attr_k= dbih_get_attr_k;
     dbis->get_fbav  = dbih_get_fbav;
     dbis->make_fdsv = dbih_make_fdsv;
     dbis->neat_svpv = neatsvpv;
@@ -232,15 +231,18 @@ mkvname(stash, item, uplevel)	/* construct a variable name	*/
 }
 
 
-static U32
+static int
 dbi_hash(key, i)
     char *key;
     long i; /* spare */
 {
     STRLEN klen = strlen(key);
     U32 hash = 0;
-    PERL_HASH(hash, key, klen);
-    return hash;
+    while (klen--)
+        hash = hash * 33 + *key++;
+	hash &= 0x7FFFFFFF;	/* limit to 31 bits		*/
+	hash |= 0x40000000;	/* set bit 31			*/
+    return -(int)hash;	/* return negative int	*/
 }
 
 
@@ -485,7 +487,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     strcpy(imp_mem_name, imp_class);
     strcat(imp_mem_name, "_mem");
     if ( (imp_mem_stash = gv_stashpv(imp_mem_name, FALSE)) == NULL)
-        croak(errmsg, imp_mem_name, "unknown _mem package");
+        croak(errmsg, SvPV(orv,na), imp_mem_name, "unknown _mem package");
 
     dbih_imp_sv = dbih_make_com(parent, imp_class, 0, 0);
     imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
@@ -742,9 +744,10 @@ bind_as_num(sql_type, p, s)
 /* --- Generic Handle Attributes (for all handle types) ---	*/
 
 static int
-dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
+dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     SV *h;
     SV *keysv;
+    int dbikey;
     SV *valuesv;
 {
     D_imp_xxh(h);
@@ -818,9 +821,10 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
 
 
 static SV *
-dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
+dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     SV *h;
     SV *keysv;
+    int dbikey;
 {
     D_imp_xxh(h);
     STRLEN keylen;
@@ -1073,13 +1077,20 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 			    (int)gimme, (long)ima, (int)runlevel);
     }
 
+    if (*meth_name=='D' && strEQ(meth_name,"DESTROY")) {
+	/* note that croak()'s won't propagate, only append to $@ */
+	is_destroy = TRUE;
+	keep_error = TRUE;
+    }
+
     if (!SvROK(h) || SvTYPE(SvRV(h)) != SVt_PVHV) {
         croak("%s: handle %s is not a hash reference",meth_name,SvPV(h,na));
 	/* This will also catch: CLASS->method(); we might want to do */
 	/* something better in that case. */
     }
 
-    if (ima) {	/* Check method call against Internal Method Attributes */
+    /* Check method call against Internal Method Attributes */
+    if (ima && !is_destroy) {
 
 	if (ima->flags & IMA_FUNC_REDIRECT) {
 	    SV *meth_name_sv = POPs;
@@ -1112,9 +1123,6 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    }
 	}
     }
-
-    if (*meth_name=='D' && strEQ(meth_name,"DESTROY"))
-	is_destroy = TRUE;
 
     /* If h is a tied hash ref, switch to the inner ref 'behind' the tie.
        This means *all* DBI methods work with the inner (non-tied) ref.
@@ -1159,7 +1167,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     }
     else {
 	DBI_SET_LAST_HANDLE(h);
-	SAVEI16(DBIc_CALL_DEPTH(imp_xxh));
+	SAVEINT(DBIc_CALL_DEPTH(imp_xxh));
 	call_depth = ++DBIc_CALL_DEPTH(imp_xxh);
     }
 
@@ -1308,7 +1316,6 @@ PROTOTYPES: DISABLE
 
 BOOT:
     items = items;		/* avoid 'unused variable' warning	*/
-    assert(sizeof(int) >= 4);	/* for dbi_hash() codes in switch() XXX	*/
     dbi_bootinit();
 
 
@@ -1331,13 +1338,13 @@ constant(...)
 
 
 void
-_setup_handle(sv, imp_class, parent, imp_datasv=Nullsv)
+_setup_handle(sv, imp_class, parent, imp_datasv)
     SV *	sv
     char *	imp_class
     SV *	parent
     SV *	imp_datasv
     CODE:
-    dbih_setup_handle(sv, imp_class, parent, imp_datasv);
+    dbih_setup_handle(sv, imp_class, parent, SvOK(imp_datasv) ? imp_datasv : Nullsv);
     ST(0) = &sv_undef;
 
 
@@ -1385,6 +1392,16 @@ neat(sv, maxlen=0)
     ST(0) = sv_2mortal(newSVpv(neatsvpv(sv, maxlen), 0));
 
 
+int
+hash(key, i=0)
+    char *key
+    int i
+    CODE:
+    RETVAL = dbi_hash(key, i);
+    OUTPUT:
+    RETVAL
+	
+
 void
 _install_method(class, meth_name, file, attribs=Nullsv)
     char *	class
@@ -1394,7 +1411,7 @@ _install_method(class, meth_name, file, attribs=Nullsv)
     CODE:
     {
     /* install another method name/interface for the DBI dispatcher	*/
-    int debug = (dbis->debug >= 3);
+    int debug = (dbis->debug >= 4);
     CV *cv;
     SV **svp;
     dbi_ima_t *ima = NULL;
@@ -1695,7 +1712,7 @@ STORE(h, keysv, valuesv)
     CODE:
     /* Likely to be split into dr, db, st + common code for speed	*/
     ST(0) = &sv_yes;
-    if (!dbih_set_attr(h, keysv, valuesv))
+    if (!dbih_set_attr_k(h, keysv, 0, valuesv))
 	    ST(0) = &sv_no;
  
 
@@ -1705,7 +1722,7 @@ FETCH(h, keysv)
     SV *	keysv
     CODE:
     /* Likely to be split into dr, db, st + common code for speed	*/
-    ST(0) = dbih_get_attr(h, keysv);
+    ST(0) = dbih_get_attr_k(h, keysv, 0);
 
 
 void
@@ -1754,6 +1771,7 @@ errstr(h)
 	    errstr = err;
     ST(0) = sv_mortalcopy(errstr);
 
+
 int
 trace(sv, level=0, file=Nullch)
     SV *	sv
@@ -1775,6 +1793,7 @@ trace(sv, level=0, file=Nullch)
     }
     OUTPUT:
     RETVAL
+
 
 MODULE = DBI   PACKAGE = DBD::_mem::common
 

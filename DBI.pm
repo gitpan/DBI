@@ -1,6 +1,13 @@
+# $Id: DBI.pm,v 1.83 1997/09/05 19:16:40 timbo Exp $
+#
+# Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
+#
+# See COPYRIGHT section in pod text below for usage and distribution rights.
+#
+
 require 5.003;
 
-$DBI::VERSION = '0.89'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '0.90'; # ==> ALSO update the version in the pod text below!
 
 =head1 NAME
 
@@ -53,8 +60,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the draft DBI specification that corresponds to the DBI version 0.89
-($Date: 1997/07/25 11:17:49 $).
+This is the draft DBI specification that corresponds to the DBI version 0.90
+($Date: 1997/09/05 19:16:40 $).
 
  * The DBI specification is currently evolving quite quickly so it is
  * important to check that you have the latest copy. The RECENT CHANGES
@@ -128,14 +135,8 @@ Added DBI->data_sources($driver) method for implementation by drivers.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.82 $, 10);
+my $Revision = substr(q$Revision: 1.83 $, 10);
 
-# $Id: DBI.pm,v 1.82 1997/07/25 11:17:49 timbo Exp $
-#
-# Copyright (c) 1995,1996,1997, Tim Bunce
-#
-# You may distribute under the terms of either the GNU General Public
-# License or the Artistic License, as specified in the Perl README file.
 
 use Carp;
 use DynaLoader ();
@@ -210,7 +211,7 @@ my @TieHash_IF = (	# Generic Tied Hash Interface
 	'NEXTKEY' => $keeperr,
 	'EXISTS'  => $keeperr,
 	'CLEAR'   => $keeperr,
-	'DESTROY' => $keeperr,
+	'DESTROY' => undef,	# hardwired internally
 );
 my @Common_IF = (	# Interface functions common to all DBI classes
 	func    =>	{				O=>0x06	},
@@ -303,7 +304,7 @@ sub connect {
     # switch $driver<->$attr if called in old style
     ($driver, $attr) = ($attr, $driver) if $attr and !ref($attr);
 
-    $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '';
+	$dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '' unless $driver;
     $user = $ENV{DBI_USER} unless defined $user;
     $pass = $ENV{DBI_PASS} unless defined $pass;
 
@@ -373,8 +374,8 @@ sub install_driver {
     return $drh if $drh = $DBI::installed_drh{$driver};
 
     Carp::carp "$class->install_driver($driver)\n" if $DBI::dbi_debug;
-    Carp::croak 'usage DBI->install_driver($driver [, \%attribs])'
-	unless ($class eq 'DBI' and $driver and @_<=3);
+    Carp::croak "usage $class->install_driver(\$driver [, \%attribs])"
+		unless ($driver and @_<=3);
 
     # --- load the code
     eval "package DBI::_firesafe; require DBD::$driver";
@@ -534,17 +535,11 @@ sub connect_test_perf {
 }
 
 
-sub MakeMakerAttribs {
-    # return extra attributes for DBD Makefile.PL WriteMakefile()
-    ();
-}
-
 
 # --- Private Internal Function for Creating New DBI Handles
 
 sub _new_handle {
     my($class, $parent, $attr, $imp_data) = @_;
-    $parent = '' unless $parent;
 
     confess 'Usage: DBI::_new_handle'
 	.'($class_name, parent_handle, \%attribs, $imp_data)'."\n"
@@ -561,22 +556,14 @@ sub _new_handle {
 	    ($imp_data||''))
 	if ($DBI::dbi_debug >= 2);
 
-    warn "_new_handle($class): "
-		."invalid implementor class '$imp_class' given\n"
-	    unless $imp_class =~ m/::(dr|db|st)$/;
-
     # This is how we create a DBI style Object:
     my(%hash, $i, $h);
     $i = tie    %hash, $class, $attr;  # ref to inner hash (for driver)
     $h = bless \%hash, $class;         # ref to outer hash (for application)
     # The above tie and bless may migrate down into _setup_handle()...
     # Now add magic so DBI method dispatch works
-    my @imp_data;
-    push(@imp_data, $imp_data) if defined $imp_data;
-    DBI::_setup_handle($h, $imp_class, $parent, @imp_data);
+    DBI::_setup_handle($h, $imp_class, $parent, $imp_data);
 
-    warn "    New $class => $h (inner=$i) for $imp_class\n"
-	if ($DBI::dbi_debug >= 2);
     return $h unless wantarray;
     ($h, $i);
 }
@@ -605,7 +592,7 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 	%$initial_attr,
 	'Type'=>'dr',
     };
-    _new_handle('DBI::dr', undef, $attr, $imp_data);
+    _new_handle('DBI::dr', '', $attr, $imp_data);
 }
 
 sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
@@ -613,7 +600,7 @@ sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
     my($imp_class) = $drh->{ImplementorClass};
     $imp_class =~ s/::dr$/::db/;
     confess "new db($drh, $imp_class): not given an driver handle"
-	    unless $drh->{Type} eq 'dr';
+	unless ref $drh eq 'DBI::dr';
     my $attr = {
 	'ImplementorClass' => $imp_class,
 	%$initial_attr,
@@ -626,9 +613,10 @@ sub _new_dbh {	# called by DBD::<drivername>::dr::connect()
 sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     my($dbh, $initial_attr, $imp_data) = @_;
     my($imp_class) = $dbh->{ImplementorClass};
-    $imp_class =~ s/::db$/::st/;
+    #$imp_class =~ s/::db$/::st/;
+    substr($imp_class,-4,4) = '::st';
     confess "new st($dbh, $imp_class): not given a database handle"
-	unless (ref $dbh eq 'DBI::db' and $dbh->{Type} eq 'db');
+	unless ref $dbh eq 'DBI::db';
     my $attr = {
 	'ImplementorClass' => $imp_class,
 	%$initial_attr,
@@ -974,7 +962,9 @@ and its values.
   lower_case    Driver or Engine specific (non-portable)
 
 It is of the utmost importance that Driver developers only use
-lowercase attribute names when defining private attributes.
+lowercase attribute names when defining private attributes. Private
+attribute names must be prefixed with the driver name or suitable
+abbreviation (e.g., ora_type, solid_charset etc).
 
 
 =head2 Data Query Methods
@@ -1072,14 +1062,29 @@ Multiple simultaneous connections to multiple databases through multiple
 drivers can be made via the DBI. Simply make one connect call for each
 and keep a copy of each returned database handle.
 
-The $data_source value should begin with 'dbi:driver_name:'. That
+The $data_source value should begin with 'dbi:driver_name:'.  That
 prefix will be stripped off and the driver_name part is used to specify
-the driver.  As a convenience, if the $data_source field is undefined
-or empty the DBI will substitute the value of the environment variable
-DBI_DSN if any.
+the driver (letter case is significant).  As a convenience, if the
+$data_source field is undefined or empty the DBI will substitute the
+value of the environment variable DBI_DSN if any.
 
 If driver is not specified, the environment variable DBI_DRIVER is
 used. If that variable is not set then the connect dies.
+
+Examples of $data_source values:
+
+  dbi:DriverName:database_name
+  dbi:DriverName:database_name@hostname
+  dbi:DriverName:database_name~hostname!port
+  dbi:DriverName:database=database_name;host=hostname;port=port
+
+There is I<no standard> for the text following the driver name. Each
+driver is free to use whatever syntax it wants. The only requirement the
+DBI makes is that all the information is supplied in a single string.
+See the documentation for the drivers you are using for a description
+of the syntax it uses.  Where a driver needs to define it's own syntax
+for the data_source it is recommended that they follow the ODBC style
+(the last example above).
 
 If $username or $password are I<undefined> (rather than empty) then the
 DBI will substitute the values of the DBI_USER and DBI_PASS environment
@@ -1408,11 +1413,16 @@ does not must arrange to return undef as the attribute value.
 
 This attribute may be used to control the maximum length of 'long' (or
 'blob') fields which the driver will read from the database
-automatically when it fetches each row of data.
+automatically when it fetches each row of data. A value of 0 means
+don't automatically fetch any long data (fetch should return undef
+for long fields when LongReadLen is 0).
 
-The default is typically 80 bytes but may vary between drivers. Most
-applications using long fields will set this value to slightly larger
-than the longest long field value which will be fetched.
+The default is typically 0 (zero) bytes but may vary between drivers.
+Most applications using long fields will set this value to slightly
+larger than the longest long field value which will be fetched.
+
+Changing the value of LongReadLen for a statement handle after it's
+been prepare()'d will typically have no effect.
 
 See L</LongTruncOk> about truncation behaviour.
 
@@ -1925,7 +1935,9 @@ applications is to make use of S<C<eval { ... }>> (which is very fast,
 unlike S<C<eval "...">>).
 
   eval {
-      foo(...)
+      foo(...)   # do lots of work here
+      bar(...)   # including inserts
+      baz(...)   # and updates
   };
   if ($@) {
       $dbh->rollback;
@@ -1947,6 +1959,24 @@ return value of each method call. See L</RaiseError> for more details.
 A major advantage of the eval approach is that the transaction will be
 properly rolled back if I<any> code in the inner application croaks or
 dies for any reason.
+
+
+=head1 HANDLING BLOB / LONG FIELDS
+
+Many databases support 'blob' (binary large objects), 'long' or similar
+datatypes for holding very long strings or large amounts of binary
+data in a single field. Some databases support variable length long
+values over 2,000,000,000 bytes in length.
+
+Since values of that size can't usually be held in memory and because
+databases can't usually know in advance the length of the longest long
+that will be returned from a select statement (unlike other data
+types) some special handling is required.
+
+In this situation the value of the $h->{LongReadLen} attribute is
+used to determine how much buffer space to allocate for such fields.
+The $h->{LongTruncOk} attribute is used to determine how to behave
+if a fetched value can't fit into the buffer.
 
 
 =head1 SIMPLE EXAMPLE
@@ -2026,6 +2056,7 @@ uses of the DBI and its related modules. Subscribe and unsubscribe via:
 Mailing list archives are held at:
 
  http://www.rosat.mpe-garching.mpg.de/mailing-lists/PerlDB-Interest/
+ http://outside.organic.com/mail-archives/dbi-users/
  http://www.coe.missouri.edu/~faq/lists/dbi.html
 
 =head2 Assorted Related WWW Links
@@ -2055,29 +2086,21 @@ perl5-porters.
 =head1 COPYRIGHT
 
 The DBI module is Copyright (c) 1995,1996,1997 Tim Bunce. England.
-The DBI module is free software; you can redistribute it and/or
-modify it under the same terms as Perl itself.
+All rights reserved.
 
-This document is Copyright (c) 1997 by Tim Bunce. All rights reserved.
-Permission to distribute this document, in full or part, via email,
-usenet or ftp/http archives or printed copy is granted providing that
-no charges are involved, reasonable attempt is made to use the most
-current version, and all credits and copyright notices are retained.
-Requests for other distribution rights, including incorporation in
-commercial products, such as books, magazine articles, or CD-ROMs
-should be made to Tim.Bunce@ig.co.uk (please I<don't> use this mail
-address for other DBI related mail - use the dbi-users mailing list).
+You may distribute under the terms of either the GNU General Public
+License or the Artistic License, as specified in the Perl README file.
 
 =head1 ACKNOWLEDGEMENTS
 
 I would like to acknowledge the valuable contributions of the many
 people I have worked with on the DBI project, especially in the early
-years (1992-1994): Kevin Stock, Buzz Moschetti, Kurt Andersen, Ted Lemon,
-William Hails, Garth Kennedy, Michael Peppler, Neil S. Briscoe,
-David J. Hughes, Jeff Stander, Forrest D Whitcher, Larry Wall, Jeff Fried,
-Roy Johnson, Paul Hudson, Georg Rehfeld, Steve Sizemore, Ron Pool,
-Jon Meek, Tom Christiansen, Steve Baumgarten, Randal Schwartz,
-and a whole lot more.
+years (1992-1994). In no particular order: Kevin Stock, Buzz Moschetti,
+Kurt Andersen, Ted Lemon, William Hails, Garth Kennedy, Michael Peppler,
+Neil S. Briscoe, Jeff Urlwin, David J. Hughes, Jeff Stander,
+Forrest D Whitcher, Larry Wall, Jeff Fried, Roy Johnson, Paul Hudson,
+Georg Rehfeld, Steve Sizemore, Ron Pool, Jon Meek, Tom Christiansen,
+Steve Baumgarten, Randal Schwartz, and a whole lot more.
 
 =head1 SUPPORT / WARRANTY
 
@@ -2122,7 +2145,8 @@ General problems and good ideas:
 =head2 How can I maintain a WWW connection to a database?
 
 For information on the Apache httpd server and the mod_perl module see
-http://www.osf.org/~dougm/apache
+
+  http://perl.apache.org/
 
 =head2 A driver build fails because it can't find DBIXS.h
 

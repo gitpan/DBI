@@ -1,9 +1,8 @@
-/* $Id: dbi_sql.h,v 1.1 1997/07/22 23:17:50 timbo Exp $
+/* $Id: dbi_sql.h,v 1.2 1997/09/05 19:16:40 timbo Exp $
  *
- * Copyright (c) 1997 Tim Bunce
+ * Copyright (c) 1997  Tim Bunce  England
  *
- * You may distribute under the terms of either the GNU General Public
- * License or the Artistic License, as specified in the Perl README file.
+ * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
 
 

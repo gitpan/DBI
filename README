@@ -1,14 +1,13 @@
 DBI - The Perl Database Interface by Tim Bunce.
 
-Copyright (c) 1995,1996,1997 Tim Bunce
+Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 
-You may distribute under the terms of either the GNU General Public
-License or the Artistic License, as specified in the Perl README file.
+See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 WARNING:
 
     THIS IS ALPHA SOFTWARE. It is *only* 'Alpha' because the
-    interface (api) is not finalised. The Alpha status does
+    interface (API) is not finalised. The Alpha status does
     not reflect code quality or stability.
 
 QUICK START GUIDE:
@@ -28,19 +27,10 @@ QUICK START GUIDE:
     as for the DBI module.
 
 
-This DBI interface is not yet fully specified. The current development
-work is focused on writing drivers, such as DBD::Oracle, which also
-implement emulations of old perl4 database interfaces, e.g., oraperl.
-This strategy enables the DBI and drivers to serve a useful purpose
-whilst allowing the real interface to evolve with experience behind the
-emulation interface.
-
 The DBI.pm file now contains the DBI specification and other documentation
 (including Frequently Asked Questions and references to other resources).
 PLEASE READ IT. It'll save you asking questions on the mailing list
 which you will be told are already answered in the documentation.
-
-Also see the 'New Directions' message at the end of this file re ODBC.
 
 For more information and to keep informed about progress you can join
 the a mailing list via http://www.fugue.com/dbi (if you are unable to
@@ -50,7 +40,7 @@ dbi-users-request@fugue.com, it may take a few days to be processed).
 Much useful information and online archives of the mailing lists can be
 found at http://www.hermetica.com/technologia/DBI
 
-See also ftp.demon.co.uk:/pub/perl/db and "CPAN" ftp sites.
+See also ftp://ftp.demon.co.uk/pub/perl/db/ and "CPAN" ftp sites.
 
 
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
@@ -111,12 +101,6 @@ It is important to check that you are using the latest version before
 posting. If you're not then I'm *very* likely to simply say "upgrade to
 the latest". You would do yourself a favour by upgrading beforehand.
 
-Do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
-just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
-Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
-mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
-in the Makefile to see what GCC is using.
-
 Please remember that I'm _very_ busy. Try to help yourself first,
 then try to help me help you by following these guidelines carefully.
 
@@ -125,133 +109,10 @@ Tim Bunce.
 
 =======================================================================
 
-[ Please also read the additional notes at the end of the message. ]
+If you get an error like "fatal: relocation error: symbol not found: main"
+Do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
+just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
+Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
+mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
+in the Makefile to see what GCC is using.
 
-From: Tim.Bunce@ig.co.uk
-Date: Tue Dec 12 01:29:26 1995
-To: dbi-announce@fugue.com, dbi-users@fugue.com
-Subject: New directions for DBI - Important
-
-I've been putting off writing this message because I've little time
-to deal with the fallout it's bound to create... but I don't want
-to leave it any longer. It's too important.
-
-As you may remember I went away for a couple of weeks vacation recently
-saying that I'd be thinking about ODBC and how it fitted in with the DBI.
-
-To cut a long story short I've decided that we should throw away a
-significant chunk of the work that we've done and reengineer an
-implementation based very strongly around the SQL CLI / ODBC API.
-
-My reasoning goes something like this:
-
- - The SQL CLI has recently been adopted as an international standard.
-
- - ODBC is based on the SQL CLI standard and Microsoft has commited to
-   make ODBC v3 a proper superset of the standard.
-
- - Database vendors (include Infomix, IBM, Watcom, etc.) are 
-   adopting ODBC as the native CLI for their database engine(s).
-
- - ODBC has *huge* market share on PC's and a very rapidly growing
-   presence on UNIX (Solaris 2.5 comes with an ODBC driver manager,
-   other vendors are likely to do the same). A large number of commercial
-   drivers already exist. Non-commercial drivers are being developed.
-
- - The DBI currently lacks much of the breadth required for a full
-   featured API. Defining the API would duplicate much of the work
-   standardised by the SQL CLI / ODBC API.
-
- - The DBI needs to support ODBC well for it to be widely accepted
-   as the standard perl database interface. Specifically it would
-   need to expose the majority of the API and associated concepts.
-   A DBD::ODBC offering only the current DBI API is not sufficient.
-
- - A free driver manager exists (Ke Jin's iODBC) and free drivers can
-   be implemented with approximately the same skill level as DBD drivers.
-
-And finally some carrots, in case you still need them:
-
- - I believe that we will be able to implement ODBC drivers for
-   loading into perl which are implemented as Perl scripts.
-
- - I also believe that it should be possible to implement ODBC
-   drivers in Perl which can be loaded into non-perl applications!
-
- - The DBI will no longer be incomplete and undocumented!
-
-
-Okay, so what's the plan? What will the new 'thing' look like?
-Will my current DBI scripts still run? Questions, questions.
-I'm sure you'll have many more than this.
-
-
-The initial step is to carefully define a fairly formal 'perl language
-binding' for the SQL CLI / ODBC API. Basically this involves some easy
-decisions like "string input parameters do not need a separate length
-parameter to we'll delete it for all functions" and some hard and/or
-subtle ones, like how best to model handles or deal with descriptors.
-(Handles will almost certainly be objects, unlike existing ODBC modules.)
-
-There will be some tough decisions to make but I'm very keen to avoid
-limiting the access to the underlying API functionality. Basically
-anything that you can do in C (or COBOL!) you should be able to do in Perl.
-
-Once that's agreed I'll implement it. It should be very straight forward.
-(Much less work than I'm throwing away :-) I'll implement it over at
-least one commercial driver manager and also over the free iODBC manager.
-I may borrow some code from Andreas Kaiser's DB2CLI module if he's happy
-for me to do that and I decide I want to do some things the same way.
-
-Over this complete but low level API we'll layer some high level methods
-that will give us our familiar DBI interface back (as far as possible).
-
-At this point we'll have complete API useable by anyone who can
-acquire an ODBC diver. Note that some (many?) database vendors are
-giving away drivers.
-
-The next stage is to develop some drivers for databases and/or platforms
-where free drivers are not available. I envisage a scheme whereby I
-define and implement as much support structure as possible to make it
-easier for others to follow in my footsteps. Similar to DBD::Oracle.
-
-The final component is the infrastructure for implementing drivers in perl.
-
-
-It would be of *great* help to have the *active* contribution of people
-who have used ODBC in real world applications. I hope Andreas Kaiser
-and Ke Jin will join the mailing list if the're not already on it.
-Meanwhile I suggest that everyone else start learning the SQL CLI /
-ODBC API!  Many books are available from many bookstores.
-
-I'll stop here and leave you to absorb the meaning of all this.
-
-Feel free to comment on the above but please avoid getting into
-technical issues just yet. The time for that will come.
-
-And please note that I'm going to be very short of time till mid-Jan.
-I have real-work-deliverables to deliver :-(
-
-
-Tim.
-
-(Sympathy for throwing away much of the DBI and DBD::Oracle would
- be appreciated. Merry Christmas :-)
-
--------------------------------------------------------------------------
-
-Further notes (giving a revised position and direction):
-
-The strategy for the forseeable future is one of co-existance with both
-existing DBD::* drivers and ODBC drivers. The existing DBD::* drivers
-will continue to be developed and enhanced (and will typically have
-some database specific features not available via ODBC).
-
-My original statement (above) implied that DBD::Oracle, for example,
-would be replaced. That's not the case. I believe that more functionality
-can be added more easily to drivers such as DBD::Oracle once SQL CLI
-concepts and definitions are being used within the DBI as a whole.
-
-A DBD::ODBC module is now available from CPAN sites.
-
--------------------------------------------------------------------------

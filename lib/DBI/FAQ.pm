@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 1.5 1997/07/15 10:58:27 timbo Exp $
+### $Id: FAQ.pm,v 1.6 1997/09/05 19:16:40 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,9 @@
 ### made to Alligator Descartes <I<descarte@hermetica.com>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 1.6  1997/09/05  19:16:40  timbo
+# *** empty log message ***
+#
 # Revision 1.5  1997/07/15  10:58:27  timbo
 # *** empty log message ***
 #
@@ -36,7 +39,7 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <HTML>
 <HEAD>
 <!-- -->
-<!-- $Id: FAQ.pm,v 1.5 1997/07/15 10:58:27 timbo Exp $ -->
+<!-- $Id: FAQ.pm,v 1.6 1997/09/05 19:16:40 timbo Exp $ -->
 <!-- -->
 <TITLE>Frequently Asked Questions for DBI</TITLE>
 </HEAD>
@@ -678,11 +681,11 @@ modules will not be reloaded unless changed on disk.
 
 For more information on Apache, see the Apache Project's WWW site:
 
-    http://www.apache.org
+    http://www.apache.org/
 
 The I<mod_perl> module can be downloaded from CPAN I<via>:
 
-    http://www.perl.com/cgi-bin/cpan_mod?module=mod_perl
+    http://www.perl.com/cgi-bin/cpan_mod?module=Apache
 
 =head2 4.3 How do I get persistent connections with DBI and CGI?
 
