@@ -79,6 +79,8 @@ my %DEFAULT_SERVER_OPTIONS;
 	    },
 	'DBI::ProxyServer::db' => {
 	    'prepare' => 1,
+	    'commit' => 1,
+	    'rollback' => 1,
 	    'STORE' => 1,
 	    'FETCH' => 1,
 	    'func' => 1,

@@ -195,6 +195,7 @@ ok(0, $r->[0]->[1] == $row_a[1]);
 ok(0, $r->[0]->[0] eq $row_a[2]);
 
 ok(0, $csr_b->execute());
+#$csr_b->trace(9);
 $r = $csr_b->fetchall_arrayref({ Size=>1, NAME=>1});
 ok(0, $r && @$r);
 ok(0, $r->[0]->{Size} == $row_a[1]);

@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.35 2001/05/29 23:25:55 timbo Exp $
+# $Id: DBI.pm,v 10.36 2001/06/04 17:13:25 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.16"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.17"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -97,8 +97,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.15
-(C<$Date: 2001/05/29 23:25:55 $>).
+This is the DBI specification that corresponds to the DBI version 1.17
+(C<$Date: 2001/06/04 17:13:25 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -140,7 +140,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.35 $, 10);
+my $Revision = substr(q$Revision: 10.36 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -154,7 +154,7 @@ BEGIN {
 @EXPORT_OK = qw(%DBI %DBI_methods); # also populated by export_ok_tags:
 %EXPORT_TAGS = (
    sql_types => [ qw(
-    SQL_ALL_TYPES
+	SQL_ALL_TYPES
 	SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
 	SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR
 	SQL_DATE SQL_TIME SQL_TIMESTAMP
@@ -162,6 +162,10 @@ BEGIN {
 	SQL_BIGINT SQL_TINYINT
 	SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR
 	SQL_BIT
+   ) ],
+   preparse_flags => [ qw(
+        DBIpp_cm_cs DBIpp_cm_hs DBIpp_cm_dd DBIpp_cm_br
+        DBIpp_ph_qm DBIpp_ph_cn DBIpp_ph_cs DBIpp_ph_sp
    ) ],
    utils     => [ qw(
 	neat neat_list dump_results looks_like_number
@@ -864,7 +868,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $cache = $drh->FETCH('CachedKids');
 	$drh->STORE('CachedKids', $cache = {}) unless $cache;
 
-	my $key = join "~", $dsn, $user||'', $auth||'', $attr ? %$attr : ();
+	my @attr_keys = $attr ? sort keys %$attr : ();
+	my $key = join "~~", $dsn, $user||'', $auth||'',
+		$attr ? (@attr_keys,@{$attr}{@attr_keys}) : ();
 	my $dbh = $cache->{$key};
 	return $dbh if $dbh && $dbh->FETCH('Active') && eval { $dbh->ping };
 	$dbh = $drh->connect(@_);
@@ -1001,7 +1007,8 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# the template must handle clearing the cache themselves.
 	my $cache = $dbh->FETCH('CachedKids');
 	$dbh->STORE('CachedKids', $cache = {}) unless $cache;
-	my $key = ($attr) ? join(" | ", $statement, %$attr) : $statement;
+	my @attr_keys = ($attr) ? sort keys %$attr : ();
+	my $key = ($attr) ? join("~~", $statement, @attr_keys, @{$attr}{@attr_keys}) : $statement;
 	my $sth = $cache->{$key};
 	if ($sth) {
 	    if ($sth->FETCH('Active')) {
@@ -2502,8 +2509,55 @@ B<Warning:> This method is experimental and may change.
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
 
-The handle has at least the following fields in the order show
-below. Other fields, after these, may also be present.
+The following attributes (all or separate) may be used as selection criteria:
+
+  %attr = (
+       TABLE_CAT   => $CatVal    # String value of the catalog name
+     , TABLE_SCHEM => $SchVal    # String value of the schema name
+     , TABLE_NAME  => $TblVal    # String value of the table name
+     , TABLE_TYPE  => $TypVal    # String value of the table type(s)
+  );
+
+Note: The support for the selection criteria is driver specific. If the
+driver doesn't support one or more then them then you'll get back more
+than you asked for and can do the filtering yourself.
+
+The arguments TABLE_CAT, TABLE_SCHEM and TABLE_NAME may accept search
+patterns according to the database/driver, for example:
+
+  $sth = $dbh->table_info( { TABLE_NAME  => '%TAB%'} );
+
+The value of TABLE_TYPE is a comma-separated list of one or more types
+of tables to be returned in the result set. Each value may optionally be
+quoted, e.g.:
+
+  $sth = $dbh->table_info( { TABLE_TYPE  => "TABLE" } );
+  $sth = $dbh->table_info( { TABLE_TYPE  => "'TABLE', 'VIEW'" } );
+
+In addition the following special cases may also be supported by some drivers:
+
+=over 4
+
+=item *
+If the value of TABLE_CAT is '%' and TABLE_SCHEM and TABLE_NAME name
+are empty strings, the result set contains a list of catalog names.
+For example:
+
+  $sth = $dbh->table_info({ TABLE_CAT=>'%', TABLE_SCHEM=>'', TABLE_NAME=>'' });
+
+=item *
+If the value of TABLE_SCHEM is '%' and TABLE_CAT and TABLE_NAME are
+empty strings, the result set contains a list of schema names.
+
+=item *
+If the value of TABLE_TYPE is '%' and TABLE_CAT, TABLE_SCHEM, and
+TABLE_NAME are all empty strings, the result set contains a list of
+table types.
+
+=back
+
+The statement handle returned has at least the following fields in the
+order show below. Other fields, after these, may also be present.
 
 B<TABLE_CAT>: Table catalog identifier. This field is NULL (C<undef>) if not
 applicable to the data source, which is usually the case. This field
@@ -2538,6 +2592,10 @@ If that URL ceases to work then use the MSDN search facility at:
 and search for C<SQLTables returns> using the exact phrase option.
 The link you want will probably just be called C<SQLTables> and will
 be part of the Data Access SDK.
+
+See also page 306 of the (very large) SQL/CLI specification:
+
+  http://www.jtc1sc32.org/sc32/jtc1sc32.nsf/Attachments/DF86E81BE70151D58525699800643F56/$FILE/32N0595T.PDF
 
 =item C<tables> I<NEW>
 
@@ -3047,6 +3105,12 @@ support a driver-specific attribute, such as C<{ ora_type =>E<gt>C< 97 }>.  The
 data type for a placeholder cannot be changed after the first
 C<bind_param> call. However, it can be left unspecified, in which case it
 defaults to the previous value.
+
+The SQL_INTEGER and other related constants can be imported using
+
+  use DBI qw(:sql_types);
+
+See L</"DBI Constants"> for more information.
 
 Perl only has string and number scalar data types. All database types
 that aren't numbers are bound as strings and must be in a format the

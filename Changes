@@ -1,3 +1,17 @@
+Changes in DBI 1.17,    4th June 2001
+
+  Fixed that altering ShowErrorStatement also altered AutoCommit!
+    Thanks to Jeff Boes for spotting that clanger.
+  Fixed DBD::Proxy to handle commit() and rollback(). Long overdue, sorry.
+  Fixed incompatibility with perl 5.004 (but no one's using that right? :)
+  Fixed connect_cached and prepare_cached to not be affected by the order
+    of elements in the attribute hash. Spotted by Mitch Helle-Morrissey.
+  Fixed version number of DBI::Shell
+    reported by Stuhlpfarrer Gerhard and others.
+  Defined and documented table_info() attribute semantics (ODBC compatible)
+    thanks to Olga Voronova, who also implemented then in DBD::Oracle.
+  Updated Win32::DBIODBC (Win32::ODBC emulation) thanks to Roy Lee.
+
 Changes in DBI 1.16,    30th May 2001
 
   Reimplemented fetchrow_hashref in C, now fetches about 25% faster!

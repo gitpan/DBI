@@ -163,6 +163,9 @@ package DBD::Proxy::db; # ====== DATABASE ======
 
 $DBD::Proxy::db::imp_data_size = 0;
 
+sub commit;
+sub rollback;
+
 use vars qw(%ATTR $AUTOLOAD);
 
 %ATTR = (

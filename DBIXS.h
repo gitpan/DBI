@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.17 2001/05/29 23:25:55 timbo Exp $
+/* $Id: DBIXS.h,v 10.18 2001/06/04 17:13:25 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -186,7 +186,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
 #define DBIc_THR_COND(imp)  	_imp2com(imp, std.thr_cond)
 #define DBIc_THR_USER(imp)  	_imp2com(imp, std.thr_user)
-#define DBIc_THR_USER_NONE  	(U32_MAX)
+#define DBIc_THR_USER_NONE  	(0xFFFF)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
@@ -227,19 +227,26 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
 #define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
 #define DBIcf_Taint       0x1000	/* taint fetched data			*/
-#define DBIcf_ShowErrorStatement  0x0200	/* include Statement in error	*/
+#define DBIcf_ShowErrorStatement  0x2000	/* include Statement in error	*/
 
 #define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
   (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
   /* These are for dbh only:	*/						\
   | DBIcf_AutoCommit	)
 
-/* general purpose flag setting and testing macros (except ACTIVE)	*/
-#define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
-#define DBIc_has(imp,flag)	DBIc_is(imp, flag) /* alias for _is */
-#define DBIc_on(imp, flag)	(DBIc_FLAGS(imp) |=  (flag))
-#define DBIc_off(imp,flag)	(DBIc_FLAGS(imp) &= ~(flag))
-#define DBIc_set(imp,flag,on)	((on) ? DBIc_on(imp, flag) : DBIc_off(imp,flag))
+/* general purpose bit setting and testing macros			*/
+#define DBIbf_is( bitset,flag)		((bitset) &   (flag))
+#define DBIbf_has(bitset,flag)		DBIbf_is(bitset, flag) /* alias for _is */
+#define DBIbf_on( bitset,flag)		((bitset) |=  (flag))
+#define DBIbf_off(bitset,flag)		((bitset) &= ~(flag))
+#define DBIbf_set(bitset,flag,on)	((on) ? DBIbf_on(bitset, flag) : DBIbf_off(bitset,flag))
+
+/* as above, but specifically for DBIc_FLAGS imp flags (except ACTIVE)	*/
+#define DBIc_is(imp, flag)	DBIbf_is( DBIc_FLAGS(imp), flag)
+#define DBIc_has(imp,flag)	DBIc_is(imp, flag) /* alias for DBIc_is */
+#define DBIc_on(imp, flag)	DBIbf_on( DBIc_FLAGS(imp), flag)
+#define DBIc_off(imp,flag)	DBIbf_off(DBIc_FLAGS(imp), flag)
+#define DBIc_set(imp,flag,on)	DBIbf_set(DBIc_FLAGS(imp), flag, on)
 
 #define DBIc_COMSET(imp)	DBIc_is(imp, DBIcf_COMSET)
 #define DBIc_COMSET_on(imp)	DBIc_on(imp, DBIcf_COMSET)

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.31 2001/05/29 23:25:55 timbo Exp $
+/* $Id: DBI.xs,v 10.32 2001/06/04 17:13:25 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -758,9 +758,8 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     DBIc_IMP_DATA(imp) = (imp_datasv) ? newSVsv(imp_datasv) : &sv_undef;
 
     if (DBIc_TYPE(imp) <= DBIt_ST) {
-	SV *tmp_sv;
 	SV **tmp_svp;
-	imp_xxh_t *parent_imp_xxh = (parent) ? DBIh_COM(parent) : NULL;
+	parent_imp = (parent) ? DBIh_COM(parent) : NULL;
 	/* Copy some attributes from parent if not defined locally and	*/
 	/* also take address of attributes for speed of direct access.	*/
 	/* parent is null for drh, in which case h must hold the values	*/
@@ -773,17 +772,17 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1);	/* array ref	*/
 	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0);	/* scalar (int)	*/
 	if (parent)
-	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp_xxh);
+	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(parent_imp);
 	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
 
 	switch (DBIc_TYPE(imp)) {
 	case DBIt_DB:
 	    /* pre-load Driver attribute */
-	    hv_store((HV*)SvRV(h), "Driver", 6, newRV((SV*)DBIc_MY_H(parent_imp_xxh)), 0);
+	    hv_store((HV*)SvRV(h), "Driver", 6, newRV((SV*)DBIc_MY_H(parent_imp)), 0);
 	    break;
 	case DBIt_ST:
 	    /* pre-load Database attribute */
-	    hv_store((HV*)SvRV(h), "Database", 8, newRV((SV*)DBIc_MY_H(parent_imp_xxh)), 0);
+	    hv_store((HV*)SvRV(h), "Database", 8, newRV((SV*)DBIc_MY_H(parent_imp)), 0);
 	    /* copy (alias) Statement from the sth up into the dbh	*/
 	    tmp_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 0);
 	    if (tmp_svp && SvOK(*tmp_svp)) /* can be null eg Oracle ref cursors	*/
@@ -862,7 +861,7 @@ dbih_dumpcom(imp_xxh, msg, level)
 	I32   keylen;
 	SV *inner = dbih_inner(DBIc_MY_H(imp_xxh), msg);
 	PerlIO_printf(DBILOGFP,"%s cached attributes:\n", pad);
-	while (value = hv_iternextsv((HV*)SvRV(inner), &key, &keylen)) {
+	while ( (value = hv_iternextsv((HV*)SvRV(inner), &key, &keylen)) ) {
 	    PerlIO_printf(DBILOGFP,"%s   '%s' => %s\n", pad, key, neatsvpv(value,0));
 	}
     }
@@ -2005,6 +2004,240 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 }
 
 
+/* --------------------------------------------------------------------	*/
+
+/* comment and placeholder styles to accept and return */
+#define DBIpp_cm_cs 0x0001   /* C style	*/
+#define DBIpp_cm_hs 0x0002   /* #	*/
+#define DBIpp_cm_dd 0x0004   /* --	*/
+#define DBIpp_cm_br 0x0008   /* {}	*/
+
+#define DBIpp_ph_qm 0x0100   /* ?	*/
+#define DBIpp_ph_cn 0x0200   /* :1	*/
+#define DBIpp_ph_cs 0x0400   /* :name	*/
+#define DBIpp_ph_sp 0x0800   /* %s	*/
+
+#define DBIpp_L_BRACE '{'
+#define DBIpp_R_BRACE '}'
+#define PS_accept(flag)  DBIbf_has(ps_accept,(flag))
+#define PS_return(flag)  DBIbf_has(ps_return,(flag))
+
+SV *
+preparse(SV *h, char *statement, U32 ps_return, U32 ps_accept)
+{
+/*
+	The idea hear is that ps_accept defines which constructs to
+	recognize (accept) as valid in the source string (other
+	constructs are ignored), and ps_return defines which
+	constructs are valid to return in the result string.
+
+	If a construct that is valid in the input is also valid in the
+	output then it's simply copied. If it's not valid in the output
+	then it's editied into one of the valid forms (ideally the most
+	'standard' and/or information preserving one).
+
+	For example, if ps_accept includes '--' style comments but
+	ps_return doesn't, but ps_return does include '#' style
+	comments then any '--' style comments would be rewritten as '#'
+	style comments.
+
+	Similarly for placeholders. DBD::Oracle, for example, would say
+	'?', ':1' and ':name' are all acceptable input, but only
+	':name' should be returned.
+
+*/
+    int ph_type = 0;
+    int idx = 1;
+
+    char in_quote = '\0';
+    char in_comment = '\0';
+    char *src, *start, *dst, *stmnt;
+    char *style = "", *laststyle = '\0';
+
+    SV *new_stmt_sv = newSV(strlen(statement) * 3);
+    sv_setpv(new_stmt_sv,"");
+
+    src  = statement;
+    dst = SvPVX(new_stmt_sv);
+
+/* XXX select cm_fallback and ph_fallback from ps_return
+	for use in the rewrite code to be added below
+*/
+
+    while ( *src ) {
+	if (in_comment) {
+	    /* are we at the end of the comment we're in? */
+	    if (	(in_comment == '-' && *src == '\n') 
+		||	(in_comment == '#' && *src == '\n')
+		||	(in_comment == DBIpp_L_BRACE && *src == DBIpp_R_BRACE)
+		||	(in_comment == '/' && *src == '*' && *(src+1) == '/')
+	    ) {
+		if (in_comment == '/')
+		    *dst++ = *src++; /* avoids asterisk-slash-asterisk issues */
+		in_comment = '\0';
+	    }
+	    *dst++ = *src++;
+	    continue;
+	}
+
+	if (in_quote) {
+	    if (*src == '%' && ph_type == 4)
+		*dst++ = '%';
+	    if (*src == in_quote) {
+		in_quote = 0;
+	    }
+	    *dst++ = *src++;
+	    continue;
+	}
+
+	/* Look for start of comments */
+	if (   (*src == '-' && *(src+1) == '-' && PS_accept(DBIpp_cm_dd))
+	    || (*src == '/' && *(src+1) == '*' && PS_accept(DBIpp_cm_cs))
+	    || (*src == '#'                    && PS_accept(DBIpp_cm_hs))
+	    || (*src == DBIpp_L_BRACE          && PS_accept(DBIpp_cm_br))
+	) {
+	    in_comment = *src;
+	    /* We know *src & the next char are to be copied, so do */
+	    /*  it.  In the case of C-style comments, it happens to */
+	    /*  help us avoid slash-asterisk-slash oddities.        */
+	    *dst++ = *src++;
+	    if (*src=='-' || *src=='/')
+		*dst++ = *src++; /* skip past 2nd char of double char delimiters */
+	    continue;
+	}
+
+	if (	!(*src==':' && (PS_accept(DBIpp_ph_cn) || PS_accept(DBIpp_ph_cs)))
+	   &&	!(*src=='?' &&  PS_accept(DBIpp_ph_qm))
+	) {
+	    if (*src == '\'' || *src == '"')
+		in_quote = *src;
+	    if (*src == '%' && ph_type == 4)
+		*dst++ = '%';
+	    *dst++ = *src++;
+	    continue;
+	}
+
+	/* only here for : or ? outside of a comment or literal	*/
+
+	start = dst;			/* save name inc colon	*/ 
+	*dst++ = *src++;
+
+	if (*start == '?')			/* X/Open Standard */
+	{
+	    style = "?";
+	    switch (ph_type)
+	    {
+	    case 1: /* '?' -> ':p1' (etc) */
+		sprintf(start,":p%d", idx++);
+		dst = start+strlen(start);
+		break;
+	    case 2: 
+		break;
+	    case 4: /* '?' -> '%s' */
+		*start  = '%';
+		*dst++ = 's';
+		break;
+	    }
+	} 
+	else if (isDIGIT(*src))   /* :1 */ 
+	{
+	    style = ":1";
+	    switch (ph_type)
+	    {
+	    case 1: /* ':1'->':p1'  */
+	       idx = atoi(src);
+	       *dst++ = 'p';
+	       if (idx <= 0) {
+		   warn("\tPlaceholder :%d invalid, placeholders must be >= 1\n", idx);
+		   return(0);
+	       }
+	       while(isDIGIT(*src))
+		   *dst++ = *src++;
+	       break;
+	    case 2: 
+	       *start = '?';
+	       *dst = *start;
+	       if (atoi(src) != idx) {
+		   warn("\tPlaceholder :%d out of sequence, must be in sequential order (:a1, :a2 ..)\n", idx);
+		   return(0);
+	       }
+	       while(isDIGIT(*src)) *src++;
+	       idx++;
+	       break;
+	    case 4: /* ':1' -> '%s' */
+	       sprintf(start,"%%s");
+	       dst = start+strlen(start);
+	       if (atoi(src) != idx) {
+		   warn("\tPlaceholder :%d out of sequence, must be in sequential order (:a1, :a2 ..)\n", idx);
+		   return(0);
+	       }
+	       while(isDIGIT(*src)) *src++; 
+	       idx++;
+	       break;
+	    }
+	} 
+	else if (isALNUM(*src))         /* :foo */ 
+	{
+	    style = ":foo";
+	    switch (ph_type)
+	    {
+	    case 1: 
+		while (isALNUM(*src))	/* includes '_'	*/
+		       *dst++ = *src++;
+		break;
+	    case 2: 
+	       *start = '?';
+	       *dst = *start;
+	       while (isALNUM(*src)) *src++; /* includes '_'	*/
+	       break;
+	    case 4: /* ':foo' -> '%s' */
+	       sprintf(start,"%%s");
+	       dst = start+strlen(start);
+	       while (isALNUM(*src)) *src++; /* includes '_'	*/
+	       break;
+	    }
+	}
+	else {			/* perhaps ':=' PL/SQL construct */
+	    continue;
+	}
+
+	/*dst = '\0';*/			/* handy for debugging	*/
+
+	if (laststyle && style != laststyle) {
+	    warn("\tCan't mix placeholder styles (%s / %s)\n", style, laststyle);
+	    return(0);
+	}
+	laststyle = style;
+    }
+    *dst = '\0';
+
+    /* warn about probable parsing errors, but continue anyway */
+    switch (in_quote)
+    {
+    case '\'':
+	warn("\tIncomplete single-quoted string\n");
+	break;
+    case '\"':
+	warn("\tIncomplete double-quoted string (delimited identifier)\n");
+	break;
+    }
+    switch (in_comment)
+    {
+    case DBIpp_L_BRACE:
+	warn("\tIncomplete bracketed {...} comment\n");
+	break;
+    case '/':
+	warn("\tIncomplete bracketed C-Style comment\n");
+	break;
+    case '\n':
+	warn("\tIncomplete double-dash or shell comment\n");
+	break;
+    }
+    SvCUR_set(new_stmt_sv, strlen(SvPVX(new_stmt_sv)));
+    *SvEND(new_stmt_sv) = '\0';
+    return new_stmt_sv;
+}
+
 
 /* --------------------------------------------------------------------	*/
 /* The DBI Perl interface (via XS) starts here. Currently these are 	*/
@@ -2048,10 +2281,27 @@ constant()
 	SQL_WVARCHAR    = SQL_WVARCHAR
 	SQL_WLONGVARCHAR = SQL_WLONGVARCHAR
 	SQL_BIT         = SQL_BIT
+	DBIpp_cm_cs	= DBIpp_cm_cs
+	DBIpp_cm_hs	= DBIpp_cm_hs
+	DBIpp_cm_dd	= DBIpp_cm_dd
+	DBIpp_cm_br	= DBIpp_cm_br
+	DBIpp_ph_qm	= DBIpp_ph_qm
+	DBIpp_ph_cn	= DBIpp_ph_cn
+	DBIpp_ph_cs	= DBIpp_ph_cs
+	DBIpp_ph_sp	= DBIpp_ph_sp
     CODE:
     RETVAL = ix;
     OUTPUT:
     RETVAL
+
+
+SV *
+preparse(h, statement, ps_accept, ps_return)
+    SV *	h
+    char *	statement
+    IV		ps_accept
+    IV		ps_return
+	
 
 
 void
@@ -2516,7 +2766,12 @@ fetchrow_hashref(sth, keyattrib="NAME")
 	SvREFCNT_dec(hv);  	/* since newRV incremented it	*/
 	SvREFCNT_dec(ka_rv);	/* since we created it		*/
     }
-    else { RETVAL = &sv_undef; }
+    else {
+	RETVAL = &sv_undef;
+#if (PERL_VERSION < 4) || ((PERL_VERSION == 4) && (PERL_SUBVERSION <= 4))
+	RETVAL = newSV(0); /* mutable undef for 5.004_04 */
+#endif
+    }
     OUTPUT:
     RETVAL
 
