@@ -24,7 +24,7 @@ use Carp;
 require Symbol;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.92 $ ' =~ /(\d+)\.(\d+)/;
+$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.93 $ ' =~ /(\d+)\.(\d+)/;
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -551,7 +551,8 @@ sub STORE {
 	$value = ($value == -901);
     }
     elsif ($key =~ /^Taint/ ) {
-	Carp::croak(sprintf "Can't set %s->{%s}: Taint mode not supported by DBI::PurePerl",$h,$key);
+	Carp::croak(sprintf "Can't set %s->{%s}: Taint mode not supported by DBI::PurePerl",$h,$key)
+		if $value;
     }
     elsif ($key eq 'TraceLevel') {
 	$DBI::dbi_debug = $value;

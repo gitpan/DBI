@@ -26,7 +26,6 @@ lib/DBI/Const/GetInfoType.pm	GetInfo type code data based on standards
 lib/DBI/DBD.pm			Some basic help for people writing DBI drivers
 lib/DBI/DBD/Metadata.pm		Metadata tools for people writing DBI drivers
 lib/DBI/FAQ.pm			The DBI FAQ in module form for perldoc
-lib/DBI/Format.pm		Class for formatting rows of data
 lib/DBI/Profile.pm		Manage DBI usage profile data
 lib/DBI/ProfileData.pm
 lib/DBI/ProfileDumper.pm

@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.27 2003/02/28 17:50:06 timbo Exp $
+# $Id: DBI.pm,v 11.28 2003/03/07 22:00:17 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.34"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.35"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.34
-(C<$Date: 2003/02/28 17:50:06 $>).
+(C<$Date: 2003/03/07 22:00:17 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -153,7 +153,7 @@ See L</Naming Conventions and Name Space> and:
 
 package DBI;
 
-my $Revision = substr(q$Revision: 11.27 $, 10);
+my $Revision = substr(q$Revision: 11.28 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -560,7 +560,7 @@ sub connect {
 	if !(defined $user && defined $pass);
 
     my $connect_closure = sub {
-	my $override_attr = shift;
+	my ($old_dbh, $override_attr) = @_;
 
 	my $attr = {
 	    # copy so we can edit them each time we're called
@@ -569,6 +569,7 @@ sub connect {
 	    # the dbi_connect_closure attribute so we can reconnect again.
 	    %{ $override_attr || {} },
 	};
+	#warn "connect_closure: ".Data::Dumper::Dumper([\%attributes, $override_attr]);
 
 	my $dbh;
 	unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
@@ -626,7 +627,7 @@ sub connect {
 	return $dbh;
     };
 
-    my $dbh = &$connect_closure();
+    my $dbh = &$connect_closure(undef, undef);
 
     $dbh->{dbi_connect_closure} = $connect_closure if $dbh;
 
@@ -664,7 +665,7 @@ sub install_driver {		# croaks on failure
     # already installed
     return $drh if $drh = $DBI::installed_drh{$driver};
 
-    DBI->trace_msg("    -> $class->install_driver($driver"
+    $class->trace_msg("    -> $class->install_driver($driver"
 			.") for $^O perl=$] pid=$$ ruid=$< euid=$>\n")
 	if $DBI::dbi_debug;
 
@@ -683,7 +684,7 @@ sub install_driver {		# croaks on failure
 		 ."\nOr perhaps only the .pm file was installed but not the shared object file."
 	}
 	elsif ($err =~ /Can't locate.*?DBD\/$driver\.pm in \@INC/) {
-	    my @drv = DBI->available_drivers(1);
+	    my @drv = $class->available_drivers(1);
 	    $advice = "Perhaps the DBD::$driver perl module hasn't been fully installed,\n"
 		     ."or perhaps the capitalisation of '$driver' isn't right.\n"
 		     ."Available drivers: ".join(", ", @drv).".";
@@ -700,12 +701,12 @@ sub install_driver {		# croaks on failure
 	no strict 'refs';
 	(my $driver_file = $driver_class) =~ s/::/\//g;
 	my $dbd_ver = ${"$driver_class\::VERSION"} || "undef";
-	DBI->trace_msg("       install_driver: $driver_class version $dbd_ver"
+	$class->trace_msg("       install_driver: $driver_class version $dbd_ver"
 		." loaded from $INC{qq($driver_file.pm)}\n");
     }
 
     # --- do some behind-the-scenes checks and setups on the driver
-    _setup_driver($driver_class);
+    $class->setup_driver($driver_class);
 
     # --- run the driver function
     $drh = eval { $driver_class->driver($attr || {}) };
@@ -718,21 +719,25 @@ sub install_driver {		# croaks on failure
     }
 
     $DBI::installed_drh{$driver} = $drh;
-    DBI->trace_msg("    <- install_driver= $drh\n") if $DBI::dbi_debug;
+    $class->trace_msg("    <- install_driver= $drh\n") if $DBI::dbi_debug;
     $drh;
 }
 
 *driver = \&install_driver;	# currently an alias, may change
 
 
-sub _setup_driver {
-    my $driver_class = shift;
+sub setup_driver {
+    my ($class, $driver_class) = @_;
     my $type;
     foreach $type (qw(dr db st)){
 	my $class = $driver_class."::$type";
 	no strict 'refs';
-	push @{"${class}::ISA"},     "DBD::_::$type";
-	push @{"${class}_mem::ISA"}, "DBD::_mem::$type" unless $DBI::PurePerl;
+	push @{"${class}::ISA"},     "DBD::_::$type"
+	    unless UNIVERSAL::isa($class, "DBD::_::$type");
+	my $mem_class = "DBD::_mem::$type";
+	push @{"${class}_mem::ISA"}, $mem_class
+	    unless UNIVERSAL::isa("${class}_mem", $mem_class)
+	    or $DBI::PurePerl;
     }
 }
 
@@ -1030,7 +1035,7 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 	'State'		=> \$h_state_store,  # Holder for DBI::state
 	'Err'		=> \$h_err_store,    # Holder for DBI::err
 	'Errstr'	=> \$h_errstr_store, # Holder for DBI::errstr
-	'Debug' 	=> 0,
+	'TraceLevel' 	=> 0,
 	FetchHashKeyName=> 'NAME',
 	%$initial_attr,
     };
@@ -1088,7 +1093,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
 {   package	# hide from PAUSE
 	DBD::Switch::dr;
-    DBI::_setup_driver('DBD::Switch');	# sets up @ISA
+    DBI->setup_driver('DBD::Switch');	# sets up @ISA
     require Carp;
 
     $DBD::Switch::dr::imp_data_size = 0;
@@ -1242,7 +1247,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	unless ($attr) {
 	    # copy attributes visible in the attribute cache
 	    while ( my ($k, $v) = each %$old_dbh ) {
-		# ignore non-code refs, i.e., caches
+		# ignore non-code refs, i.e., caches, handles, Err etc
 		next if ref $v && ref $v ne 'CODE'; # HandleError etc
 		$attr->{$k} = $v;
 	    }
@@ -1254,6 +1259,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		ShowErrorStatement TaintIn TaintOut
 	    ));
 	}
+	# use Data::Dumper; warn Dumper([$old_dbh, $attr]);
 	my $new_dbh = &$closure($old_dbh, $attr);
 	unless ($new_dbh) {
 	    # need to copy err/errstr from driver back into $old_dbh
@@ -5039,6 +5045,18 @@ Methods installed using install_method default to the standard error
 handling behaviour for DBI methods: clearing err and errstr before
 calling the method, and checking for errors to trigger RaiseError
 etc. on return. This differs from the default behaviour of func().
+
+Note for driver authors: The DBD::Foo::xx->install_method call won't
+work until the class-hierarchy has been setup. Normally the DBI
+looks after that just after the driver is loaded. This means
+install_method() can't be called at the time the driver is loaded
+unless the class-hierarchy is set up first. The way to do that is
+to call the setup_driver() method:
+
+    DBI->setup_driver('DBD::Foo');
+
+before using install_method().
+
 
 =back
 

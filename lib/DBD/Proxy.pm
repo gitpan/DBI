@@ -31,15 +31,21 @@ use RPC::PlClient 0.2000;
 
 package DBD::Proxy;
 
-use vars qw($VERSION $err $errstr $drh);
-
+use vars qw($VERSION $err $errstr $drh %ATTR);
 
 $VERSION = "0.2004";
 
-$err = 0;		# holds error code   for DBI::err
-$errstr = "";		# holds error string for DBI::errstr
 $drh = undef;		# holds driver handle once initialised
 
+%ATTR = (	# common to db & st, see also %ATTR in DBD::Proxy::db & ::st
+    'Warn'	=> 'local',
+    'Active'	=> 'local',
+    'Kids'	=> 'local',
+    'CachedKids' => 'local',
+    'PrintError' => 'local',
+    'RaiseError' => 'local',
+    'HandleError' => 'local',
+);
 
 sub driver ($$) {
     if (!$drh) {
@@ -50,19 +56,20 @@ sub driver ($$) {
 	$drh = DBI::_new_drh($class, {
 	    'Name' => 'Proxy',
 	    'Version' => $VERSION,
-	    'Err'    => \$DBD::Proxy::err,
-	    'Errstr' => \$DBD::Proxy::errstr,
 	    'Attribution' => 'DBD::Proxy by Jochen Wiedmann',
 	    });
     }
     $drh;
 }
 
+sub CLONE {
+    undef $drh;
+}
+
 sub proxy_set_err {
   my ($h,$errmsg) = @_;
-  my ($err,$state) = 
-    ($errmsg =~ s/ \[err=(.*?),state=(.*?)\]//) ? ($1,$2) : (1,5 x ' ');
-
+  my ($err, $state) = ($errmsg =~ s/ \[err=(.*?),state=(.*?)\]//)
+	? ($1, $2) : (1, ' ' x 5);
   return DBI::set_err($h, $err, $errmsg, $state);
 }
 
@@ -209,16 +216,12 @@ use vars qw(%ATTR $AUTOLOAD);
 # Note: Attribute names starting with 'proxy_' always treated as 'inherited'.
 #
 %ATTR = (	# see also %ATTR in DBD::Proxy::st
-    'Warn' => 'local',
-    'Active' => 'local',
-    'Kids' => 'local',
-    'CachedKids' => 'local',
-    'Driver' => 'local',
-    'PrintError' => 'local',
-    'RaiseError' => 'local',
-    'RowCacheSize' => 'inherited',
-    'AutoCommit' => 'cached',
-    'Statement' => 'local',
+    %DBD::Proxy::ATTR,
+    RowCacheSize => 'inherited',
+    AutoCommit => 'cached',
+    Statement => 'local',
+    Driver => 'local',
+    dbi_connect_closure => 'local',
 );
 
 sub AUTOLOAD {
@@ -258,18 +261,19 @@ sub AUTOLOAD {
 }
 
 sub DESTROY {
-    # Just to avoid that DESTROY is autoloaded ...
+    my $dbh = shift;
+    $dbh->disconnect if $dbh->SUPER::FETCH('Active');
 }
 
 sub disconnect ($) {
-    my($dbh) = @_;
+    my ($dbh) = @_;
     # XXX this should call $rdbh->disconnect to get the right
     # disconnect behaviour. It should not undef these values.
     # A proxy_no_disconnect option could be added (like for finish)
     # to let people trade safety for speed if they need to.
     undef $dbh->{'proxy_dbh'};    # Bug in Perl 5.004; would prefer delete
     undef $dbh->{'proxy_client'};
-    $this->SUPER::STORE('Active' => 0);
+    $dbh->SUPER::STORE('Active' => 0);
     1;
 }
 
@@ -423,12 +427,7 @@ use vars qw(%ATTR);
 # Note: Attribute names starting with 'proxy_' always treated as 'inherited'.
 #
 %ATTR = (	# see also %ATTR in DBD::Proxy::db
-    'Warn' => 'local',
-    'Active' => 'local',
-    'Kids' => 'local',
-    'CachedKids' => 'local',
-    'PrintError' => 'local',
-    'RaiseError' => 'local',
+    %DBD::Proxy::ATTR,
     'Database' => 'local',
     'RowsInCache' => 'local',
     'RowCacheSize' => 'inherited',

@@ -5,7 +5,7 @@ use Test;
 use strict;
 
 BEGIN {
-	plan tests => 30;
+	plan tests => 32;
 }
 
 $|=1;
@@ -24,7 +24,7 @@ my $drh;
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.7 $',
+		'Version' => '$Revision: 11.8 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -128,14 +128,18 @@ $drh->{FetchHashKeyName} = 'NAME_lc';
 ok($drh->{FetchHashKeyName}, 'NAME_lc');
 
 ok(!$drh->disconnect_all, 1);			# not implemented but fails silently
+
 unless ($DBI::PurePerl) {
 my $can = $drh->can('FETCH');
-ok($can ? 1 : 0, 1);				# is implemented by driver
+ok($can ? 1 : 0);					# is implemented by driver
 ok(ref $can, "CODE");				# returned code ref
-# XXX gives Attempt to free unreferenced scalar
-#ok( &$can($drh,"Name"), 'Test');		# ref if usable
+my $name = &$can($drh,"Name");
+ok($name);
+ok($name eq "Test");
+print "FETCH'd $name\n";
+DBI->trace(0);
 ok($drh->can('disconnect_all') ? 1 : 0, 0);	# not implemented
 }
-else { ok(1) for (1..3) }
+else { ok(1) for (1..5) }
 
 exit 0;

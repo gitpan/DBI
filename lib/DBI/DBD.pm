@@ -2,12 +2,12 @@ package DBI::DBD;
 
 use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.13 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.14 $ =~ /(\d+)\.(\d+)/o);
 
 
-# $Id: DBD.pm,v 11.13 2003/02/28 17:50:06 timbo Exp $
+# $Id: DBD.pm,v 11.14 2003/03/07 22:00:17 timbo Exp $
 #
-# Copyright (c) 1997-2002 Jonathan Leffler, Jochen Wiedmann, Steffen
+# Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
 #
 # You may distribute under the terms of either the GNU General Public
@@ -58,8 +58,8 @@ DBI::DBD - Perl DBI Database Driver Writer's Guide
 
 =head2 Version and volatility
 
-  $Revision: 11.13 $
-  $Date: 2003/02/28 17:50:06 $
+  $Revision: 11.14 $
+  $Date: 2003/03/07 22:00:17 $
 
 This document is I<still> a minimal draft which is in need of further work.
 
@@ -232,9 +232,9 @@ Assuming that your driver is called DBD::Driver, these files are:
 
 =item Driver.pm
 
-=item Bundle/DBD/Driver.pm
+=item lib/Bundle/DBD/Driver.pm
 
-=item DBD/Driver/Summary.pm
+=item lib/DBD/Driver/Summary.pm
 
 =item t/*.t
 
@@ -251,11 +251,11 @@ It lists all the source files that need to be distributed with your module.
 Driver.pm is what is loaded by the DBI code; it contains the methods
 peculiar to your driver.
 
-The Bundle/DBD/Driver.pm file allows you to specify other Perl
+The lib/Bundle/DBD/Driver.pm file allows you to specify other Perl
 modules on which yours depends in a format that allows someone to type a
 simple command and ensure that all the pre-requisites are in place as
 well as building your driver.
-The DBD/Driver/Summary.pm file contains (an updated version of) the
+The lib/DBD/Driver/Summary.pm file contains (an updated version of) the
 information that was included - or that would have been included - in
 the appendices of the Cheetah book as a summary of the abilities of your
 driver and the associated database.
@@ -291,11 +291,7 @@ in the order in which the names are expanded by shell-style globbing.
 Many drivers also install sub-modules DBD::Driver::SubModule for any of
 a variety of different reasons, such as to support the metadata methods
 (see the discussion of L</METADATA METHODS> below).
-Such sub-modules can be stored in either the directory lib/DBD/Driver or
-in DBD/Driver.
-For the purposes of this document, those modules will be stored in
-DBD/Driver; you may choose to use lib/DBD/Driver, and you will be in
-good company if you do so.
+Such sub-modules are conventionally stored in the directory lib/DBD/Driver.
 The module itself would usually be in a file SubModule.pm.
 All such sub-modules should themselves be version stamped (see the
 discussions far below).
@@ -522,7 +518,7 @@ The MANIFEST will be used by the Makefile's dist target to build the
 distribution tar file that is uploaded to CPAN. It should list every
 file that you want to include in your distribution, one per line.
 
-=head2 Bundle/DBD/Driver.pm
+=head2 lib/Bundle/DBD/Driver.pm
 
 The CPAN module provides an extremely powerful bundle mechanism that
 allows you to specify pre-requisites for your driver.
@@ -601,7 +597,7 @@ information at the top.
 
   =cut
 
-=head2 DBD/Driver/Summary.pm
+=head2 lib/DBD/Driver/Summary.pm
 
 There is no substitute for taking the summary file from a driver that
 was documented in the Perl book (such as DBD::Oracle or DBD::Informix or
@@ -712,7 +708,7 @@ version 1.10 to precede version 1.9, so that using a raw CVS, RCS or
 SCCS version number is probably not appropriate (despite being very
 common). For RCS or CVS you can use this code:
 
-  $VERSION = sprintf "%d.%02d", '$Revision: 11.13 $ ' =~ /(\d+)\.(\d+)/;
+  $VERSION = sprintf "%d.%02d", '$Revision: 11.14 $ ' =~ /(\d+)\.(\d+)/;
 
 which pads out the fractional part with leading zeros so all is well
 (so long as you don't go past x.99)
@@ -800,6 +796,16 @@ DBI will store them and otherwise leave them alone.
 The I<DBI::new_drh> method and the I<driver> method both return C<undef>
 for failure (in which case you must look at $DBI::err and $DBI::errstr
 for the failure information, because you have no driver handle to use).
+
+Also needed here, in the DBD::Driver package, is a CLONE() method
+that will be called by perl when an intrepreter is cloned. All your
+CLONE method needs to do, currently, is clear the cached $drh so
+the new interpreter won't start using the cached $drh from the old
+interpreter:
+
+  sub CLONE {
+    undef $rdh;
+  }
 
 =cut
 
@@ -1861,8 +1867,8 @@ much work for you.
 Wherever you really have to implement something, it will call a private
 function in I<dbdimp.c>, and this is what you have to implement.
 
-You need to set up an extra routine if your driver needs to export constants of its own,
-analogous to the SQL types available when you say:
+You need to set up an extra routine if your driver needs to export
+constants of its own, analogous to the SQL types available when you say:
 
   use DBI qw(:sql_types);
 
@@ -3032,7 +3038,22 @@ The metadata methods are all associated with a database handle.
 The DBI::DBD::Metadata module is a good semi-automatic way for the developer of a DBD module to
 write the get_info and type_info functions quickly and accurately.
 
-=head3 Generating the get_info method
+=cut
+
+#=head3 Generating the get_info method
+#=POD-Perl-5.6.x=begin
+
+=pod
+
+=over 2
+
+=item Generating the get_info method
+
+=cut
+
+#=POD-Perl-5.6.x=end
+
+=pod
 
 Prior to DBI v1.33, this existed as the method write_getinfo_pm in the
 DBI::DBD module.
@@ -3055,10 +3076,25 @@ With the pre-requisites in place, you might type:
 
 The procedure writes to standard output the code that should be added to
 your Driver.pm file and the code that should be written to
-DBD/Driver/GetInfo.pm.
+lib/DBD/Driver/GetInfo.pm.
 You should review the output to ensure that it is sensible.
 
-=head2 Generating the type_info method
+=cut
+
+#=head3 Generating the type_info method
+#=POD-Perl-5.6.x=begin
+
+=pod
+
+=over 2
+
+=item Generating the type_info method
+
+=cut
+
+#=POD-Perl-5.6.x=end
+
+=pod
 
 Given the idea of the write_getinfo_pm method, it was not hard to devise
 a parallel method, write_typeinfo_pm, which does the analogous job for the
@@ -3078,7 +3114,7 @@ With the pre-requisites in place, you might type:
 
 The procedure writes to standard output the code that should be added to
 your Driver.pm file and the code that should be written to
-DBD/Driver/TypeInfo.pm.
+lib/DBD/Driver/TypeInfo.pm.
 You should review the output to ensure that it is sensible.
 
 =head2 Writing DBD::Driver::db::get_info
@@ -3091,7 +3127,7 @@ probably borrow the code from a driver that has done so (eg
 DBD::Informix from version 1.05 onwards) and crib the code from there,
 or look at the code that generates that module and follow that.
 The method in Driver.pm will be very simple; the method in
-DBD/Driver/GetInfo.pm is not very much more complex unless your DBMS itself is
+lib/DBD/Driver/GetInfo.pm is not very much more complex unless your DBMS itself is
 much more complex.
 
 Note that some of the DBI utility methods rely on information from the
@@ -3109,7 +3145,7 @@ probably borrow the code from a driver that has done so (eg
 DBD::Informix from version 1.05 onwards) and crib the code from there,
 or look at the code that generates that module and follow that.
 The method in Driver.pm will be very simple; the method in
-DBD/Driver/TypeInfo.pm is not very much more complex unless your DBMS
+lib/DBD/Driver/TypeInfo.pm is not very much more complex unless your DBMS
 itself is much more complex.
 
 =head2 Writing DBD::Driver::db::type_info

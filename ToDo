@@ -2,6 +2,9 @@
 *** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
 
 Ability to remove an sth from the prepare_cached cache.
+	$sth->uncache;
+
+DBI->setup_driver alias for _setup_driver, and make idempotent.
 
 Devel::Leak
 
@@ -16,10 +19,6 @@ That would save a new/mortal/free for each row. Need to consider
 safety in case application assigns to the ref etc. Could sanity
 check in get_fbav that SvRV still points to the row array.
 But maybe it's not worth it if perl's "tmp stealing" works for refs.
-
-Define install_method so apps using things like DBD::AnyData can
-avoid using func() so much. Especially as func is marked as 'keep error'
-so RaiseError doesn't work.
 
 DBI::Profile: add simple way to normalise the sql (convert constants
 to placeholders) so profiling is more effective for drivers/applications

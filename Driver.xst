@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.9 2003/02/26 17:56:01 timbo Exp $
+#  $Id: Driver.xst,v 11.10 2003/03/07 22:00:17 timbo Exp $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #  Copyright (c) 2002       Jonathan Leffler
 #
@@ -50,22 +50,21 @@ discon_all_(drh)
 
 void
 data_sources(drh, attr = Nullsv)
-	SV *drh
-	SV *attr
-	PPCODE:
+    SV *drh
+    SV *attr
+    PPCODE:
+    {
 	D_imp_drh(drh);
-	AV *av;
-	av = dbd_dr_data_sources(drh, imp_drh, attr);
-	if (av)
-	{
-		int i;
-		int n = AvFILL(av)+1;
-		EXTEND(sp, n);
-		for (i = 0; i < n; ++i)
-		{
-			PUSHs(AvARRAY(av)[i]);
-		}
+	AV *av = dbd_dr_data_sources(drh, imp_drh, attr);
+	if (av) {
+	    int i;
+	    int n = AvFILL(av)+1;
+	    EXTEND(sp, n);
+	    for (i = 0; i < n; ++i) {
+		PUSHs(AvARRAY(av)[i]);
+	    }
 	}
+    }
 
 #endif
 

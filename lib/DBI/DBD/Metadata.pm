@@ -1,25 +1,27 @@
 package DBI::DBD::Metadata;
 
-# $Id: Metadata.pm,v 1.1 2003/02/26 22:28:54 timbo Exp $
+# $Id: Metadata.pm,v 1.2 2003/03/07 22:00:17 timbo Exp $
 #
-# Copyright (c) 1997-2002 Jonathan Leffler, Jochen Wiedmann,
+# Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann,
 # Steffen Goeldner and Tim Bunce
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Artistic License, as specified in the Perl README file.
 
-use strict;
 use Exporter ();
 use Carp;
 
 use DBI;
 use DBI::Const::GetInfoType qw(%GetInfoType);
 
+# Perl 5.005_03 does not recognize 'our'
+@ISA = qw(Exporter);
+@EXPORT = qw(write_getinfo_pm write_typeinfo_pm);
 
-our @ISA = qw(Exporter);
-our @EXPORT = qw(write_getinfo_pm write_typeinfo_pm);
+use strict;
 
-our $VERSION = sprintf("%d.%02d", q$Revision: 1.1 $ =~ /(\d+)\.(\d+)/);
+my
+$VERSION = sprintf("%d.%02d", q$Revision: 1.2 $ =~ /(\d+)\.(\d+)/);
 
 =head1 NAME
 
@@ -249,8 +251,8 @@ function, but you must manually transfer the code to Driver.pm.
 
 
 # These two are used by fmt_value...
-our %dbi_inv;
-our %sql_type_inv;
+my %dbi_inv;
+my %sql_type_inv;
 
 #-DEBUGGING-#
 #sub print_hash
@@ -392,7 +394,7 @@ PERL
     my $fmt = "            \%-${maxlen}s => \%2d,\n";
     my $numkey = 0;
     my $maxkey = 0;
-    print "    our \$type_info_all = [\n        {\n";
+    print "    \$type_info_all = [\n        {\n";
     foreach my $i (sort { $a <=> $b } keys %dbi_inv)
     {
         printf($fmt, $dbi_inv{$i}, $i);

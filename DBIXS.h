@@ -102,7 +102,7 @@ typedef struct dbih_com_std_st {
 typedef struct dbih_com_attr_st {
     /* These are copies of the Hash values (ref.cnt.inc'd)	*/
     /* Many of the hash values are themselves references	*/
-    SV *Debug;
+    SV *TraceLevel;
     SV *State;		/* Standard SQLSTATE, 5 char string	*/
     SV *Err;		/* Native engine error code		*/
     SV *Errstr;		/* Native engine error message		*/
@@ -193,7 +193,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
 #define DBIc_LAST_METHOD(imp)  	_imp2com(imp, std.last_method)
 
-#define DBIc_DEBUG(imp)		(_imp2com(imp, attr.Debug))
+#define DBIc_DEBUG(imp)		(_imp2com(imp, attr.TraceLevel))
 #define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))
 #define DBIc_STATE(imp)		SvRV(_imp2com(imp, attr.State))
 #define DBIc_ERR(imp)		SvRV(_imp2com(imp, attr.Err))

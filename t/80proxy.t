@@ -28,8 +28,11 @@ eval {
     require Net::Daemon::Test;
 };
 if ($@) {
-    print "1..0 # Skipped: modules required for proxy are probably not installed\n";
-    exit 0;
+    if ($@ =~ /^Can't locate (.*?) at /) {
+	print "1..0 # Skipped: modules required for proxy are probably not installed (e.g., $1)\n";
+	exit 0;
+    }
+    die $@;
 }
 
 if ($DBI::PurePerl) {

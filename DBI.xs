@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs,v 11.22 2003/02/28 17:50:06 timbo Exp $
+ * $Id: DBI.xs,v 11.23 2003/03/07 22:00:17 timbo Exp $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -855,7 +855,7 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err",1,0);	/* scalar ref	*/
 	DBIc_ATTR(imp, State)    = COPY_PARENT("State",1,0);	/* scalar ref	*/
 	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1,0);	/* scalar ref	*/
-	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0,0);	/* scalar (int)	*/
+	DBIc_ATTR(imp, TraceLevel)=COPY_PARENT("TraceLevel",0,0);/* scalar (int)*/
 	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0,0);	/* scalar ref */
 	if (parent) {
 	    dbih_setup_attrib(h,"HandleError",parent,0,1);
@@ -1049,7 +1049,7 @@ dbih_clearcom(imp_xxh)
 
     sv_free(DBIc_IMP_DATA(imp_xxh));	/* do this first	*/
     if (DBIc_TYPE(imp_xxh) <= DBIt_ST) {	/* DBIt_FD doesn't have attr */
-	sv_free(_imp2com(imp_xxh, attr.Debug));
+	sv_free(_imp2com(imp_xxh, attr.TraceLevel));
 	sv_free(_imp2com(imp_xxh, attr.State));
 	sv_free(_imp2com(imp_xxh, attr.Err));
 	sv_free(_imp2com(imp_xxh, attr.Errstr));
@@ -1371,10 +1371,10 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	cacheit = 1;
     }
     /* these are here due to clone() needing to set attribs through a public api */
-    /* Debug/Err/Errstr/State should be renamed dbi_<lowercase> */
-    else if (htype<=DBIt_DB && (strEQ(key, "Name") || strEQ(key,"Driver")
-	    || strEQ(key,"ImplementorClass") || strEQ(key,"Statement") || strEQ(key,"MultiThread")
-	    || strEQ(key,"Debug")|| strEQ(key,"Err") || strEQ(key,"Errstr") || strEQ(key,"State")
+    /* Err/Errstr/State should be renamed dbi_<lowercase> */
+    else if (htype<=DBIt_DB && (strEQ(key, "Name")
+			    || strEQ(key,"ImplementorClass")
+			    || strEQ(key,"Statement")
     ) ) {
 	cacheit = 1;
     }
@@ -1684,8 +1684,12 @@ quick_FETCH(hrv, keysv, imp_msv)
     if (!SvROK(sv))	/* return value of all non-refs directly	*/
 	return sv;	/* this is the main shortcut	*/
     if ( (type=SvTYPE(SvRV(sv))) == SVt_RV
-	&& SvTYPE(SvRV(SvRV(sv))) == SVt_PVCV)
+	&& SvTYPE(SvRV(SvRV(sv))) == SVt_PVCV) {
+	/* XXX remove this whole block?
+	D_imp_xxh(hrv);
+	warn("quick_FETCH rv-rv-cv"); */
 	return SvRV(sv); /* return deref if ref to CODE ref */
+    }
     return sv;
 }
 
@@ -2154,15 +2158,21 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    if (ima->flags & IMA_STUB) {
 		if (*meth_name == 'c' && strEQ(meth_name,"can")) {
 		    char *can_meth = SvPV(st1,lna);
-		    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), can_meth);
-		    if (debug >= 9) {
-			PerlIO *logfp = DBILOGFP;
-			PerlIO_printf(logfp,"    <- %s(%s) = %p\n", meth_name, can_meth, imp_msv);
+		    SV *dbi_msv = Nullsv;
+		    if ( (imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), can_meth)) ) {
+			/* return DBI's CV, not the implementors CV (else we'd bypass dispatch) */
+			/* and anyway, we may have hit a private method not part of the DBI	*/
+			GV *gv = gv_fetchmethod_autoload(SvSTASH(SvRV(orig_h)), can_meth, FALSE);
+			if (gv && isGV(gv))
+			    dbi_msv = (SV*)GvCV(gv);
 		    }
-		    if (imp_msv) {
-			if (isGV(imp_msv))
-			    imp_msv = (SV*)GvCV(imp_msv);
-			ST(0) = sv_2mortal(newRV(imp_msv));
+		    if (debug >= 3) {
+			PerlIO *logfp = DBILOGFP;
+			PerlIO_printf(logfp,"    <- %s(%s) = %p (%s %p)\n", meth_name, can_meth, dbi_msv,
+				(imp_msv && isGV(imp_msv)) ? HvNAME(GvSTASH(imp_msv)) : "?", imp_msv);
+		    }
+		    if (dbi_msv) {
+			ST(0) = sv_2mortal(newRV(dbi_msv));
 			XSRETURN(1);
 		    }
 		}
@@ -2315,33 +2325,18 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 	if (!imp_msv) {
 	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
-	    if (!imp_msv) {
-		if (dirty || is_DESTROY) {
-		    XSRETURN(0);
-		}
-		if (ima && ima->flags & IMA_NOT_FOUND_OKAY) {
-		    if (debug) {
-			PerlIO *logfp = DBILOGFP;
-			PerlIO_printf(logfp,"    <- %s (not implemented)\n", meth_name);
-		    }
-		    outitems = 0;
-		    goto post_dispatch;
-		}
-		croak("Can't locate DBI object method \"%s\" via package \"%s\"",
-		    meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
-	    }
 	}
 
 	if (debug >= 2) {
 	    PerlIO *logfp = DBILOGFP;
 	    /* Full pkg method name (or just meth_name for ANON CODE)	*/
-	    char *imp_meth_name = (isGV(imp_msv)) ? GvNAME(imp_msv) : meth_name;
+	    char *imp_meth_name = (imp_msv && isGV(imp_msv)) ? GvNAME(imp_msv) : meth_name;
 	    HV *imp_stash = DBIc_IMP_STASH(imp_xxh);
 	    PerlIO_printf(logfp, "%c   -> %s ",
 			call_depth>1 ? '0'+call_depth-1 : ' ', imp_meth_name);
 	    if (imp_meth_name[0] == 'A' && strEQ(imp_meth_name,"AUTOLOAD"))
 		    PerlIO_printf(logfp, "\"%s\" ", meth_name);
-	    if (isGV(imp_msv) && GvSTASH(imp_msv) != imp_stash)
+	    if (imp_msv && isGV(imp_msv) && GvSTASH(imp_msv) != imp_stash)
 		PerlIO_printf(logfp, "in %s ", HvNAME(GvSTASH(imp_msv)));
 	    PerlIO_printf(logfp, "for %s (%s", HvNAME(imp_stash),
 			SvPV(orig_h,lna));
@@ -2358,6 +2353,19 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    PerlIO_printf(logfp, ")\n");
 #endif
 	    PerlIO_flush(logfp);
+	}
+
+	if (!imp_msv) {
+	    if (dirty || is_DESTROY) {
+		outitems = 0;
+		goto post_dispatch;
+	    }
+	    if (ima && ima->flags & IMA_NOT_FOUND_OKAY) {
+		outitems = 0;
+		goto post_dispatch;
+	    }
+	    croak("Can't locate DBI object method \"%s\" via package \"%s\"",
+		meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
 	}
 
 	PUSHMARK(mark);  /* mark arguments again so we can pass them on	*/
@@ -3532,7 +3540,9 @@ fetchrow_hashref(sth, keyattrib=Nullch)
 	    keyattrib = "NAME";
     }
     ka_rv = *hv_fetch((HV*)DBIc_MY_H(imp_sth), keyattrib,strlen(keyattrib), TRUE);
-    ka_rv = newSVsv(ka_rv);	/* copy to invoke FETCH magic */
+    /* we copy to invoke FETCH magic, and we do that before fetch() so if tainting */
+    /* then the taint triggered by the fetch won't then apply to the fetched name */
+    ka_rv = newSVsv(ka_rv);
     if (perl_call_method("fetch", G_SCALAR) != 1)
 	croak("panic: DBI fetch");	/* should never happen */
     SPAGAIN;
@@ -3562,7 +3572,6 @@ fetchrow_hashref(sth, keyattrib=Nullch)
 	}
 	RETVAL = newRV((SV*)hv);
 	SvREFCNT_dec(hv);  	/* since newRV incremented it	*/
-	SvREFCNT_dec(ka_rv);	/* since we created it		*/
     }
     else {
 	RETVAL = &sv_undef;
@@ -3570,6 +3579,7 @@ fetchrow_hashref(sth, keyattrib=Nullch)
 	RETVAL = newSV(0); /* mutable undef for 5.004_04 */
 #endif
     }
+    SvREFCNT_dec(ka_rv);	/* since we created it		*/
     OUTPUT:
     RETVAL
 
