@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 1.4 1997/06/20 17:18:01 timbo Exp $
+#   $Id: ExampleP.pm,v 1.5 1997/07/15 10:58:27 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -28,7 +28,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 1.4 $',
+	    'Version' => '$Revision: 1.5 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -55,7 +55,7 @@
         my($this) = DBI::_new_dbh($drh, {
 	    'Name' => $dbname,
 	    'User' => $user,
-	    'Handlers' => [ \&my_handler ],
+	    'Handlers' => [ \&my_handler ],	# deprecated, don't do this
 	    });
         $this;
     }
@@ -160,6 +160,7 @@
 	    my(@t) = @DBD::ExampleP::stattypes{@{$sth->{'fields'}}};
 	    return \@t;
 	}
+	return 1 if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
 	return $sth->DBD::_::st::FETCH($attrib);
     }
@@ -170,6 +171,10 @@
 	# else pass up to DBI to handle
 	return $sth->{$attrib}=$value
 	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE';
+	if ($attrib eq 'AutoCommit') {
+	    return 0 if $value;
+	    croak("Can't disable AutoCommit");
+	}
 	return $sth->DBD::_::st::STORE($attrib, $value);
     }
 

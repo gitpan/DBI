@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.37 1997/06/25 12:20:10 timbo Exp $
+/* $Id: DBIXS.h,v 1.40 1997/07/16 18:17:58 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -22,13 +22,55 @@
  * DBISTATE_VERSION macro below. You can think of DBIXS_VERSION as
  * being a compile time check and DBISTATE_VERSION as a runtime check.
  */
-#define DBIXS_VERSION 8
+#define DBIXS_VERSION 9
 
 #ifdef NEED_DBIXS_VERSION
 #if NEED_DBIXS_VERSION > DBIXS_VERSION
 error You_need_to_upgrade_your_DBI_module_before_building_this_driver.
 #endif
+#else
+#define NEED_DBIXS_VERSION DBIXS_VERSION
 #endif
+
+
+/* Some core SQL CLI standard (ODBC) declarations		*/
+#ifndef SQL_SUCCESS	/* don't clash with ODBC based drivers	*/
+
+/* Standard SQL datatypes (ANSI/ODBC type numbering)		*/
+#define	SQL_CHAR		1	/*	DBI_CHAR 	*/
+#define	SQL_NUMERIC		2
+#define	SQL_DECIMAL		3
+#define	SQL_INTEGER		4	/*	DBI_INTEGER	*/
+#define	SQL_SMALLINT		5
+#define	SQL_FLOAT		6	/*	DBI_FLOAT	*/
+#define	SQL_REAL		7
+#define	SQL_DOUBLE		8
+#define	SQL_VARCHAR		12	/*	DBI_VARCHAR	*/
+
+#ifdef just_for_pondering /* not used yet, just here for pondering */
+#define SQL_DATE           9
+#define SQL_TIME           10
+#define SQL_TIMESTAMP      11
+#define SQL_LONGVARCHAR    (-1)
+#define SQL_BINARY         (-2)
+#define SQL_VARBINARY      (-3)
+#define SQL_LONGVARBINARY  (-4)
+#define SQL_BIGINT         (-5)
+#define SQL_TINYINT        (-6)
+#endif
+
+/* Main return codes						*/
+#define	SQL_ERROR			(-1)
+#define	SQL_SUCCESS			0
+#define	SQL_SUCCESS_WITH_INFO		1
+#define	SQL_NO_DATA_FOUND		100
+
+#endif	/*	SQL_SUCCESS	*/
+
+/* Handy macro for testing for success and success with info.		*/
+/* BEWARE that this macro can have side effects since rc appears twice!	*/
+/* So DONT use it as if(SQL_ok(func(...))) { ... }			*/
+#define SQL_ok(rc)	((rc)==SQL_SUCCESS || (rc)==SQL_SUCCESS_WITH_INFO)
 
 
 /* forward declaration of 'DBI Handle Common Data', see below		*/
@@ -37,6 +79,7 @@ error You_need_to_upgrade_your_DBI_module_before_building_this_driver.
 typedef struct imp_drh_st imp_drh_t;	/* driver			*/
 typedef struct imp_dbh_st imp_dbh_t;	/* database			*/
 typedef struct imp_sth_st imp_sth_t;	/* statement			*/
+typedef struct imp_fdh_st imp_fdh_t;	/* field descriptor		*/
 typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
 
 
@@ -47,11 +90,13 @@ typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
 #define DBIt_DR		1
 #define DBIt_DB		2
 #define DBIt_ST		3
+#define DBIt_FD		4
 
 /* component structures */
 
 typedef struct dbih_com_std_st {
-    U16  flags;		/* XXX will change to U32 at some point		*/
+    U32  flags;		/* XXX will change to U32 at some point		*/
+    U16  call_depth;	/* used by DBI to track nested calls		*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
     SV   *my_h;		/* copy of owner inner handle (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
@@ -66,13 +111,14 @@ typedef struct dbih_com_std_st {
 } dbih_com_std_t;
 
 typedef struct dbih_com_attr_st {
-    /* these are copies of the Hash values (r.c.inc)		*/
-    /* many of the hash values are themselves references	*/
+    /* These are copies of the Hash values (ref.cnt.inc'd)	*/
+    /* Many of the hash values are themselves references	*/
     SV *Debug;
     SV *State;		/* Standard SQLSTATE, 5 char string	*/
     SV *Err;		/* Native engine error code		*/
     SV *Errstr;		/* Native engine error message		*/
     SV *Handlers;
+    U32  LongReadLen;	/* auto read length for long/blob types	*/
 } dbih_com_attr_t;
 
 
@@ -103,17 +149,35 @@ typedef struct {		/* -- STATEMENT --			*/
 
     int 	num_params;	/* number of placeholders		*/
     int 	num_fields;	/* NUM_OF_FIELDS, must be set		*/
-    AV  	*fields_av;	/* special row buffer (inc bind_cols)	*/
+    AV  	*fields_svav;	/* special row buffer (inc bind_cols)	*/
+
+    AV		*fields_fdav;	/* not used yet, may change */
 
 } dbih_stc_t;
 
+typedef struct {		/* -- FIELD DESCRIPTOR --		*/
+    dbih_com_std_t	std;	/* standard structure (not fully setup)	*/
+
+    /* core attributes (from DescribeCol in ODBC)		*/
+    char *col_name;		/* see dbih_make_fdsv		*/
+    I16   col_name_len;
+    I16   col_sql_type;
+    I16   col_precision;
+    I16   col_scale;
+    I16   col_nullable;
+
+    /* additional attributes (from ColAttributes in ODBC)	*/
+    I32   col_length;
+    I32   col_disp_size;
+
+} dbih_fdc_t;
+
 
 #define _imp2com(p,f)      	((p)->com.f)
-#define _imp2std(p,f)      	((p)->com.std.f)
-#define _imp2atr(p,f)      	((p)->com.attr.f)
 
 #define DBIc_FLAGS(imp)		_imp2com(imp, std.flags)
 #define DBIc_TYPE(imp)		_imp2com(imp, std.type)
+#define DBIc_CALL_DEPTH(imp)	_imp2com(imp, std.call_depth)
 #define DBIc_MY_H(imp)  	_imp2com(imp, std.my_h)
 #define DBIc_PARENT_H(imp)  	_imp2com(imp, std.parent_h)
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
@@ -121,36 +185,41 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIc_IMP_DATA(imp)  	_imp2com(imp, std.imp_data)
 #define DBIc_KIDS(imp)  	_imp2com(imp, std.kids)
 #define DBIc_ACTIVE_KIDS(imp)  	_imp2com(imp, std.active_kids)
-#define DBIc_LAST_METHOD(imp)  	_imp2com(imp, std.last_method)
+#define DBIc_LAST_METHOD(imp) 	_imp2com(imp, std.last_method)
 
-#define DBIc_ATTR(imp, field)	_imp2atr(imp, field)
-
-#define DBIc_DEBUGIV(imp)	SvIV(DBIc_ATTR(imp, Debug))
-#define DBIc_STATE(imp)		SvRV(DBIc_ATTR(imp, State))
-#define DBIc_ERR(imp)		SvRV(DBIc_ATTR(imp, Err))
-#define DBIc_ERRSTR(imp)	SvRV(DBIc_ATTR(imp, Errstr))
-#define DBIc_HANDLERS(imp)	SvRV(DBIc_ATTR(imp, Handlers))
+#define DBIc_DEBUG(imp)		(_imp2com(imp, attr.Debug))
+#define DBIc_DEBUGIV(imp)	SvIV(DBIc_DEBUG(imp))
+#define DBIc_STATE(imp)		SvRV(_imp2com(imp, attr.State))
+#define DBIc_ERR(imp)		SvRV(_imp2com(imp, attr.Err))
+#define DBIc_ERRSTR(imp)	SvRV(_imp2com(imp, attr.Errstr))
+#define DBIc_HANDLERS(imp)	SvRV(_imp2com(imp, attr.Handlers))
+#define DBIc_LongReadLen(imp)  	_imp2com(imp, attr.LongReadLen)
+#define DBIc_LongReadLen_init	80
 
 /* sub-type specific fields						*/
 #define DBIc_NUM_FIELDS(imp)  	_imp2com(imp, num_fields)
-#define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_av)
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
+#define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_svav)
+#define DBIc_FDESC_AV(imp)  	_imp2com(imp, fields_fdav)
+#define DBIc_FDESC(imp, i)  	((imp_fdh_t*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
 
-#define DBIcf_COMSET	 0x0001	/* needs to be clear'd before free'd	*/
-#define DBIcf_IMPSET	 0x0002	/* has implementor data to be clear'd	*/
-#define DBIcf_ACTIVE	 0x0004	/* needs finish/disconnect before clear	*/
-#define DBIcf_IADESTROY	 0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
-#define DBIcf_WARN  	 0x0010	/* warn about poor practice etc  	*/
-#define DBIcf_COMPAT  	 0x0020	/* compat/emulation mode (eg oraperl)	*/
+#define DBIcf_COMSET	  0x0001	/* needs to be clear'd before free'd	*/
+#define DBIcf_IMPSET	  0x0002	/* has implementor data to be clear'd	*/
+#define DBIcf_ACTIVE	  0x0004	/* needs finish/disconnect before clear	*/
+#define DBIcf_IADESTROY	  0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
+#define DBIcf_WARN  	  0x0010	/* warn about poor practice etc  	*/
+#define DBIcf_COMPAT  	  0x0020	/* compat/emulation mode (eg oraperl)	*/
 
-#define DBIcf_ChopBlanks 0x0040	/* rtrim spaces from fetch char columns	*/
-#define DBIcf_RaiseError 0x0080	/* throw exception (croak) on error	*/
-#define DBIcf_PrintError 0x0100	/* warn() on error			*/
-#define DBIcf_AutoCommit 0x0200	/* dbh only. used by drivers		*/
+#define DBIcf_ChopBlanks  0x0040	/* rtrim spaces from fetch char columns	*/
+#define DBIcf_RaiseError  0x0080	/* throw exception (croak) on error	*/
+#define DBIcf_PrintError  0x0100	/* warn() on error			*/
+#define DBIcf_AutoCommit  0x0200	/* dbh only. used by drivers		*/
+#define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
 
-#define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
-    (	DBIcf_WARN | DBIcf_COMPAT |		\
-	DBIcf_ChopBlanks | DBIcf_RaiseError | DBIcf_PrintError )
+#define DBIcf_INHERITMASK			/* what NOT to pass on to children */	\
+	(U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
+	/* These are for dbh only:					   */	\
+	| DBIcf_AutoCommit	)
 
 /* general purpose flag setting and testing macros */
 #define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
@@ -222,6 +291,9 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBI_IMP_SIZE(n,s) sv_setiv(perl_get_sv((n), GV_ADDMULTI), (s)) /* XXX */
 
 
+/* --- Implementors Field Descriptor Support --- */
+
+
 /* --- Event Support (VERY LIABLE TO CHANGE) --- */
 
 #define DBIh_EVENTx(h,t,a1,a2)	(DBIS->event((h), (t), (a1), (a2)))
@@ -246,7 +318,10 @@ typedef struct {		/* -- STATEMENT --			*/
 
 typedef struct {
 
-#define DBISTATE_VERSION  8	/* Must change whenever dbistate_t does	*/
+#define DBISTATE_VERSION  9	/* Must change whenever dbistate_t does	*/
+
+    /* this must be the first member in structure			*/
+    void (*check_version) _((char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv));
 
     /* version and size are used to check for DBI/DBD version mis-match	*/
     U16 version;	/* version of this structure			*/
@@ -258,19 +333,21 @@ typedef struct {
     FILE *logfp;
 
     /* pointers to DBI functions which the DBD's will want to use	*/
-    imp_xxh_t  * (*getcom)    _((SV *h));	/* see DBIh_COM macro	*/
-    void         (*clearcom)  _((imp_xxh_t *imp_xxh));
-    SV         * (*event)     _((SV *h, char *name, SV*, SV*));
-    int          (*set_attr)  _((SV *h, SV *keysv, SV *valuesv));
-    SV         * (*get_attr)  _((SV *h, SV *keysv));
-    AV         * (*get_fbav)  _((imp_sth_t *imp_sth));
-    char       * (*neat_svpv) _((SV *sv, STRLEN maxlen));
-
-    SV *pad2;
+    char      * (*neat_svpv)	_((SV *sv, STRLEN maxlen));
+    imp_xxh_t * (*getcom)	_((SV *h));	/* see DBIh_COM macro	*/
+    void        (*clearcom)	_((imp_xxh_t *imp_xxh));
+    SV        * (*event)	_((SV *h, char *name, SV*, SV*));
+    int         (*set_attr)	_((SV *h, SV *keysv, SV *valuesv));
+    SV        * (*get_attr)	_((SV *h, SV *keysv));
+    AV        * (*get_fbav)	_((imp_sth_t *imp_sth));
+    AV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
+    int         (*bind_as_num)	_((int sql_type, int p, int s));
 
 } dbistate_t;
 
+#ifndef DBIS
 #define DBIS              dbis /* default name for dbistate_t variable	*/
+#endif
 #define DBISTATE_DECLARE  static dbistate_t *DBIS
 #define DBISTATE_PERLNAME "DBI::_dbistate"
 #define DBISTATE_ADDRSV   (perl_get_sv(DBISTATE_PERLNAME, 0x05))
@@ -280,10 +357,8 @@ typedef struct {
 #define DBISTATE_INIT {		/* typically use in BOOT: of XS file	*/    \
     DBISTATE_INIT_DBIS;	\
     if (DBIS == NULL)	\
-	croak("Unable to get DBI state. DBI not loaded."); \
-    if (DBIS->version < DBISTATE_VERSION || DBIS->size < sizeof(*DBIS))	      \
-	croak("DBI version mismatch (DBI actual v%d/s%d, expected v%d/s%d)",  \
-	    DBIS->version, DBIS->size, DBISTATE_VERSION, (int)sizeof(*DBIS)); \
+	croak("Unable to get DBI state. DBI not loaded.");	\
+    DBIS->check_version(__FILE__, DBISTATE_VERSION, sizeof(*DBIS), NEED_DBIXS_VERSION); \
 }
 
 #define DBILOGFP	(DBIS->logfp)

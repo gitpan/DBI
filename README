@@ -77,9 +77,14 @@ know so that I can try to make it automatic in a later release.
 
 IF YOU HAVE PROBLEMS:
 
-Please post details to dbi-users@fugue.com. You can CC them to me at
-Tim.Bunce@ig.co.uk but please don't send them just to me.
-Please include:
+If you're on Solaris and get a build error like "... fatal: relocation
+error: symbol not found: main ..." it means that you are using the GNU
+as and/or GNU ld commands. Delete or rename them, they are just bad
+news on Solaris.
+
+If you can't fix it your self please post details to
+dbi-users@fugue.com. You can CC them to me at Tim.Bunce@ig.co.uk but
+please don't send them just to me.  Please include:
 
 1. A complete log of a complete build, e.g.:
 

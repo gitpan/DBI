@@ -1,20 +1,19 @@
 require 5.003;
 
-$DBI::VERSION = '0.85';
+$DBI::VERSION = '0.86'; # ==> also update the version in the pod text below!
 
 =head1 NAME
 
-DBI - Database independent interface for Perl (DRAFT ONLY)
+DBI - Database independent interface for Perl
 
 =head1 SYNOPSIS
 
   use DBI;
  
-  @data_source = DBI->data_sources($driver);
+  @data_sources = DBI->data_sources($driver_name);
 
   $dbh = DBI->connect($data_source, $username, $auth);
-  $dbh = DBI->connect($data_source, $username, $auth, $driver);
-  $dbh = DBI->connect($data_source, $username, $auth, $driver, \%attr);
+  $dbh = DBI->connect($data_source, $username, $auth, \%attr);
  
   $rc  = $dbh->disconnect;
  
@@ -24,7 +23,12 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare($statement, \%attr);
  
+  $rv = $sth->bind_param($param_num, $bind_value);
+  $rv = $sth->bind_param($param_num, $bind_value, $bind_type);
+  $rv = $sth->bind_param($param_num, $bind_value, \%attr);
+
   $rv = $sth->execute;
+  $rv = $sth->execute(@bind_values);
  
   @row_ary  = $sth->fetchrow_array;
   $ary_ref  = $sth->fetchrow_arrayref;
@@ -41,11 +45,75 @@ DBI - Database independent interface for Perl (DRAFT ONLY)
   $rv  = $h->state;
 
 =head2 NOTE
+ 
+This is the draft DBI specification that corresponds to the DBI version 0.85. 
+($Date: 1997/07/16 18:17:58 $) 
+ 
+ * The DBI specification is currently evolving quite quickly so it is
+ * important to check that you have the latest copy. The RECENT CHANGES
+ * section below has a summary of user-visible changes and the F<Changes>
+ * file supplied with the DBI holds more detailed change information.
 
-This documentation is a new draft $Revision: 1.74 $ dated $Date: 1997/06/25 12:20:10 $
-
+ * Note also that whenever the DBI changes the drivers take some time to
+ * catch up. Recent versions of the DBI have added many new features that
+ * may not be supported by your driver yet.
+ 
 Please also read the DBI FAQ which is installed as a DBI::FAQ module so
 you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
+ 
+=head2 RECENT CHANGES 
+                                                                                
+A brief summary of significant user-visible changes in recent versions:
+
+=over 4 
+
+=item DBI 0.86
+ 
+Added $h->{LongReadLen} and $h->{LongTruncOk} attributes for BLOBS.
+Added DBI_USER and DBI_PASS env vars. See L</connect> for usage.
+Added DBI->trace() to set global trace level (like per-handle $h->trace).
+PERL_DBI_DEBUG env var renamed DBI_DEBUG (old name still works for now).
+Updated docs, including commit, rollback, AutoCommit and Transactions sections.
+Added bind_param method and execute(@bind_values) to docs.
+
+Note that this DBI release contains and documents many new features
+that won't appear in drivers for some time.
+
+=item DBI 0.85 - 25th June 1997
+ 
+The 'new-style connect' (see below) now defaults to AutoCommit mode unless
+{ AutoCommit => 0 } specified in connect attributes (see L</connect>).
+New DBI_DSN env var default for connect method (supersedes DBI_DRIVER).
+Documented the func method.
+
+=item DBI 0.84 - 20th June 1997
+
+Added $h->{PrintError} attribute which, if set true, causes all errors
+to trigger a warn().  New-style DBI->connect call now automatically
+sets PrintError=1 unless { PrintError => 0 } specified in the connect
+attributes (see L</connect>).  The old-style connect with a separate
+driver parameter is deprecated.  Renamed $h->debug to $h->trace() and
+added a trace filename arg.
+
+=item DBI 0.83 - 11th June 1997
+
+Added 'new-style' driver specification syntax to DBI->connect
+data_source parameter: DBI->connect('dbi:driver:...', $user, $passwd);
+The DBI->data_sources method should return data_source names with the
+appropriate 'dbi:driver:' prefix.  DBI->connect will warn if \%attr is
+true but not a hash ref.  Added new fetchrow methods (fetchrow_array,
+fetchrow_arrayref and fetchrow_hashref):  Added the DBI FAQ from
+Alligator Descartes in module form for easy reading via "perldoc
+DBI::FAQ".
+
+=item DBI 0.82 - 23rd May 1997
+
+Added $h->{RaiseError} attribute which, if set true, causes all errors to
+trigger a die(). This makes it much easier to implement robust applications
+in terms of higher level eval { ... } blocks and rollbacks.
+Added DBI->data_sources($driver) method for implementation by drivers.
+
+=back 
 
 =cut
 
@@ -54,9 +122,9 @@ you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.74 $, 10);
+my $Revision = substr(q$Revision: 1.78 $, 10);
 
-# $Id: DBI.pm,v 1.74 1997/06/25 12:20:10 timbo Exp $
+# $Id: DBI.pm,v 1.78 1997/07/16 18:17:58 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -71,11 +139,16 @@ use Exporter ();
 
 # Make some utility functions available if asked for
 @EXPORT_OK = qw(neat neat_list dump_results sql);
-@EXPORT    = qw();	# Exports _nothing_ by default
+@EXPORT    = (); # populated by export_tags:
+%EXPORT_TAGS = (
+   sql_types => [ qw(SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
+		    SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR) ],
+);
+#Exporter::export_tags('sql_types'); # not yet!
 
 use strict;
 
-$DBI::dbi_debug = $ENV{PERL_DBI_DEBUG} || 0;
+$DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 carp "Loaded DBI.pm (debug $DBI::dbi_debug)\n" if $DBI::dbi_debug;
 
 bootstrap DBI;
@@ -91,15 +164,15 @@ if (substr($GATEWAY_INTERFACE,0,8) eq 'CGI-Perl' and $INC{'Apache/DBI.pm'}) {
 
 
 if ($DBI::dbi_debug) {
-    # this is a bit of a handy hack for "PERL_DBI_DEBUG=/tmp/dbi.log"
+    # this is a bit of a handy hack for "DBI_TRACE=/tmp/dbi.log"
     if ($DBI::dbi_debug =~ m/^\d/) {
 	# dbi_debug is number so debug to stderr at that level
-	DBI->_debug_dispatch($DBI::dbi_debug);
+	DBI->trace($DBI::dbi_debug);
     }
     else {
 	# dbi_debug is a file name to debug to file at level 2
 	# the function will reset $dbi_debug to the value 2.
-	DBI->_debug_dispatch(2, $DBI::dbi_debug);
+	DBI->trace(2, $DBI::dbi_debug);
     }
 }
 
@@ -178,6 +251,8 @@ my %DBI_IF = (	# Define the DBI Interface:
 	fetchrow_array    =>	undef,
 	fetchrow   	  =>	undef, # old alias for fetchrow_array
 
+	fetchall_arrayref =>	{ U =>[1,1] },
+
 	blob_read  =>	{ U =>[4,5,'$field, $offset, $len [, \\$buf [, $bufoffset]]'] },
 	blob_copy_to_file => { U =>[3,3,'$field, $filename_or_handleref'] },
 	finish     => 	{ U =>[1,1] },
@@ -213,17 +288,20 @@ END {
 
 sub connect {
     my $class = shift;
-    my($dsn, $user, $passwd, $attr, $driver) = @_;
+    my($dsn, $user, $pass, $attr, $driver) = @_;
     my $dsn_driver;
+    my $dbh;
 
     # switch $driver<->$attr if called in old style
     ($driver, $attr) = ($attr, $driver) if $attr and !ref($attr);
 
     $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '';
+    $user = $ENV{DBI_USER} unless defined $user;
+    $pass = $ENV{DBI_PASS} unless defined $pass;
 
     if ($DBI::dbi_debug) {
 	local $^W = 0;	# prevent 'Use of uninitialized value' warnings
-	Carp::carp "$class->connect($dsn, $user, $passwd, $driver, $attr)\n"
+	Carp::carp "$class->connect($dsn, $user, $pass, $driver, $attr)\n"
     }
     die 'Usage: $class->connect([$dsn [,$user [,$passwd [, $driver [,\%attr]]]]])'
 	    if ( ($driver and ref $driver) or ($attr and not ref $attr));
@@ -238,7 +316,10 @@ sub connect {
 		or confess "$class->install_driver($driver) failed";
     warn "$class->$connect_via using $driver driver $drh\n" if $DBI::dbi_debug;
 
-    my $dbh = $drh->$connect_via($dsn, $user, $passwd, $attr);
+    unless ($dbh = $drh->$connect_via($dsn, $user, $pass, $attr)) {
+	warn "$class->connect failed: ".($drh->errstr)."\n" if $DBI::dbi_debug;
+	return undef;
+    }
     warn "$class->connect = $dbh\n" if $DBI::dbi_debug;
 
     if ($dsn_driver) {	# new-style connect so new default semantics
@@ -580,7 +661,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 
     sub FETCH {
 	my($drh, $key) = @_;
-	return DBI->_debug_dispatch if $key eq 'DebugDispatch';
+	return DBI->trace if $key eq 'DebugDispatch';
 	return undef if $key eq 'DebugLog';	# not worth fetching, sorry
 	return $drh->DBD::_::dr::FETCH($key);
 	undef;
@@ -588,9 +669,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
     sub STORE {
 	my($drh, $key, $value) = @_;
 	if ($key eq 'DebugDispatch') {
-	    DBI->_debug_dispatch($value);
+	    DBI->trace($value);
 	} elsif ($key eq 'DebugLog') {
-	    DBI->_debug_dispatch(-1, $value);
+	    DBI->trace(-1, $value);
 	} else {
 	    $drh->DBD::_::dr::STORE($key, $value);
 	}
@@ -714,7 +795,6 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare()
 	else { Carp::croak "fetchall($via) invalid" }
 	return \@rows;
     }
-    BEGIN { *fetch_all = \&fetchall_arrayref }
 
     sub blob_copy_to_file {	# returns length or undef on error
 	my($self, $field, $filename_or_handleref, $blocksize) = @_;
@@ -934,6 +1014,12 @@ DBI_DSN if any.
 If driver is not specified, the environment variable DBI_DRIVER is
 used. If that variable is not set then the connect dies.
 
+If $username or $password are I<undefined> (rather than empty) then the
+DBI will substitute the values of the DBI_USER and DBI_PASS environment
+variables respectively.  The use of the environment for these values is
+not recommended for security reasons. The mechanism is only intended to
+simplify testing.
+
 DBI->connect automatically installs the driver if it has not been
 installed yet. Driver installation I<always> returns a valid driver
 handle or it I<dies> with an error message which includes the string
@@ -1006,6 +1092,30 @@ used.
 Note that many drivers have no way of knowing what data sources might
 be available for it and thus, typically, return an empty list.
 
+
+=item B<trace>
+
+  DBI->trace($trace_level)
+  DBI->trace($trace_level, $trace_file)
+
+DBI trace information can be enabled for all handles using this DBI
+class method. To enable trace information for a specific handle use
+the similar $h->trace method described elsewhere.
+
+Use $trace_level 2 to see detailed call trace information including
+parameters and return values.  The trace output is detailed and
+typically I<very> useful.
+
+Use $trace_level 0 to disable the trace.
+
+If $trace_filename is specified then the file is opened in append
+mode and I<all> trace output (including that from other handles)
+is redirected to that file.
+
+See also the $h->trace() method and L</DEBUGGING> for information
+about the DBI_TRACE environment variable.
+
+
 =back
 
 
@@ -1034,7 +1144,7 @@ to C<", ">.
 
 =item B<dump_results>
 
-  $rows = DBI::dump_results($sth, \@listref, $maxlen, $lsep, $fsep, $fh);
+  $rows = DBI::dump_results($sth, $maxlen, $lsep, $fsep, $fh);
 
 Fetches all the rows from $sth, calls DBI::neat_list for each row and
 prints the results to $fh (defaults to C<STDOUT>) separated by $lsep
@@ -1119,8 +1229,8 @@ If $trace_filename is specified then the file is opened in append
 mode and I<all> trace output (including that from other handles)
 is redirected to that file.
 
-See also L</DEBUGGING> for information about the PERL_DBI_DEBUG
-environment variable.
+See also the DBI->trace() method and L</DEBUGGING> for information
+about the DBI_TRACE environment variable.
 
 
 =item B<func>
@@ -1145,8 +1255,8 @@ in the new statement handle do not affect the parent database handle
 and changes to the database handle do not affect I<existing> statement
 handles, only future ones.
 
-Attempting to set or get the value of an undefined attribute is fatal
-(except for private driver specific attributes which all have names
+Attempting to set or get the value of an undefined attribute is fatal,
+except for private driver specific attributes (which all have names
 starting with a lowercase letter).
 
 =over 4
@@ -1200,7 +1310,11 @@ handler or modules like CGI::ErrorWrap.
 This attribute can be used to force errors to raise exceptions rather
 than simply return error codes in the normal way. It defaults to off.
 When set on, any method which results in an error occuring ($DBI::err
-being set true) will cause the DBI to effectively do die("$DBI::errstr").
+being set true) will cause the DBI to effectively do croak("$DBI::errstr").
+
+If PrintError is also on then the PrintError is done before the
+RaiseError unless no __DIE__ handler has been defined, in which case
+PrintError is skipped since the croak will print the message.
 
 Note that the contents of $@ are currently just $DBI::errstr but that
 may change and should not be relied upon.
@@ -1220,6 +1334,34 @@ behaviour of the interface they are emulating.
 
 Drivers are not required to support this attribute but any driver which
 does not must arrange to return undef as the attribute value.
+
+=item B<LongReadLen> (inherited)
+
+  $h->{LongReadLen}
+
+This attribute may be used to control the maximum length of 'long' (or
+'blob') fields which the driver will read from the database
+automatically when it fetches each row of data.
+
+The default is typically 80 bytes but may vary between drivers. Most
+applications using long fields will set this value to slightly larger
+than the longest long field value which will be fetched.
+
+See L</LongTruncOk> about truncation behaviour.
+
+=item B<LongTruncOk> (inherited)
+
+  $h->{LongTruncOk}
+
+This attribute may be used to control the effect of fetching a long
+field value which has been truncated (typically because it's longer
+than the value of the LongReadLen attribute).
+
+By default LongTruncOk is false and fetching a truncated long value
+will cause the fetch to fail. (Applications should always take care to
+check for errors after a fetch loop in case a database error, such as a
+divide by zero or long field truncation, caused the fetch to terminate
+prematurely.)
 
 =back
 
@@ -1289,6 +1431,10 @@ Example:
 Commit (make permanent) the most recent series of database changes
 if the database supports transactions.
 
+If the database supports transactions and AutoCommit is on then the
+commit should issue a "commit ineffective with AutoCommit" warning.
+
+See also L</Transactions>.
 
 =item B<rollback>
 
@@ -1296,6 +1442,11 @@ if the database supports transactions.
 
 Roll-back (undo) the most recent series of uncommitted database
 changes if the database supports transactions.
+
+If the database supports transactions and AutoCommit is on then the
+rollback should issue a "rollback ineffective with AutoCommit" warning.
+
+See also L</Transactions>.
 
 
 =item B<disconnect>
@@ -1362,16 +1513,69 @@ marks).
   $dbh->{AutoCommit}     ($)
 
 If true then database changes cannot be rolledback (undone).  If false
-then database changes occur within a 'transaction' which must either be
-committed or rolledback using the commit or rollback methods.
+then database changes automatically occur within a 'transaction' which
+must either be committed or rolled-back using the commit or rollback
+methods.
 
-Drivers for databases which support transactions should always
-default to AutoCommit mode.
+Drivers should always default to AutoCommit mode. (An unfortunate
+choice forced on the DBI by ODBC and JDBC conventions.)
 
-Some drivers only support AutoCommit mode and thus after an application
-sets AutoCommit it should check that it now has the desired value.  All
-portable applications must explicitly set and check for the desired
-AutoCommit mode.
+Attempting to set AutoCommit to an unsupported value is a fatal error.
+This is an important feature of the DBI. Applications which need
+full transaction behaviour can set $dbh->{AutoCommit}=0 (or via
+connect) without having to check the value was assigned okay.
+
+For the purposes of this description we can divide databases into three
+categories:
+
+  Database which don't support transactions at all.
+  Database in which a transaction is always active.
+  Database in which a transaction must be explicitly started ('BEGIN WORK').
+
+B<* Database which don't support transactions at all>
+
+For these databases attempting to turn AutoCommit off is a fatal error.
+Commit and rollback both issue warnings about being ineffective while
+AutoCommit is in effect.
+
+B<* Database in which a transaction is always active>
+
+These are typically mainstream commercial relational databases with
+'ANSI standandard' transaction behaviour.
+
+If AutoCommit is off then changes to the database won't have any
+lasting effect unless L</commit> is called (but see also
+L</disconnect>). If L</rollback> is called then any changes since the
+last commit are undone.
+
+If AutoCommit is on then the effect is the same as if the DBI were to
+have called commit automatically after every successful database
+operation. In other words, calling commit or rollback explicitly while
+AutoCommit is on would be ineffective because the changes would
+have already been commited.
+
+Changing AutoCommit from off to on may issue a L</commit> in some drivers.
+
+Changing AutoCommit from on to off should have no immediate effect.
+
+For databases which don't support a specific auto-commit mode, the
+driver has to commit each statement automatically using an explicit
+COMMIT after it completes successfully (and roll it back using an
+explicit ROLLBACK if it fails).  The error information reported to the
+application will correspond to the statement which was executed, unless
+it succeeded and the commit or rollback failed.
+
+B<* Database in which a transaction must be explicitly started>
+
+For these database the intention is to have them act like databases in
+which a transaction is always active (as described above).
+
+To do this the DBI driver will automatically begin a transaction when
+AutoCommit is turned off (from the default on state) and will
+automatically begin another transaction after a L</commit> or L</rollback>.
+
+In this way, the application does not have to treat these databases as a
+special case.
 
 =back
 
@@ -1382,9 +1586,53 @@ AutoCommit mode.
 
 =over 4
 
+=item B<bind_param>
+
+  $rc = $sth->bind_param($param_num, $bind_value)  || die $sth->errstr;
+  $rv = $sth->bind_param($param_num, $bind_value, \%attr)     || ...
+  $rv = $sth->bind_param($param_num, $bind_value, $bind_type) || ...
+
+The bind_param method can be used to I<bind> (assign/associate) a value
+with a I<placeholder> embedded in the prepared statement. Placeholders
+are indicated with question mark character (C<?>). For example:
+
+  $dbh->{RaiseError} = 1;        # save having to check each method call
+  $sth = $dbh->prepare("select name, age from people where name like ?");
+  $sth->bind_param(1, "John%");  # placeholders are numbered from 1
+  $sth->execute;
+  DBI::dump_results($sth);
+
+Note that the C<?> is not enclosed in quotation marks even when the
+placeholder represents a string.  Some drivers also allow C<:1>, C<:2>
+etc and C<:name> style placeholders in addition to C<?> but their use
+is not portable.
+
+Sadly, placeholders can only represent single scalar values, so this
+statement, for example, won't work as expected for ore than one value:
+
+  "select name, age from people where name in (?)"    # wrong
+
+The C<\%attr> parameter can be used to specify the data type the
+placeholder should have. Typically the driver is only interested in
+knowing if the placeholder should be bound as a number or a string.
+
+  $sth->bind_param(1, $value, { TYPE => SQL_INTEGER });
+
+As a short-cut for this common case, the data type can be passed
+directly inplace of the attr hash reference. This example is
+equivalent to the one above:
+
+  $sth->bind_param(1, $value, SQL_INTEGER);
+
+Perl only has string and number scalar data types. All database types
+that aren't numbers are bound as strings and must be in a format the
+database will understand.
+
+
 =item B<execute>
 
-  $rc  = $sth->execute   || die $sth->errstr;
+  $rv = $sth->execute                || die $sth->errstr;
+  $rv = $sth->execute(@bind_values)  || die $sth->errstr;
 
 Perform whatever processing is necessary to execute the prepared
 statement.  An undef is returned if an error occurs, a successful
@@ -1398,11 +1646,13 @@ known then execute returns -1.
 
 For select statements execute simply 'starts' the query within the
 Engine. Use one of the fetch methods to retreive the data after
-calling execute.
+calling execute.  Note that the execute method does I<not> return the
+number of rows that will be returned by the query (because most Engines
+can't tell in advance).
 
-Note that the execute method does I<not> return the number of rows that
-will be returned by the query (because most Engines can't tell in
-advance).
+If any arguments are given then execute will effectively call
+L</bind_param> for each value before executing the statement.
+Values bound in this way are treated as SQL_VARCHAR types.
 
 
 =item B<fetchrow_arrayref>
@@ -1553,7 +1803,9 @@ See SUBSTITUTION VARIABLES below for more details.
 
   $sth->{NAME}           (\@)
 
-Returns a I<reference> to an array of field names for each column.
+Returns a I<reference> to an array of field names for each column. The
+names may contain spaces but should not be truncated or have any
+trailing space.
 
   print "First column name: $sth->{NAME}->[0]\n";
 
@@ -1580,11 +1832,47 @@ C<"where current of ..."> SQL syntax then it returns undef.
 =back
 
 
-=head2 Bind Variables
+=head1 TRANSACTIONS
 
-Also known as place holders and substitution variables.
+Transactions are a fundamental part of any quality database system. They
+protect against errors and database corruption by ensuring that changes
+to the database take place in atomic (indivisible, all-or-nothing) units.
 
-This section has not yet been formalised.
+See L</AutoCommit> for details of using AutoCommit with various types of
+database.
+
+=head2 Robust Applications
+
+This section applies to databases which support transactions and where
+AutoCommit is off.
+
+The recommended way to implement robust transactions in Perl
+applications is to make use of S<C<eval { ... }>> (which is very fast,
+unlike S<C<eval "...">>).
+
+  eval {
+      foo(...)
+  };
+  if ($@) {
+      $dbh->rollback;
+      # add other application on-error-clean-up code here
+  }
+  else {
+      $dbh->commit;
+  }
+
+The code in foo(), or any other code executed from within the curly braces,
+can be implemented in this way:
+
+  $h->method(@args) || die $h->errstr
+
+or the $h->{RaiseError} attribute can be set on, in which case the DBI
+will automatically croak() on error so you don't have to test the
+return value of each method call. See L</RaiseError> for more details.
+
+A major advantage of the eval approach is that the transaction will be
+properly rolled back if I<any> code in the inner application croaks or
+dies for any reason.
 
 
 =head1 SIMPLE EXAMPLE
@@ -1615,15 +1903,15 @@ This section has not yet been formalised.
 =head1 DEBUGGING
 
 In addition to the L</trace> method you can enable the same trace
-information by setting the PERL_DBI_DEBUG environment variable
-before starting perl.
+information by setting the DBI_TRACE environment variable before
+starting perl.
 
 On unix-like systems using a bourne-like shell you can do this easily
 for a single command:
 
-  PERL_DBI_DEBUG=2 perl your_test_script.pl
+  DBI_TRACE=2 perl your_test_script.pl
 
-If PERL_DBI_DEBUG is set to a non-numeric value then it is assumed to
+If DBI_TRACE is set to a non-numeric value then it is assumed to
 be a file name and the trace level will be set to 2 with all trace
 output will be appended to that file.
 
@@ -1634,7 +1922,7 @@ See also the L</trace> method.
 
 The DBI is I<alpha> software. It is I<only> 'alpha' because the
 interface (api) is not finalised. The alpha status does not reflect
-code quality or stability.
+code quality.
 
 =head1 SEE ALSO
 
@@ -1686,8 +1974,9 @@ you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
 
 =head1 AUTHORS
 
-DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop and
-others.  Perl by Larry Wall and the perl5-porters.
+DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop,
+Jonathan Leffler and others.  Perl by Larry Wall and the
+perl5-porters.
 
 =head1 COPYRIGHT
 
@@ -1736,6 +2025,9 @@ http://www.perl.co.uk/tpc for more details.
 	etc
 
 =head1 FREQUENTLY ASKED QUESTIONS
+
+See the DBI FAQ for a more comprehensive list of FAQs. Use the
+C<perldoc DBI::FAQ> command to read it.
 
 =head2 Why doesn't my CGI script work right?
 

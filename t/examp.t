@@ -83,6 +83,14 @@ ok(0, $row_b->{name} eq $row_a[2]);
 $csr_a = undef;	# force destructin of this cursor now
 ok(43, 1);
 
+ok(0, $csr_b->execute());
+my $r = $csr_b->fetchall_arrayref;
+ok(0, $r);
+ok(0, @$r);
+ok(0, $r->[0]->[0] == $row_a[0]);
+ok(0, $r->[0]->[1] == $row_a[1]);
+ok(0, $r->[0]->[2] eq $row_a[2]);
+
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
@@ -93,7 +101,7 @@ ok(0, $dbh->{RaiseError});
 ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; });
 ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
 $dbh->{RaiseError} = 0;
-ok(49, !$dbh->{RaiseError});
+ok(55, !$dbh->{RaiseError});
 
 {
   my @warn;
@@ -106,4 +114,4 @@ ok(49, !$dbh->{RaiseError});
   ok(0, !$dbh->{PrintError});
 }
 
-BEGIN { $tests = 53; }
+BEGIN { $tests = 59; }

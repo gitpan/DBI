@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.70 1997/06/25 12:20:10 timbo Exp $
+/* $Id: DBI.xs,v 1.74 1997/07/16 18:17:58 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -39,16 +39,19 @@ static SV	 *dbi_last_h;
 static int        dbih_set_attr  _((SV *h, SV *keysv, SV *valuesv));
 static SV        *dbih_get_attr  _((SV *h, SV *keysv));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
+static int	  bind_as_num _((int sql_type, int p, int s));
+static SV *dbih_make_com _((SV *parent_h, char *imp_class, STRLEN imp_size, STRLEN extra));
+static SV *dbih_make_fdsv _((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
 char *neatsvpv _((SV *sv, STRLEN maxlen));
 
 int imp_maxsize;
-int imp_minsize;
 
 DBISTATE_DECLARE;
 
 struct imp_drh_st { dbih_drc_t com; };
 struct imp_dbh_st { dbih_dbc_t com; };
 struct imp_sth_st { dbih_stc_t com; };
+struct imp_fdh_st { dbih_fdc_t com; };
 
 
 /* Internal Method Attributes (attached to dispatch methods when installed) */
@@ -79,12 +82,31 @@ typedef struct dbi_ima_st {
 #define DBI_UNSET_LAST_HANDLE	(SvRVx(DBI_LAST_HANDLE) =  &sv_undef)
 #define DBI_LAST_HANDLE_OK	(SvRVx(DBI_LAST_HANDLE) != &sv_undef )
 
+#ifdef IV_MAX
+#define MAX_LongReadLen IV_MAX
+#else
+#define MAX_LongReadLen 2147483647
+#endif
+
+
+static void
+check_version(name, dbis_cv, dbis_cs, need_dbixs_cv)
+    char *name;
+    int dbis_cv, dbis_cs, need_dbixs_cv;
+{
+    if (dbis_cv != DBISTATE_VERSION || dbis_cs != sizeof(*DBIS))
+	croak("DBI/DBD version mismatch (DBI is v%d/s%d, DBD %s expected v%d/s%d) %s.\n",
+	    DBISTATE_VERSION, sizeof(*DBIS), name, dbis_cv, dbis_cs,
+		"you need to rebuild either the DBD driver or the DBI");
+}
 
 static void
 dbi_bootinit()
 {
     Newz(dummy, dbis, 1, dbistate_t);
+
     /* store version and size so we can spot DBI/DBD version mismatch	*/
+    dbis->check_version = check_version;
     dbis->version = DBISTATE_VERSION;
     dbis->size    = sizeof(*dbis);
     dbis->xs_version = DBIXS_VERSION;
@@ -103,7 +125,9 @@ dbi_bootinit()
     dbis->set_attr  = dbih_set_attr;
     dbis->get_attr  = dbih_get_attr;
     dbis->get_fbav  = dbih_get_fbav;
+    dbis->make_fdsv = dbih_make_fdsv;
     dbis->neat_svpv = neatsvpv;
+    dbis->bind_as_num = bind_as_num;
 
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
     /* We want a handle reference but we don't want to increment	*/
@@ -318,92 +342,79 @@ dbih_setup_attrib(h, attrib, parent)
 }
 
 
-static void
-dbih_setup_handle(orv, imp_class, parent, imp_datasv)
-    SV *orv;         /* ref of outer hash */
-    char *imp_class;
-    SV *parent;
-    SV *imp_datasv;
-{
-    SV *h;
-    HV *imp_stash;
-    char *errmsg = "Can't dbih_setup_handle of %s to %s: %s";
-    SV *dbih_imp_sv;
-    SV *dbih_imp_rv;
-    char imp_mem_name[300];
-    HV  *imp_mem_stash;
-    char *imp_size_name;
+static SV *
+dbih_make_fdsv(sth, imp_class, imp_size, col_name)
+    SV *sth;
+    char *imp_class;		/* eg "DBD::Driver::fd" */
     STRLEN imp_size;
+    char *col_name;
+{
+    STRLEN cn_len = strlen(col_name);
+    imp_fdh_t *imp_fdh;
+    SV *fdsv;
+    if (imp_size < sizeof(imp_fdh_t) || cn_len<10 || strNE("::fd",&col_name[cn_len-4]))
+	croak("panic: dbih_makefdsv %s '%s' imp_size %d invalid",
+		imp_class, col_name, imp_size);
+    if (dbis->debug >= 2)
+	fprintf(DBILOGFP,"    dbih_make_com(%s, %d, '%s')\n",
+		imp_class,imp_size,col_name);
+    fdsv = dbih_make_com(sth, imp_class, imp_size, cn_len+2);
+    imp_fdh = (imp_fdh_t*)SvPVX(fdsv);
+    imp_fdh->com.col_name = ((char*)imp_fdh) + imp_size;
+    strcpy(imp_fdh->com.col_name, col_name);
+    return fdsv;
+}
+
+
+static SV *
+dbih_make_com(parent_h, imp_class, imp_size, extra)
+    SV *parent_h;
+    char *imp_class;		/* eg "DBD::Driver::db" */
+    STRLEN imp_size;
+    STRLEN extra;
+{
+    char *errmsg = "Can't make DBI com handle for %s: %s";
+    HV *imp_stash;
+    SV *dbih_imp_sv;
     imp_xxh_t *imp;
 
-    h      = dbih_inner(orv, "dbih_setup_handle");
-    parent = dbih_inner(parent, NULL);	/* check parent valid (& inner)	*/
+    if ( (imp_stash = gv_stashpv(imp_class, FALSE)) == NULL)
+        croak(errmsg, imp_class, "unknown package");
+
+    if (imp_size == 0) {
+	/* get size of structure to allocate for common and imp specific data   */
+	char *imp_size_name = mkvname(imp_stash, "imp_data_size", 0);
+	imp_size = SvIV(perl_get_sv(imp_size_name, 0x05));
+	if (imp_size == 0)
+	    imp_size = imp_maxsize + 64;
+    }
 
     if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"    dbih_setup_handle(%s=>%s, %s, %s)\n",
-	    SvPV(orv,na), SvPV(h,na), imp_class, neatsvpv(imp_datasv,0));
-
-    if (mg_find(SvRV(h), DBI_MAGIC) != NULL)
-	croak(errmsg, SvPV(orv,na), imp_class, "already a DBI handle");
-
-    if ( (imp_stash = gv_stashpv(imp_class, FALSE)) == NULL)
-        croak(errmsg, SvPV(orv,na), imp_class, "unknown package");
-
-    strcpy(imp_mem_name, imp_class);
-    strcat(imp_mem_name, "_mem");
-    if ( (imp_mem_stash = gv_stashpv(imp_mem_name, FALSE)) == NULL)
-        croak(errmsg, SvPV(orv,na), imp_mem_name, "unknown _mem package");
-
-    /* get size of structure to allocate for common and imp specific data   */
-    imp_size_name = mkvname(imp_stash, "imp_data_size", 0);
-    imp_size = SvIV(perl_get_sv(imp_size_name, 0x05));
-    if (imp_size == 0)
-	imp_size = imp_maxsize;
-/* XXX
-    if (imp_size < imp_minsize)
-	croak(errmsg, SvPV(orv,na), imp_class, imp_size_name);
-*/
+	fprintf(DBILOGFP,"    dbih_make_com(%s, %s, %d)\n",
+		neatsvpv(parent_h,0), imp_class, imp_size);
 
     dbih_imp_sv = newSV(imp_size);
-    dbih_imp_rv = newRV(dbih_imp_sv);	/* just needed for sv_bless */
-    sv_bless(dbih_imp_rv, imp_mem_stash);
-    sv_free(dbih_imp_rv);
+
     imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
     memzero((char*)imp, imp_size);
 
-    DBIc_MY_H(imp)      = h;	/* take copy of pointer, not new ref	*/
     DBIc_IMP_STASH(imp) = imp_stash;
 
-    if (imp_datasv)
-	DBIc_IMP_DATA(imp) = newSVsv(imp_datasv);
-    else /* use imp_datasv to carry the 'name'. Handy for debugging.	*/
-	DBIc_IMP_DATA(imp) = newSVpv(SvPV(h,na),0);
-
-    if (parent) {
-	imp_xxh_t *parent_com = DBIh_COM(parent);
-	DBIc_PARENT_H(imp)   = SvREFCNT_inc(parent); /* ensure it lives	*/
-	DBIc_PARENT_COM(imp) = parent_com;	  /* shortcut for speed	*/
-	DBIc_TYPE(imp)	     = DBIc_TYPE(parent_com) + 1;	/* XXX	*/
-	DBIc_FLAGS(imp)      = DBIc_FLAGS(parent_com) & DBIcf_INHERITMASK;
+    if (!parent_h) {		/* only a driver (drh) has no parent	*/
+	DBIc_PARENT_H(imp)    = &sv_undef;
+	DBIc_PARENT_COM(imp)  = NULL;
+	DBIc_TYPE(imp)	      = DBIt_DR;
+	DBIc_FLAGS(imp)       = 0;
+	DBIc_on(imp, DBIcf_WARN);	/* only set here, children inherit	*/
+	DBIc_on(imp, DBIcf_AutoCommit);	/* advisory, driver must manage this	*/
+    } else {		
+	imp_xxh_t *parent_com = DBIh_COM(parent_h);
+	DBIc_PARENT_H(imp)    = SvREFCNT_inc(parent_h); /* ensure it lives	*/
+	DBIc_PARENT_COM(imp)  = parent_com;	  /* shortcut for speed	*/
+	DBIc_TYPE(imp)	      = DBIc_TYPE(parent_com) + 1;	/* XXX	*/
+	DBIc_FLAGS(imp)       = DBIc_FLAGS(parent_com) & ~DBIcf_INHERITMASK;
 	++DBIc_KIDS(parent_com);
-
-    } else {			/* only a driver (drh) has no parent	*/
-	DBIc_PARENT_H(imp)   = &sv_undef;
-	DBIc_PARENT_COM(imp) = NULL;
-	DBIc_TYPE(imp)	     = DBIt_DR;
-	DBIc_FLAGS(imp)      = 0;
-	DBIc_WARN_on(imp);	/* only set here, children inherit	*/
     }
-
-    /* copy some attributes from parent if not defined locally and	*/
-    /* also take address of attributes for speed of direct access	*/
-#define COPY_PARENT(name) SvREFCNT_inc(dbih_setup_attrib(h, (name), parent))
-    /* XXX we should validate that these are the right type (refs etc)	*/
-    DBIc_ATTR(imp, State)    = COPY_PARENT("State");	/* scalar ref	*/
-    DBIc_ATTR(imp, Err)      = COPY_PARENT("Err");	/* scalar ref	*/
-    DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr");	/* scalar ref	*/
-    DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers");	/* array ref	*/
-    DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug");	/* scalar (int)	*/
 
     if (DBIc_TYPE(imp) == DBIt_ST) {
 	imp_sth_t *imp_sth = (imp_sth_t*)imp;
@@ -415,6 +426,67 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 
     /* The implementor should DBIc_IMPSET_on(imp) when setting up	*/
     /* any private data which will need clearing/freeing later.		*/
+
+    return dbih_imp_sv;
+}
+
+
+static void
+dbih_setup_handle(orv, imp_class, parent, imp_datasv)
+    SV *orv;         /* ref of outer hash */
+    char *imp_class;
+    SV *parent;
+    SV *imp_datasv;
+{
+    SV *h;
+    char *errmsg = "Can't setup DBI handle of %s to %s: %s";
+    SV *dbih_imp_sv;
+    SV *dbih_imp_rv;
+    char imp_mem_name[300];
+    HV  *imp_mem_stash;
+    imp_xxh_t *imp;
+
+    h      = dbih_inner(orv, "dbih_setup_handle");
+    parent = dbih_inner(parent, NULL);	/* check parent valid (& inner)	*/
+
+    if (dbis->debug >= 2)
+	fprintf(DBILOGFP,"    dbih_setup_handle(%s=>%s, %s, %lx, %s)\n",
+	    SvPV(orv,na), SvPV(h,na), imp_class, (long)parent, neatsvpv(imp_datasv,0));
+
+    if (mg_find(SvRV(h), DBI_MAGIC) != NULL)
+	croak(errmsg, SvPV(orv,na), imp_class, "already a DBI (or ~magic) handle");
+
+    strcpy(imp_mem_name, imp_class);
+    strcat(imp_mem_name, "_mem");
+    if ( (imp_mem_stash = gv_stashpv(imp_mem_name, FALSE)) == NULL)
+        croak(errmsg, imp_mem_name, "unknown _mem package");
+
+    dbih_imp_sv = dbih_make_com(parent, imp_class, 0, 0);
+    imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
+
+    dbih_imp_rv = newRV(dbih_imp_sv);	/* just needed for sv_bless */
+    sv_bless(dbih_imp_rv, imp_mem_stash);
+    sv_free(dbih_imp_rv);
+
+    DBIc_MY_H(imp) = h;		/* take copy of pointer, not new ref	*/
+    DBIc_IMP_DATA(imp) = (imp_datasv) ? newSVsv(imp_datasv) : &sv_undef;
+
+    if (DBIc_TYPE(imp) <= DBIt_ST) {
+	/* Copy some attributes from parent if not defined locally and	*/
+	/* also take address of attributes for speed of direct access.	*/
+	/* parent is null for drh, in which case h must hold the values	*/
+#define COPY_PARENT(name) SvREFCNT_inc(dbih_setup_attrib(h, (name), parent))
+#define DBIc_ATTR(imp, f) _imp2com(imp, attr.f)
+	/* XXX we should validate that these are the right type (refs etc)	*/
+	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err");	/* scalar ref	*/
+	DBIc_ATTR(imp, State)    = COPY_PARENT("State");	/* scalar ref	*/
+	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr");	/* scalar ref	*/
+	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers");	/* array ref	*/
+	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug");	/* scalar (int)	*/
+	if (parent)
+	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(DBIh_COM(parent));
+	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
+    }
 
     /* Use DBI magic on inner handle to carry handle attributes 	*/
     sv_magic(SvRV(h), dbih_imp_sv, DBI_MAGIC, Nullch, 0);
@@ -445,13 +517,16 @@ dbih_dumpcom(imp_xxh, msg)
     if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
     if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
-    fprintf(DBILOGFP,"    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
+    if (DBIc_is(imp_xxh, DBIcf_LongTruncOk))	sv_catpv(flags,"LongTruncOk ");
+    fprintf(DBILOGFP,"    FLAGS 0x%lx: %s\n", (long)DBIc_FLAGS(imp_xxh), SvPV(flags,na));
     fprintf(DBILOGFP,"    TYPE %d\n",	DBIc_TYPE(imp_xxh));
     fprintf(DBILOGFP,"    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
     fprintf(DBILOGFP,"    KIDS %ld (%ld active)\n",
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
     fprintf(DBILOGFP,"    IMP_DATA %s in '%s'\n",
 	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
+    if (DBIc_LongReadLen(imp_xxh) != DBIc_LongReadLen_init)
+	fprintf(DBILOGFP,"    LongReadLen %ld\n", DBIc_LongReadLen(imp_xxh));
 
     if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
 	imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
@@ -470,15 +545,15 @@ dbih_clearcom(imp_xxh)
     /* Note that we're very much on our own here. imp_xxh->my_h almost	*/
     /* certainly points to memory which has been freed. Don't use it!	*/
 
-    if (DBIS->debug >= 3)
-	dbih_dumpcom(imp_xxh,"dbih_clearcom");
-
     /* --- pre-clearing sanity checks --- */
 
     if (!DBIc_COMSET(imp_xxh)) {	/* should never happen	*/
-	warn("DBI Handle already cleared");
+	dbih_dumpcom(imp_xxh, "dbih_clearcom: DBI Handle %s already cleared");
 	return;
     }
+
+    if (DBIS->debug >= 3)
+	dbih_dumpcom(imp_xxh,"dbih_clearcom");
 
     if (!dirty) {
 	if (DBIc_ACTIVE(imp_xxh)) {	/* bad news		*/
@@ -513,22 +588,25 @@ dbih_clearcom(imp_xxh)
 
     if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
 	dbih_stc_t *stc = (dbih_stc_t*)imp_xxh;
-	if (stc->fields_av)
-	    sv_free((SV*)stc->fields_av);
+	if (stc->fields_svav)
+	    sv_free((SV*)stc->fields_svav);
     }
 
     sv_free(DBIc_IMP_DATA(imp_xxh));	/* do this first	*/
-    sv_free(DBIc_ATTR(imp_xxh, Handlers));
-    sv_free(DBIc_ATTR(imp_xxh, Debug));
-    sv_free(DBIc_ATTR(imp_xxh, State));
-    sv_free(DBIc_ATTR(imp_xxh, Err));
-    sv_free(DBIc_ATTR(imp_xxh, Errstr));
+    if (DBIc_TYPE(imp_xxh) <= DBIt_ST) {	/* DBIt_FD doesn't have attr */
+	sv_free(DBIc_HANDLERS(imp_xxh));
+	sv_free(DBIc_DEBUG(imp_xxh));
+	sv_free(DBIc_STATE(imp_xxh));
+	sv_free(DBIc_ERR(imp_xxh));
+	sv_free(DBIc_ERRSTR(imp_xxh));
+    }
     sv_free(DBIc_PARENT_H(imp_xxh));	/* do this last		*/
 
     DBIc_COMSET_off(imp_xxh);
 
     if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"    dbih_clearcom 0x%lx done\n", (long)imp_xxh);
+	fprintf(DBILOGFP,"    dbih_clearcom 0x%lx (type %d) done\n",
+		(long)imp_xxh, DBIc_TYPE(imp_xxh));
 }
 
 
@@ -540,7 +618,7 @@ dbih_setup_fbav(stc)
 {
     AV *av;
 
-    if ( (av = stc->fields_av) == Nullav) {
+    if ( (av = stc->fields_svav) == Nullav) {
         int i = stc->num_fields;
 	if (i < 0)
 	    croak("dbih_get_fbav: number of fields not set");
@@ -549,7 +627,7 @@ dbih_setup_fbav(stc)
 	/* the array only gets extended once.			*/
         while(i--)		/* field 1 stored at index 0	*/
 	    av_store(av, i, newSV(0));
-	stc->fields_av = av;
+	stc->fields_svav = av;
 	if (dbis->debug >= 3)
 	    fprintf(DBILOGFP,"    dbih_get_fbav %d/%d => %lx\n",
 			stc->num_fields, AvFILL(av)+1, (long)av);
@@ -567,10 +645,10 @@ dbih_get_fbav(imp_sth)	/* Called once per-fetch: must be fast	*/
     if (DBIc_TYPE(imp_sth) != DBIt_ST)
 	croak("dbih_get_fbav: bad handle type: %d", DBIc_TYPE(imp_sth));
 
-    if ( (av = stc->fields_av) == Nullav)
+    if ( (av = stc->fields_svav) == Nullav)
 	av = dbih_setup_fbav(stc);
 
-    /* XXX fancy stuff to happen here later (re ref counting)	*/
+    /* XXX fancy stuff to happen here later (re scrolling etc)	*/
     return av;
 }
 
@@ -597,7 +675,7 @@ dbih_sth_bind_col(sth, col, ref, attribs)
 	fprintf(DBILOGFP,"    dbih_sth_bind_col %s(%d) => %s\n",
 		neatsvpv(col,0), idx, neatsvpv(ref,0));
 
-    if ( (av = stc->fields_av) == Nullav)
+    if ( (av = stc->fields_svav) == Nullav)
 	av = dbih_setup_fbav(stc);
 
     if (idx < 1 || idx > DBIc_NUM_FIELDS(imp_sth))
@@ -607,6 +685,31 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     /* use supplied scalar as storage for this column */
     av_store(av, idx-1, SvREFCNT_inc(SvRV(ref)) );
     return 1;
+}
+
+
+int
+bind_as_num(sql_type, p, s)
+    int sql_type;
+    int p, s;		/* not used (yet?), pass as zero */
+{
+    /* Returns true if type should be bound as a number else	*/
+    /* false implying that binding as a string should be okay.	*/
+    /* The true value is either SQL_INTEGER or SQL_DOUBLE which	*/
+    /* can be used as a hint is desired.			*/
+    switch(sql_type) {
+    case SQL_INTEGER:
+    case SQL_SMALLINT:
+	return SQL_INTEGER;
+    case SQL_FLOAT:
+    case SQL_REAL:
+    case SQL_DOUBLE:
+	return SQL_DOUBLE;
+    case SQL_NUMERIC:
+    case SQL_DECIMAL:
+	return 0;	/* bind as string to attempt to retain precision */
+    }
+    return 0;
 }
 
 
@@ -641,19 +744,29 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "ChopBlanks")) {
 	DBIc_set(imp_xxh,DBIcf_ChopBlanks, on);
     }
+    else if (strEQ(key, "LongReadLen")) {
+	if (SvNV(valuesv) < 0 || SvNV(valuesv) > MAX_LongReadLen)
+	    croak("Can't set LongReadLen < 0 or > %d",IV_MAX);
+	DBIc_LongReadLen(imp_xxh) = SvIV(valuesv);
+    }
+    else if (strEQ(key, "LongTruncOk")) {
+	DBIc_set(imp_xxh,DBIcf_LongTruncOk, on);
+    }
     else if (strEQ(key, "RaiseError")) {
 	DBIc_set(imp_xxh,DBIcf_RaiseError, on);
     }
     else if (strEQ(key, "PrintError")) {
 	DBIc_set(imp_xxh,DBIcf_PrintError, on);
     }
-    else if (strEQ(key, "AutoCommit")) {
-	DBIc_set(imp_xxh,DBIcf_AutoCommit, on);
+    else if (htype<=DBIt_DB && strEQ(key, "AutoCommit")) {
+	/* The driver should have intercepted this and handled it.	*/
+	croak("DBD driver has not implemented the AutoCommit attribute");
+	/* DBIc_set(imp_xxh,DBIcf_AutoCommit, on); */
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
-	    croak("NUM_OF_FIELDS already set (%d)", DBIc_NUM_FIELDS(imp_sth));
+	    croak("NUM_OF_FIELDS already set to %d", DBIc_NUM_FIELDS(imp_sth));
 	DBIc_NUM_FIELDS(imp_sth) = SvIV(valuesv);
 	cacheit = 1;
     }
@@ -688,11 +801,27 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     char  *key = SvPV(keysv, keylen);
     int    htype = DBIc_TYPE(imp_xxh);
     int    cacheit = FALSE;
+    int i;
     SV   **svp;
     SV    *valuesv = &sv_undef;
+
     /* DBI quick_FETCH will service some requests (e.g., cached values)	*/
 
-    if (htype==DBIt_ST      && keylen==13 && strEQ(key, "NUM_OF_FIELDS")) {
+    /* XXX needs to be split into separate dr/db/st funcs	*/
+    /* XXX probably needs some form of hashing->switch lookup	*/
+
+    /* This is just one example. I'll add more (LENGTH, NULLABLE etc)	*/
+    /* once I've worked out a better scheme for this.			*/
+    if (     htype==DBIt_ST && keylen==4 && strEQ(key, "TYPE")) {
+	D_imp_sth(h);
+        AV *av = newAV();
+        i = AvFILL(DBIc_FDESC_AV(imp_sth))+1;
+        while(--i >= 0)
+            av_store(av, i, newSViv(DBIc_FDESC(imp_sth,i)->com.col_sql_type));
+        valuesv = newRV(sv_2mortal((SV*)av));
+	cacheit = TRUE;	/* can't change */
+    }
+    else if (     htype==DBIt_ST && keylen==13 && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_FIELDS(imp_sth));
 	cacheit = TRUE;	/* can't change */
@@ -714,14 +843,22 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     else if (keylen==10 && strEQ(key, "ChopBlanks")) {
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_ChopBlanks));
     }
+    else if (keylen==11 && strEQ(key, "LongReadLen")) {
+	valuesv = sv_2mortal(newSVnv((double)DBIc_LongReadLen(imp_xxh)));
+    }
+    else if (keylen==11 && strEQ(key, "LongTruncOk")) {
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_LongTruncOk));
+    }
     else if (keylen==10 && strEQ(key, "RaiseError")) {
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_RaiseError));
     }
     else if (keylen==10 && strEQ(key, "PrintError")) {
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_PrintError));
     }
-    else if (keylen==10 && strEQ(key, "AutoCommit")) {
-	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_AutoCommit));
+    else if (htype<=DBIt_DB && keylen==10 && strEQ(key, "AutoCommit")) {
+	/* The driver should have intercepted this and handled it.	*/
+	croak("DBD driver has not implemented the AutoCommit attribute");
+	/* valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_AutoCommit)); */
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -736,8 +873,7 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     if (cacheit) {
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, TRUE);
 	sv_free(*svp);
-	*svp = valuesv;
-	(void)SvREFCNT_inc(valuesv);	/* keep it around for cache	*/
+	*svp = SvREFCNT_inc(valuesv);
     }
     if (dbis->debug >= 2)
 	fprintf(DBILOGFP,"    FETCH %s %s = %s%s\n", SvPV(h,na),
@@ -812,6 +948,7 @@ dbih_event(hrv, evtype, a1, a2)
     while(--i >= 0) {	/* Call each handler in turn	*/
 	SV *sv = *av_fetch(handlers_av, i, 1);
 	/* call handler */
+/* XXX probably need a better way. Note that DBD::ExampleP uses this! */
 	PUSHMARK(sp);
 	EXTEND(sp, 4);
 	PUSHs(hrv);
@@ -895,6 +1032,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     int is_destroy = FALSE;
     int keep_error = FALSE;
     int i, outitems;
+    int call_depth;
 
     char	*meth_name = GvNAME(CvGV(cv));
     dbi_ima_t	*ima       = (dbi_ima_t*)CvXSUBANY(cv).any_ptr;
@@ -991,8 +1129,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (DBIc_IADESTROY(imp_xxh)) { /* want's ineffective destroy	*/
 	    DBIc_ACTIVE_off(imp_xxh);
 	}
+	call_depth = 0;
     }
-    else DBI_SET_LAST_HANDLE(h);
+    else {
+	DBI_SET_LAST_HANDLE(h);
+	SAVEI16(DBIc_CALL_DEPTH(imp_xxh));
+	call_depth = ++DBIc_CALL_DEPTH(imp_xxh);
+    }
 
     if (!keep_error)
 	DBIh_CLEAR_ERROR(imp_xxh);
@@ -1039,7 +1182,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    fprintf(DBILOGFP, ")\n");
 	}
 
-	DBIc_LAST_METHOD(imp_xxh) = meth_name;
+	if (!keep_error)
+	    DBIc_LAST_METHOD(imp_xxh) = meth_name;
 
 	PUSHMARK(mark);  /* mark arguments again so we can pass them on	*/
 
@@ -1096,19 +1240,28 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	if (qsv) /* flag as quick and peek at the first arg (still on the stack) */
 	    fprintf(logfp," QUICK (%s)", neatsvpv(ST(1),0));
 	if (!keep_error && SvTRUE(DBIc_ERR(imp_xxh)))
-	    fprintf(logfp,"\n    !! ERROR: %s", neatsvpv(DBIc_ERRSTR(imp_xxh),0));
+	    fprintf(logfp,"\n    !! ERROR: %s %s",
+		neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_ERRSTR(imp_xxh),0));
 	fprintf(logfp,"\n");
     }
 
     if (   !keep_error				/* so would be a new error	*/
 	&& SvTRUE(DBIc_ERR(imp_xxh))		/* and an error exists		*/
+	&& call_depth <= 1			/* skip nested (internal) calls	*/
+	/* check that we're not nested inside a call to our parent */
+	&& (!DBIc_PARENT_COM(imp_xxh) || DBIc_CALL_DEPTH(DBIc_PARENT_COM(imp_xxh)) < 1)
     ) {
+	int raise_error = DBIc_has(imp_xxh, DBIcf_RaiseError);
 	/* Note that the contents of these messages may change in future	*/
 	/* PrintError = report errors via warn()	*/
-	if (DBIc_has(imp_xxh, DBIcf_PrintError))
-	    warn(SvPV(DBIc_ERRSTR(imp_xxh),na));
+	if (DBIc_has(imp_xxh, DBIcf_PrintError)) {
+	    /* if both PrintError and RaiseError are true	*/
+	    /* we do both unless there's no __DIE__ hook	*/
+	    if (!raise_error || (diehook && SvOK(diehook)))
+		warn(SvPV(DBIc_ERRSTR(imp_xxh),na));
+	}
 	/* RaiseError = report errors via croak()	*/
-	if (DBIc_has(imp_xxh, DBIcf_RaiseError))
+	if (raise_error)
 	    croak(SvPV(DBIc_ERRSTR(imp_xxh),na));
     }
 
@@ -1131,6 +1284,24 @@ BOOT:
     items = items;	/* avoid 'unused variable' warning		*/
     dbi_bootinit();
 
+I32
+constant(...)
+    ALIAS:
+	SQL_CHAR	= SQL_CHAR
+	SQL_NUMERIC	= SQL_NUMERIC
+	SQL_DECIMAL	= SQL_DECIMAL
+	SQL_INTEGER	= SQL_INTEGER
+	SQL_SMALLINT	= SQL_SMALLINT
+	SQL_FLOAT	= SQL_FLOAT
+	SQL_REAL	= SQL_REAL
+	SQL_DOUBLE	= SQL_DOUBLE
+	SQL_VARCHAR	= SQL_VARCHAR
+    CODE:
+    RETVAL = ix;
+    OUTPUT:
+    RETVAL
+
+
 void
 _setup_handle(sv, imp_class, parent, imp_datasv=Nullsv)
     SV *	sv
@@ -1141,12 +1312,14 @@ _setup_handle(sv, imp_class, parent, imp_datasv=Nullsv)
     dbih_setup_handle(sv, imp_class, parent, imp_datasv);
     ST(0) = &sv_undef;
 
+
 void
 _get_imp_data(sv)
     SV *	sv
     CODE:
     D_imp_xxh(sv);
     ST(0) = sv_mortalcopy(DBIc_IMP_DATA(imp_xxh)); /* okay if NULL	*/
+
 
 void
 set_err(sv, errval, errstr=&sv_no, state=&sv_undef)
@@ -1179,7 +1352,7 @@ set_err(sv, errval, errstr=&sv_no, state=&sv_undef)
 void
 neat(sv, maxlen=0)
     SV *	sv
-    int	maxlen
+    U32	maxlen
     CODE:
     ST(0) = sv_2mortal(newSVpv(neatsvpv(sv, maxlen), 0));
 
@@ -1242,12 +1415,16 @@ _install_method(class, meth_name, file, attribs=Nullsv)
 
 
 int
-_debug_dispatch(sv, level=dbis->debug, file=Nullch)
+trace(sv, level=dbis->debug, file=Nullch)
     SV *	sv
     int	level
     char *	file
+    ALIAS:
+    _debug_dispatch = 1
     CODE:
     sv = sv;	/* avoid 'unused variable' warning'			*/
+    if (!dbis)
+	croak("DBI not initialised");
     /* Return old/current value. No change if new value not given.	*/
     RETVAL = dbis->debug;
     set_trace_file(file);
@@ -1425,7 +1602,7 @@ fetchrow_array(sth)
 	EXTEND(sp, num_fields+1);
 
 	/* We now check for bind_col() having been called but fetch	*/
-	/* not returning the fields_av array. Probably because the	*/
+	/* not returning the fields_svav array. Probably because the	*/
 	/* driver is implemented in perl. XXX This logic may change later.	*/
 	bound_av = DBIc_FIELDS_AV(imp_sth); /* bind_col() called ?	*/
 	if (bound_av && av != bound_av) {
@@ -1477,6 +1654,7 @@ void
 DESTROY(imp_xxh_rv)
     SV *	imp_xxh_rv
     CODE:
+    imp_xxh_rv = imp_xxh_rv;	/* avoid unused var warning */
     /* the interesting stuff happens in DBD::_mem::common::DESTROY */
     ST(0) = &sv_undef;
 
@@ -1558,7 +1736,7 @@ trace(sv, level=0, file=Nullch)
     CODE:
     {
     D_imp_xxh(sv);
-    SV *dsv = DBIc_ATTR(imp_xxh, Debug);
+    SV *dsv = DBIc_DEBUG(imp_xxh);
     /* Return old/current value. No change if new value not given */
     RETVAL=SvIV(dsv);
     set_trace_file(file);

@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.59 1997/06/11 23:03:50 timbo Exp $
+# $Id: Makefile.PL,v 1.61 1997/07/16 18:17:58 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -27,7 +27,7 @@ warn <<EOT;
 
     Remember to actually *read* the README file!
 
-    Build, TEST and INSTALL Perl 5 first. Use version 5.003 or later.
+    Build, TEST and INSTALL Perl 5 first. Use version 5.004_01 or later.
 
     DO NOT build the DBI under the Perl source tree.
 
@@ -81,7 +81,9 @@ directories you MUST delete old DBI files and directories from your
 
     # get DBIXS.h installed for access by DBD's
 	# (was '$(INST_ARCHLIBDIR)/DBI/DBIXS.h')
-    $self->{PM}->{'DBIXS.h'} = '$(INST_ARCHAUTODIR)/DBIXS.h';
+    $self->{PM}->{'DBIXS.h'}    = '$(INST_ARCHAUTODIR)/DBIXS.h';
+    $self->{PM}->{'DBDXSI.h'}   = '$(INST_ARCHAUTODIR)/DBDXSI.h';
+    $self->{PM}->{'Driver.xst'} = '$(INST_ARCHAUTODIR)/Driver.xst';
     '';
 }
 

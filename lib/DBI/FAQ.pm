@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 1.4 1997/06/25 12:20:10 timbo Exp $
+### $Id: FAQ.pm,v 1.5 1997/07/15 10:58:27 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,9 @@
 ### made to Alligator Descartes <I<descarte@hermetica.com>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 1.5  1997/07/15  10:58:27  timbo
+# *** empty log message ***
+#
 # Revision 1.4  1997/06/25  12:20:10  timbo
 # *** empty log message ***
 #
@@ -33,7 +36,7 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <HTML>
 <HEAD>
 <!-- -->
-<!-- $Id: FAQ.pm,v 1.4 1997/06/25 12:20:10 timbo Exp $ -->
+<!-- $Id: FAQ.pm,v 1.5 1997/07/15 10:58:27 timbo Exp $ -->
 <!-- -->
 <TITLE>Frequently Asked Questions for DBI</TITLE>
 </HEAD>
@@ -436,7 +439,7 @@ What you needed to do to fix it. Please make sure you mention everything.
 
 =item *
 
-Platform information, database version, perl version (perl -V), module
+Platform information, database version, perl version (C<perl -V>), module
 version and DBI version.
 
 =back
