@@ -15,6 +15,19 @@ sub new
 {
 	shift;
 	my $connect_line= shift;
+
+# [R] self-hack to allow empty UID and PWD
+	my $temp_connect_line;
+	$connect_line=~/DSN=\w+/;
+	$temp_connect_line="$&;";
+	if ($connect_line=~/UID=\w?/)
+		{$temp_connect_line.="$&;";}
+	else	{$temp_connect_line.="UID=;";};
+	if ($connect_line=~/PWD=\w?/)
+		{$temp_connect_line.="$&;";}
+	else	{$temp_connect_line.="PWD=;";};
+	$connect_line=$temp_connect_line;
+# -[R]-
 	
 	my $self= {};
 		
@@ -83,8 +96,9 @@ sub Sql
 		$self->{'DBI_NAME'} = $sth->{NAME};
 	}
 
-	# provide compatibility with Win32::ODBC's way of identifying erraneous SQL statements
+# [R] provide compatibility with Win32::ODBC's way of identifying erraneous SQL statements
  	return ($self->{'DBI_ERR'})?1:undef;
+# -[R]-
 }
  
 
@@ -103,12 +117,13 @@ sub FetchRow
 	 	{
 			#-- the row of result is not nul
 			#-- return somthing nothing will be return else
-			1;
+			return 1;
 	 	} 	
 	}
+	return undef;
 } 
 
-# provide compatibility with Win32::ODBC's Data() method.
+# [R] provide compatibility with Win32::ODBC's Data() method.
 sub Data
 {
 	my $self=shift;
@@ -118,8 +133,9 @@ sub Data
 		# remove padding of spaces by DBI
 		$element=~s/(\s*$)//;
 	};
-	return @array;
+	return (wantarray())?@array:join('', @array);
 };
+# -[R]-
  
 #EMU --- %record = $db->DataHash;
 sub DataHash
@@ -134,6 +150,7 @@ sub DataHash
 
  	my %DataHash;
 #print @name; print "\n"; print @row;
+# [R] new code that seems to work consistent with Win32::ODBC
 	while (@name)
 	{
 		my $name=shift(@name);
@@ -145,8 +162,9 @@ sub DataHash
 
 		$DataHash{$name}=$value;
 	};
+# -[R]-
 
-# old code that didn't appear to work
+# [R] old code that didn't appear to work
 #	foreach my $name (@name)
 #	{
 #		$name=~s/(^\s*)|(\s*$)//;
@@ -157,6 +175,7 @@ sub DataHash
 #			$DataHash{$name}=shift(@row);
 #		}
 #	}
+# -[R]-
 
  	#--- Return Hash
  	return %DataHash; 	
@@ -178,7 +197,7 @@ sub Error
  	
 }
 
-# provide compatibility with Win32::ODBC's Close() method.
+# [R] provide compatibility with Win32::ODBC's Close() method.
 sub Close
 {
 	my $self=shift;
@@ -186,11 +205,13 @@ sub Close
 	my $dbh=$self->{'DBI_DBH'};
 	$dbh->disconnect;
 }
+# -[R]-
 
- 
 1;
 
 __END__
+
+# [R] to -[R]- indicate sections edited by me, Roy Lee
 
 =head1 NAME
 

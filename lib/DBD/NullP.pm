@@ -4,9 +4,9 @@
     require DBI;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.3 $, 9,-1);
+    $VERSION = substr(q$Revision: 10.4 $, 9,-1);
 
-#   $Id: NullP.pm,v 10.3 1999/06/17 13:08:26 timbo Exp $
+#   $Id: NullP.pm,v 10.4 2001/05/29 23:25:55 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -89,13 +89,19 @@
 
     sub execute {
 	my($sth, $dir) = @_;
+	$sth->{dbd_nullp_data} = $dir if $dir;
 	1;
     }
 
     sub fetch {
 	my($sth) = @_;
+	my $data = $sth->{dbd_nullp_data};
+        if ($data) {
+	    $sth->{dbd_nullp_data} = undef;
+	    return [ $data ];
+	}
 	$sth->finish;     # no more data so finish
-	return [];
+	return undef;
     }
 
     sub finish {
@@ -106,6 +112,7 @@
 	my ($sth, $attrib) = @_;
 	# would normally validate and only fetch known attributes
 	# else pass up to DBI to handle
+	return [ "fieldname" ] if $attrib eq 'NAME';
 	return $sth->DBD::_::st::FETCH($attrib);
     }
 

@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.9 $, 10)+0;
+$VERSION = substr(q$Revision: 10.10 $, 10)+0;
 
 my $warning = <<'EOM';
 
@@ -349,7 +349,7 @@ sub run {
 	my $prefix = $sh->{command_prefix};
 
 	$current_line = $sh->readline($sh->prompt());
-	$current_line = "/quit" unless defined $current_line;
+	$current_line = "${prefix}quit" unless defined $current_line;
 
 	if ( $current_line =~ /
 		^(.*?)
@@ -373,7 +373,7 @@ sub run {
 		$command = $sh->{abbrev}->{$cmd};
 	    }
 	    else {
-		$command = ($sh->{command}->{$cmd}) ? $cmd : undef;
+		$command = ($sh->{commands}->{$cmd}) ? $cmd : undef;
 	    }
 	    if ($command) {
 		$sh->run_command($command, $output, @args);
@@ -967,17 +967,19 @@ sub do_option {
 	my ($opt_name, $value) = $opt =~ /^\s*(\w+)(?:=(.*))?/;
 	$opt_name = $options->{$opt_name} || $opt_name if $opt_name;
 	if (!$opt_name || !$sh->{options}->{$opt_name}) {
-	    $sh->log("Unknown or ambiguous option name '$opt_name'");
+	    $sh->log("Unknown or ambiguous option name '$opt_name' (use name=value format)");
 	    next;
 	}
 	my $crnt = (defined $sh->{$opt_name}) ? $sh->{$opt_name} : 'undef';
+	my $log;
 	if (not defined $value) {
-	    $sh->log("/option $opt_name=$crnt");
+	    $log = "$opt_name=$crnt";
 	}
 	else {
-	    $sh->log("/option $opt_name=$value  (was $crnt)");
+	    $log = "/option $opt_name=$value  (was $crnt)";
 	    $sh->{$opt_name} = ($value eq 'undef') ? undef : $value;
 	}
+	$sh->log($sh->{command_prefix}."option $log");
     }
 }
 

@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 10.7 2001/03/28 14:52:07 timbo Exp $
+### $Id: FAQ.pm,v 10.8 2001/05/29 23:25:55 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,9 @@
 ### made to Alligator Descartes <I<http://www.symbolstone.org/descarte/contact.html>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 10.8  2001/05/29  23:25:55  timbo
+# *** empty log message ***
+#
 # Revision 10.7  2001/03/28  14:52:07  timbo
 # Main checkin prior to 1.15 release
 #
@@ -106,10 +109,10 @@ I<dbi-users> mailing list.
     Sybperl     Sybase              Michael Peppler DBD::Sybase
                                     <mpeppler@itf.ch>
     Oraperl     Oracle 6 & 7        Kevin Stock     DBD::Oracle
-                                    <dbi-users@isc.org>
+                                    <dbi-users@perl.org>
     Ingperl     Ingres              Tim Bunce &     DBD::Ingres
                                     Ted Lemon
-                                    <dbi-users@isc.org>
+                                    <dbi-users@perl.org>
     Interperl   Interbase           Buzz Moschetti  DBD::Interbase
                                     <buzz@bear.com>
     Uniperl     Unify 5.0           Rick Wargo      None
@@ -160,6 +163,7 @@ I<CPAN multiplexer> program located at:
 For more specific version information and exact URLs of drivers, please see
 the DBI drivers list and the DBI module pages which can be found on:
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 This list is automatically generated on a nightly basis from CPAN and should
@@ -319,6 +323,7 @@ I<Tk::POD> and is highly recommended.
 The driver summaries that were produced for Appendix B of "Programming the
 Perl DBI" are available online at:
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 in the driver information table. These summaries contain standardised
@@ -328,6 +333,7 @@ drivers or whether a driver is not fully compliant with the DBI Specification.
 
 =item I<Rambles, Tidbits and Observations>
 
+    http://dbi.perl.org/tidbits
     http://www.symbolstone.org/technology/perl/DBI/tidbits
 
 There are a series of occasional rambles from various people on the
@@ -339,6 +345,7 @@ quality, but do provide some insights into the workings of the interfaces.
 
 A list of articles discussing the DBI can be found on the DBI WWW page at:
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 These articles are of varying quality and age, from the original Perl Journal
@@ -352,55 +359,23 @@ some useful information ( no, really! ) that may be pertinent to the user.
 Please read them. It makes our worthless existences more bearable. These
 can all be read from the main DBI WWW page at:
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 =item I<Mailing Lists>
 
-There are three mailing lists for DBI run by Ted Lemon. These can all
-be subscribed to and unsubscribed from I<via> the World Wide Web at the
-URL of:
+There are three mailing lists for DBI:
 
-    http://www.isc.org/dbi-lists.html
+    dbi-announce@perl.org     -- for announcements, very low traffic
+    dbi-users@perl.org        -- general user support
+    dbi-dev@perl.org          -- for driver developers (no user support)
 
-The lists that users may participate in are:
+For information on how to subscribe, set digest mode etc, and unsubscribe,
+send an email message (the content will be ignored) to:
 
-=over 4
-
-=item I<dbi-announce>
-
-This mailing list is for announcements only. Very low traffic. The
-announcements are usually posted on the main DBI WWW page.
-
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-announce-request@isc.org' with a message body of
-    'subscribe'
-
-=item I<dbi-dev>
-
-This mailing list is intended for the use of developers discussing
-ideas and concepts for the DBI interface, API and driver mechanics.
-Only any use for developers, or interested parties. Low traffic.
-
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-dev-request@isc.org' with a message body of
-    'subscribe'
-
-=item I<dbi-users>
-
-This mailing list is a general discussion list used for bug reporting,
-problem discussion and general enquiries. Medium traffic.
-
-If you cannot successfully use the form on the above WWW page, please
-subscribe to the list in the following manner:
-
-    Email: 'dbi-users-request@isc.org' with a message body of
-    'subscribe'
-
-=back
+    dbi-announce-help@perl.org
+    dbi-users-help@perl.org
+    dbi-dev-help@perl.org
 
 =item I<Mailing List Archives>
 
@@ -432,6 +407,7 @@ information about the problem. It may be a known problem for your given
 architecture and operating system or database. You can check the README
 files for each driver in advance online at:
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 If it's a known problem, you'll probably have to wait till it gets fixed. If 
@@ -596,6 +572,7 @@ Yes, use the I<DBD::ODBC> driver.
 
 Is is listed on the DBI drivers page?
 
+    http://dbi.perl.org/
     http://www.symbolstone.org/technology/perl/DBI
 
 If not, no. A complete absence of a given database driver from that

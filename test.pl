@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 10.5 2001/03/30 14:35:41 timbo Exp $
+# $Id: test.pl,v 10.6 2001/05/29 23:25:55 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 10.5 $}."\n";
+    print q{DBI test application $Revision: 10.6 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
     warn $@ if $@;
@@ -95,26 +95,30 @@ else {
     printf "$count NullP statement handles cycled in %.1f cpu+sys seconds (%d per sec)\n\n",
 	    $dur, $count / $dur;
 
+  if (0) {
+    $null_dbh = DBI->connect('dbi:mysql:VC_log','','',{RaiseError=>1});
+    $null_sth = $null_dbh->prepare('select * from big');
+    $null_sth->execute();
+    $t1 = new Benchmark;
+    1 while ($null_sth->fetchrow_hashref());
+    #1 while ($null_sth->fetchrow_arrayref());
+    $td = Benchmark::timediff(Benchmark->new, $t1);
+    $tds= Benchmark::timestr($td);
+    $dur = $td->cpu_a;
+    printf "$DBI::rows in $tds\n";
+  }
 }
 
 #DBI->trace(4);
 print "$0 done\n";
 exit 0;
 
-{ package Foo;
-use Tie::Hash;
-BEGIN { @Foo::ISA = qw(Tie::StdHash); }
-sub STORE { warn "STORE @_" if 0; shift->SUPER::STORE(@_) }
-sub FETCH { warn "FETCH @_" if 0; shift->SUPER::FETCH(@_) }
-}
-
 sub mem_test {	# harness to help find basic leaks
     my ($dbh) = @_;
-    system("echo $count; $ps$$") if (($count++ % 1000) == 0);
+    system("echo $count; $ps$$") if (($count++ % 100) == 0);
     my $cursor_a = $dbh->prepare("select mode,ino,name from ?");
-    $cursor_a->execute('/usr');
-    my @row_a = $cursor_a->fetchrow;
-    $cursor_a->finish;
+    $cursor_a->execute('.');
+    my $rows = $cursor_a->fetchall_arrayref({});
 }
 
 

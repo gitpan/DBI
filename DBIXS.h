@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.16 2001/03/30 14:35:41 timbo Exp $
+/* $Id: DBIXS.h,v 10.17 2001/05/29 23:25:55 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -88,8 +88,8 @@ typedef struct dbih_com_std_st {
     U32  flags;
     int  call_depth;	/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
-    SV   *my_h;		/* copy of outer handle HV (not refcounted)	*/
-    SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
+    HV   *my_h;		/* copy of outer handle HV (not refcounted)	*/
+    HV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
     dbi_cond  *thr_cond;/* condition for thread access (see dispatch)	*/
 
@@ -229,10 +229,10 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_Taint       0x1000	/* taint fetched data			*/
 #define DBIcf_ShowErrorStatement  0x0200	/* include Statement in error	*/
 
-#define DBIcf_INHERITMASK			/* what NOT to pass on to children */	\
-	(U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
-	/* These are for dbh only:	*/						\
-	| DBIcf_AutoCommit	)
+#define DBIcf_INHERITMASK		/* what NOT to pass on to children */	\
+  (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\
+  /* These are for dbh only:	*/						\
+  | DBIcf_AutoCommit	)
 
 /* general purpose flag setting and testing macros (except ACTIVE)	*/
 #define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
@@ -400,9 +400,7 @@ static dbistate_t **get_dbistate() {
 }
 # undef DBIS
 # define DBIS (*get_dbistate())
-
-/* temporary for drivers that mistakenly use 'dbis' instead of 'DBIS' */
-# define dbis (*get_dbistate())
+# define dbis (*get_dbistate()) /* temp for bad drivers using 'dbis' instead of 'DBIS' */
 
 #else	/* plain and simple non perl object / multiplicity case */
 

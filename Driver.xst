@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 10.18 2000/06/02 16:31:37 timbo Exp $
+#  $Id: Driver.xst,v 10.19 2001/05/29 23:25:55 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -288,8 +288,11 @@ execute(sth, ...)
 	if (items-1 != DBIc_NUM_PARAMS(imp_sth)
 	    && DBIc_NUM_PARAMS(imp_sth) != DBIc_NUM_PARAMS_AT_EXECUTE
 	) {
-	    croak("execute called with %ld bind variables when %d are needed",
+	    char errmsg[99];
+	    sprintf(errmsg,"called with %ld bind variables when %d are needed",
 		    items-1, DBIc_NUM_PARAMS(imp_sth));
+	    sv_setpv(DBIc_ERRSTR(imp_sth), errmsg);
+	    sv_setiv(DBIc_ERR(imp_sth), (IV)-1);
 	    XSRETURN_UNDEF;
 	}
         idx = sv_2mortal(newSViv(0));

@@ -34,6 +34,14 @@ my $r;
 my $dbh = DBI->connect('dbi:ExampleP(AutoCommit=>1 ,Taint = 1):', undef, undef);
 die "Unable to connect to ExampleP driver: $DBI::errstr" unless $dbh;
 
+if (0) {
+DBI->trace(9,undef);
+warn DBI::dump_handle($dbh,"dump_handle",1);
+warn my $foo=$dbh->{Driver};
+warn $foo=$dbh->{Driver};
+die DBI::dump_handle($dbh,"dump_handle",1);
+}
+
 my $dbh2 = DBI->connect('dbi:ExampleP:', '', '');
 ok(0, $dbh ne $dbh2);
 my $dbh3 = DBI->connect_cached('dbi:ExampleP:', '', '');
@@ -90,6 +98,7 @@ ok(0, ref $csr_b);
 ok(0, $csr_a != $csr_b);
 ok(0, $csr_a->{NUM_OF_FIELDS} == 3);
 ok(0, $csr_a->{'Database'}->{'Driver'}->{'Name'} eq 'ExampleP');
+ok(0, $csr_a->{'Database'} eq $dbh);
 
 ok(0, "@{$csr_b->{NAME_lc}}" eq "mode size name");	# before NAME
 ok(0, "@{$csr_b->{NAME_uc}}" eq "MODE SIZE NAME");
@@ -159,8 +168,10 @@ ok(0, "@row_a" ne "@row_b");
 ok(0, $csr_a->finish);
 ok(0, $csr_b->finish);
 
+#$csr_b->trace(4);
 ok(0, $csr_b->execute());
 my $row_b = $csr_b->fetchrow_hashref('NAME_uc');
+#$csr_b->trace(0);
 ok(0, $row_b);
 ok(0, $row_b->{MODE} == $row_a[0]);
 ok(0, $row_b->{SIZE} == $row_a[1]);
@@ -189,11 +200,15 @@ ok(0, $r && @$r);
 ok(0, $r->[0]->{Size} == $row_a[1]);
 ok(0, $r->[0]->{NAME} eq $row_a[2]);
 
+#$csr_b->trace(4);
 ok(0, $csr_b->execute());
 $r = $csr_b->fetchall_arrayref({});
 ok(0, $r);
 ok(0, keys %{$r->[0]} == 3);
-ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a");
+ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a", "'@{$r->[0]}{qw(mode size name)}' ne '@row_a'");
+#$csr_b->trace(0);
+
+# use Data::Dumper; warn Dumper([\@row_a, $r]);
 
 $rows = $csr_b->rows;
 ok(0, $rows > 0, "row count $rows");
@@ -204,6 +219,12 @@ ok(0, $rows == @$r, "$rows vs ".@$r);
 @row_b = $dbh->selectrow_array($std_sql, undef, $dir);
 ok(0, @row_b == 3);
 ok(0, "@row_b" eq "@row_a");
+
+$r = $dbh->selectrow_hashref($std_sql, undef, $dir);
+ok(0, keys %$r == 3);
+ok(0, $r->{mode} eq $row_a[0]);
+ok(0, $r->{size} eq $row_a[1]);
+ok(0, $r->{name} eq $row_a[2]);
 
 $r = $dbh->selectall_arrayref($std_sql, undef, $dir);
 ok(0, $r);
@@ -234,10 +255,11 @@ $dbh->{RaiseError} = 1;
 $dbh->{ShowErrorStatement} = 1;
 ok(0, $dbh->{RaiseError});
 ok(0, $dbh->{ShowErrorStatement});
-ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; });
+my $error_sql = "select unknown_field_name2 from ?";
+ok(0, ! eval { $csr_c = $dbh->prepare($error_sql); 1; });
 #print "$@\n";
-ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
-ok(0, $@ =~ m/{select unknown_field_name2 from/); # ShowErrorStatement
+ok(0, $@ =~ m/Unknown field names: unknown_field_name2/, $@);
+ok(0, $@ =~ m/\Q$error_sql/, $@); # ShowErrorStatement
 $dbh->{RaiseError} = 0;
 ok(0, !$dbh->{RaiseError});
 $dbh->{ShowErrorStatement} = 0;
@@ -349,4 +371,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 122; }
+BEGIN { $tests = 127; }

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 10.8 2000/06/11 00:06:02 timbo Exp $
+# $Id: DBD.pm,v 10.9 2001/05/29 23:25:55 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 10.8 $
-	$Date: 2000/06/11 00:06:02 $
+	$Revision: 10.9 $
+	$Date: 2001/05/29 23:25:55 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -1387,6 +1387,28 @@ See the I<DBD::mysql> driver for an example.
 
 =back
 
+=head2 Implementing bind_param_inout support
+
+To provide support for parameters bound by reference rather than by
+value, the driver must do a number of things.  First, and most
+importantly, it must note the references and stash them in its own
+driver structure.  Secondly, when a value is bound to a column, the
+driver must discard any previous reference bound to the column.  On
+each execute, the driver must evaluate the references and internally
+bind the values resulting from the references.  This is only applicable
+if the user writes:
+
+        $sth->execute;
+
+If the user writes:
+
+        $sth->execute(@values);
+
+then DBI automatically calls the binding code for each element of
+@values.  These calls are indistinguishable from explicit user calls to
+bind_param.
+
+
 =head2 Makefile.PL
 
 This is exactly as in the Pure Perl case. To be honest, the above
@@ -1728,7 +1750,7 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = substr(q$Revision: 10.8 $, 10);
+$VERSION = substr(q$Revision: 10.9 $, 10);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir

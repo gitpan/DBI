@@ -45,7 +45,7 @@ my $defaultPidFile = $haveFileSpec ?
 
 use vars qw($VERSION @ISA);
 
-$VERSION = "0.2003";
+$VERSION = "0.2004";
 @ISA = qw(RPC::PlServer DBI);
 
 
@@ -245,7 +245,7 @@ sub prepare {
     my $server = $dbh->{'private_server'};
     if (my $client = $server->{'client'}) {
 	if ($client->{'sql'}) {
-	    if ($statement =~ /^\s*\S+/) {
+	    if ($statement =~ /^\s*(\S+)/) {
 		my $st = $1;
 		if (!($statement = $client->{'sql'}->{$st})) {
 		    die "Unknown SQL query: $st";

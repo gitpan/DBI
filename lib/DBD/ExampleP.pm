@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 10.13 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 10.14 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 10.13 2001/03/30 14:35:41 timbo Exp $
+#   $Id: ExampleP.pm,v 10.14 2001/05/29 23:25:55 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -127,7 +127,7 @@
 					"Failed to open directory $dir: $!");
 	    while (defined(my $file = readdir($dh))) {
 		next unless -d $file;
-		my($dev, $ino, $mode, $nlink, $uid) = lstat(_);
+		my($dev, $ino, $mode, $nlink, $uid) = lstat($file);
 		my $pwnam = undef; # eval { scalar(getpwnam($uid)) } || $uid;
 		push(@list, [ $dir, $pwnam, $file, 'TABLE']);
 	    }

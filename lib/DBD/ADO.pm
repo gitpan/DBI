@@ -5,23 +5,24 @@
 
     require DBI;
     require Carp;
-    use strict;
-    use vars qw($err $errstr $state $drh $VERSION @EXPORT);
+		use strict;
+		use vars qw($err $errstr $state $drh $VERSION @EXPORT);
 
     @EXPORT = ();
-    $VERSION = '0.4'.sprintf("%02d",substr(q$Revision: 1.19 $, 12,-1));
+    $VERSION = substr(q!Revision: 2.0 !, 9,-1) +0;
 
-#   $Id: ADO.pm,v 1.19 2001/03/30 14:35:41 timbo Exp $
+#   $Id: ADO.pm,v 1.20 2001/05/29 23:25:55 timbo Exp $
 #
 #   Copyright (c) 1999, Phlip & Tim Bunce
+#   Copyright (c) 2001, Thomas "A." Lowery
 #
 #   You may distribute under the terms of either the GNU General Public
 #   License or the Artistic License, as specified in the Perl README file.
 
     $drh = undef;       # holds driver handle once initialised
     $err = 0;           # The $DBI::err value
-    $errstr = "";
-    $state = "";
+		$errstr = "";
+		$state = "";
 
     sub driver{
         return $drh if $drh;
@@ -66,7 +67,7 @@
 			#return join "\n", @$err_ary;
 			}
 		$Errors->Clear if $Errors;
-		$Conn->Errors->Clear() if $Conn->Errors;
+		$Conn->Errors->Clear();
 		return ($err_ary? join "\n", @$err_ary : undef);
     }
 
@@ -381,16 +382,11 @@ my $ado_type;
 				"Can't create 'object ADODB.Command': $lastError")
 	    if $lastError;
 
-			if( $conn and ($conn->State() && $ado_consts->{adStateOpen})) {
-				$comm->{ActiveConnection} = $conn;
-				$lastError = DBD::ADO::errors($conn);
-				return DBI::set_err($dbh, 1,
-					"Unable to set ActiveConnection 'ADODB.Command': $lastError")
-	    	if $lastError;
-			} else {
-				return DBI::set_err($dbh, 1,
-"When attempting to set ADODB.Command, determined connection is closed:");
-			}
+			$comm->{ActiveConnection} = $conn;
+			$lastError = DBD::ADO::errors($conn);
+			return DBI::set_err($dbh, 1,
+				"Unable to set ActiveConnection 'ADODB.Command': $lastError")
+	    if $lastError;
 
 			$comm->{CommandText} = $statement;
 			$lastError = DBD::ADO::errors($conn);
@@ -1315,6 +1311,8 @@ If Operator is LIKE, Value can use wildcards.
 Only the asterisk (*) and percent sign (%) wild cards are allowed, 
 and they must be the last character in the string. Value cannot be null. 
 
+=back
+
 =head2 tables
 
 B<Warning:> This method is experimental and may change or disappear.
@@ -1325,6 +1323,8 @@ Returns a list of table and view names.
 Accepts any of the attributes described in the L<table_info> method:
 
 	@names = $dbh->tables({ TABLE_TYPE => 'VIEW' });
+
+=back
 
 =head1 Warnings
 

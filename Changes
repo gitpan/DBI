@@ -1,3 +1,26 @@
+Changes in DBI 1.16,    30th May 2001
+
+  Reimplemented fetchrow_hashref in C, now fetches about 25% faster!
+  Changed behaviour if both PrintError and RaiseError are enabled
+    to simply do both (in that order, obviously :)
+  Slight reduction in DBI handle creation overhead.
+  Fixed $dbh->{Driver} & $sth->{Database} to return 'outer' handles.
+  Fixed execute param count check to honour RaiseError spotted by Belinda Giardie.
+  Fixed build for perl5.6.1 with PERLIO thanks to H.Merijn Brand.
+  Fixed client sql restrictions in ProxyServer.pm thanks to Jochen Wiedmann.
+  Fixed batch mode command parsing in Shell thanks to Christian Lemburg.
+  Fixed typo in selectcol_arrayref docs thanks to Jonathan Leffler.
+  Fixed selectrow_hashref to be available to callers thanks to T.J.Mather.
+  Fixed core dump if statement handle didn't define Statement attribute.
+  Added bind_param_inout docs to DBI::DBD thanks to Jonathan Leffler.
+  Added note to data_sources() method docs that some drivers may
+    require a connected database handle to be supplied as an attribute.
+  Trace of install_driver method now shows path of driver file loaded.
+  Changed many '||' to 'or' in the docs thanks to H.Merijn Brand.
+  Updated DBD::ADO again (improvements in error handling) from Tom Lowery.
+  Updated Win32::DBIODBC (Win32::ODBC emulation) thanks to Roy Lee.
+  Updated email and web addresses in DBI::FAQ thanks to Michael A Chase.
+
 Changes in DBI 1.15,    28th March 2001
 
   Added selectrow_arrayref
@@ -25,7 +48,7 @@ Changes in DBI 1.15,    28th March 2001
     Clarified fetchall_arrayref({}) docs (thanks to, er, someone!).
     Clarified type_info_all re lettercase and index values.
     Updated DBI::FAQ to 0.38 thanks to Alligator Descartes.
-    Added cute bind_columns example thanks to Mark Dedlow.
+    Added cute bind_columns example thanks to H.Merijn Brand.
     Extended docs on \%attr arg to data_sources method.
   Makefile.PL
     Removed obscure potential 'rm -rf /' (thanks to Ulrich Pfeifer).
