@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 1.7 1998/07/09 09:22:52 timbo Exp $
+### $Id: FAQ.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -19,6 +19,12 @@
 ### made to Alligator Descartes <I<descarte@hermetica.com>>.
 ### 
 ### $Log: FAQ.pm,v $
+# Revision 10.1  1998/08/14  20:21:36  timbo
+# *** empty log message ***
+#
+# Revision 1.8  1998/08/14  19:47:24  timbo
+# *** empty log message ***
+#
 # Revision 1.7  1998/07/09  09:22:52  timbo
 # *** empty log message ***
 #
@@ -42,7 +48,7 @@ DBI::FAQ -- The Frequently Asked Questions for the Perl5 Database Interface
 <HTML>
 <HEAD>
 <!-- -->
-<!-- $Id: FAQ.pm,v 1.7 1998/07/09 09:22:52 timbo Exp $ -->
+<!-- $Id: FAQ.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $ -->
 <!-- -->
 <TITLE>Frequently Asked Questions for DBI</TITLE>
 </HEAD>
@@ -70,6 +76,9 @@ DBI Frequently Asked Questions v.0.35
 =head1 VERSION
 
 This document is currently at version I<0.35>, as of I<June 20th, 1997>.
+
+B<It is quite out of date and should not be relied upon as anything
+other than a set of assorted hints.>
 
 =head1 DESCRIPTION
 
@@ -167,10 +176,6 @@ from CPAN I<via>:
     http://www.perl.com/cgi-bin/cpan_mod?module=Msqlperl
 
 =head2 1.2. Where can I get it from?
-
-DBI is primarily distributed from:
-
-    ftp://ftp.demon.co.uk/pub/perl/db
 
 The Comprehensive Perl Archive Network resources should be used for
 retrieving up-to-date versions of the drivers.  Local CPAN sites may be
@@ -816,7 +821,7 @@ I<DBD::Oracle> and I<Oraperl>. Support is provided by the company with whom
 Tim Bunce, author of DBI and DBD::Oracle, works. For more information
 on their services, please see:
 
-    http://www.perl.co.uk/tpc
+    http://www.perlclinic.com
 
 for more details.
 

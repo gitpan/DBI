@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 1.91 1998/08/10 23:48:07 timbo Exp $
+# $Id: DBI.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
 #
 # Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.003;
 
 BEGIN {
-$DBI::VERSION = '0.95'; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = '1.00'; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -66,8 +66,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 0.95
-($Date: 1998/08/10 23:48:07 $).
+This is the DBI specification that corresponds to the DBI version 1.00
+($Date: 1998/08/14 20:21:36 $).
 
 The DBI specification is currently evolving quite quickly so it is
 important to check that you have the latest copy. The RECENT CHANGES
@@ -75,9 +75,9 @@ section below has a summary of user-visible changes and the F<Changes>
 file supplied with the DBI holds more detailed change information.
 
 Note also that whenever the DBI changes the drivers take some time to
-catch up. Recent versions of the DBI have added many new features that
-may not yet be supported by the drivers you use. Talk to the authors of
-those drivers if you need the features.
+catch up. Recent versions of the DBI have added many new features
+(marked *NEW* in the text) that may not yet be supported by the drivers
+you use. Talk to the authors of those drivers if you need the features.
 
 Please also read the DBI FAQ which is installed as a DBI::FAQ module so
 you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
@@ -90,50 +90,32 @@ significant user-visible changes in that version).
 
 =over 4 
 
+=item DBI 1.00 - 14th August 1998
+
+Added $dbh->table_info.
+
+=item DBI 0.96 - 10th August 1998
+
+Added $sth->{PRECISION} and $sth->{SCALE}.
+Added DBD::Shell and dbish interactive DBI shell.
+Any database attribs can be set via DBI->connect(,,, \%attr).
+Added _get_fbav and _set_fbav methods for Perl driver developers.
+DBI trace now shows appends " at yourfile.pl line nnn".
+PrintError and RaiseError now prepend driver and method name.
+Added $dbh->{Name}.
+Added $dbh->quote($value, $data_type).
+Added DBD::Proxy and DBI::ProxyServer (from Jochen Wiedmann).
+Added $dbh->selectall_arrayref and $dbh->selectrow_array methods.
+Added $dbh->table_info.
+Added $dbh->type_info and $dbh->type_info_all.
+Added $h->trace_msg($msg) to write to trace log.
+Added @bool = DBI::looks_like_number(@ary).
+
 =item DBI 0.92 - 4th February 1998
 
 Added $dbh->prepare_cached() caching variant of $dbh->prepare.
 Added new attributes: Active, Kids, ActiveKids, CachedKids.
 Added support for general-purpose 'private_' attributes.
-
-=item DBI 0.91 - 10th December 1997
-
-Fixed bug in New-style DBI->connect call which was not defaulting
-AutoCommit and PrintError to on.
-
-=item DBI 0.86 - 16th July 1997
-
-Added $h->{LongReadLen} and $h->{LongTruncOk} attributes for LONGs/BLOBs.
-Added DBI_USER and DBI_PASS env vars. See L</connect> for usage.
-Added DBI->trace() to set global trace level (like per-handle $h->trace).
-PERL_DBI_DEBUG env var renamed DBI_TRACE (old name still works for now).
-Updated docs, including commit, rollback, AutoCommit and Transactions sections.
-Added bind_param method and execute(@bind_values) to docs.
-
-=item DBI 0.85 - 25th June 1997
-
-The 'new-style connect' (see below) now defaults to AutoCommit mode unless
-{ AutoCommit => 0 } specified in connect attributes (see L</connect>).
-New DBI_DSN env var default for connect method (supersedes DBI_DRIVER).
-
-=item DBI 0.84 - 20th June 1997
-
-Added $h->{PrintError} attribute which, if set true, causes all errors
-to trigger a warn().  New-style DBI->connect call now automatically
-sets PrintError=1 unless { PrintError => 0 } specified in the connect
-attributes (see L</connect>).  The old-style connect with a separate
-driver parameter is deprecated.  Renamed $h->debug to $h->trace() and
-added a trace filename arg.
-
-=item DBI 0.83 - 11th June 1997
-
-Added 'new-style' driver specification syntax to the DBI->connect
-data_source parameter: DBI->connect( 'dbi:driver:...', $user, $passwd);
-The DBI->data_sources method should return data_source names with the
-appropriate 'dbi:driver:' prefix.  DBI->connect will warn if \%attr is
-true but not a hash ref.  Added new fetchrow methods (fetchrow_array,
-fetchrow_arrayref and fetchrow_hashref):  Added the DBI FAQ from
-Alligator Descartes in module form for easy reading via "perldoc DBI::FAQ".
 
 =back 
 
@@ -148,7 +130,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.91 $, 10);
+my $Revision = substr(q$Revision: 10.1 $, 10);
 
 
 use Carp;
@@ -262,7 +244,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	@TieHash_IF,
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'] },
 	'disconnect_all'=>{ U =>[1,1] },
-	data_sources => { U =>[2,3] },
+	data_sources => { U =>[1,2,'[\%attr]' ] },
     },
     db => {		# Database Session Class Interface
 	@Common_IF,
@@ -281,6 +263,7 @@ my %DBI_IF = (	# Define the DBI Interface:
 	rows       	=> $keeperr,
 
 	tables     	=> { U =>[1,1] },
+	table_info     	=> { U =>[1,1] },
 	type_info_all	=> { U =>[1,1] },
 	type_info	=> { U =>[1,2] },
     },
@@ -543,9 +526,9 @@ sub available_drivers {
 }
 
 sub data_sources {
-    my ($class, $driver, $attr) = @_;
+    my ($class, $driver, @attr) = @_;
     my $drh = $class->install_driver($driver);
-    my @ds = $drh->data_sources($attr);
+    my @ds = $drh->data_sources(@attr);
     return @ds;
 }
 
@@ -848,8 +831,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     }
 
     sub selectrow_array {
-	my ($dbh, $statement, $attr, @bind) = @_;
-	my $sth = (ref $statement) ? $statement : $dbh->prepare($statement, $attr);
+	my ($dbh, $stmt, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt
+			      : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
 	my @row = $sth->fetchrow_array;
@@ -858,8 +842,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     }
 
     sub selectall_arrayref {
-	my ($dbh, $statement, $attr, @bind) = @_;
-	my $sth = (ref $statement) ? $statement : $dbh->prepare($statement, $attr);
+	my ($dbh, $stmt, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt
+			      : $dbh->prepare($stmt, $attr);
 	return unless $sth;
 	$sth->execute(@bind) || return;
 	return $sth->fetchall_arrayref;
@@ -891,6 +876,24 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     }
     sub rollback {
 	shift->_not_impl('rollback');
+    }
+
+    sub table_info {
+	shift->_not_impl('table_info');
+	return undef;
+    }
+
+    sub tables {
+	my ($dbh, @args) = @_;
+	my $sth = $dbh->table_info(@args);
+	return () unless $sth;
+	my ($row, @tables);
+	while($row = $sth->fetch) {
+	    my $name = $row->[2];
+	    $name = "$row->[1].$name" if $row->[1];
+	    push @tables, $name;
+	}
+	return @tables;
     }
 
     sub type_info_all {
@@ -950,6 +953,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# Probably best to add an AV*fields_hvav to dbih_stc_t and set it up
 	# on the first call to fetchhash which alternate name/value pairs.
 	# This implementation is just rather simple and not very optimised.
+	# Notes for XS implementation: since apps may add entries to the hash
+	# before the next fetch we need to check the key count and, if changed,
+	# scan the hash and delete inappropriate keys.
 	my $row = $sth->fetch or return undef;
 	my %hash;
 	@hash{ @{ $sth->FETCH('NAME') } } = @$row;
@@ -1414,6 +1420,7 @@ directories. Passing a true value for $quiet will inhibit the warning.
 =item B<data_sources>
 
   @ary = DBI->data_sources($driver);
+  @ary = DBI->data_sources($driver, \%attr);
 
 Returns a list of all data sources (databases) available via the named
 driver. The driver will be loaded if not already. If $driver is empty
@@ -1424,7 +1431,8 @@ Data sources will be returned in a form suitable for passing to the
 L</connect> method, i.e., they will include the "dbi:$driver:" prefix.
 
 Note that many drivers have no way of knowing what data sources might
-be available for it and thus, typically, return an empty list.
+be available for it and thus, typically, return an empty or incomplete
+list.
 
 
 =item B<trace>
@@ -1984,18 +1992,17 @@ Very few applications would have any use for this method. See the
 specialist Apache::DBI module for one example usage.
 
 
-=item B<tables>
+=item B<table_info> *NEW*
 
 B<Warning:> This method is experimental and may change or disappear.
 
-  @names = $dbh->tables;  # list context:   return names
-  $sth   = $dbh->tables;  # scalar context: return statement handle
+  $sth = $dbh->table_info;
 
-Returns information about tables that exist in the database.
+Returns an active statement handle that can be used to fetch
+information about tables and views that exist in the database.
 
-If called in a scalar context a statement handle is returned.
-The handle can be used to fetch one record per table and has
-at least the folowing fields defined (order I<undefined>):
+The handle has at least the following fields in the order show
+below. Other fields, after these, may also be present.
 
 B<TABLE_QUALIFIER>: Table qualifier identifier. NULL (undef) if not
 applicable to data source (usually the case). Empty if not applicable
@@ -2012,14 +2019,28 @@ source specific type identifier.
 
 B<REMARKS>: A description of the table. May be NULL (undef).
 
-If called in a list context, a list of table names is returned.  This
-list should include all tables which can be used in a select statement
-without further qualification. That typically means all the tables and
-views owned by the current user and all those accessible via public
-synonyms/aliases.
+Note that table_info might not return records for all tables.
+Applications can use any valid table regardless of whether it's
+returned by table_info.  See also L</tables>.
+
+=item B<tables> *NEW*
+
+B<Warning:> This method is experimental and may change or disappear.
+
+  @names = $dbh->tables;
+
+Returns a list of table and view names.  This list should include all
+tables which can be used in a select statement without further
+qualification. That typically means all the tables and views owned by
+the current user and all those accessible via public synonyms/aliases
+(excluding non-metadata system tables and views).
+
+Note that table_info might not return records for all tables.
+Applications can use any valid table regardless of whether it's
+returned by tables.  See also L</table_info>.
 
 
-=item B<type_info_all>
+=item B<type_info_all> *NEW*
 
 B<Warning:> This method is experimental and may change or disappear.
 
@@ -2064,7 +2085,7 @@ provides a more useful interface to the data.
 The meaning of the fields is described in the documentation for
 the L</type_info> method.
 
-=item B<type_info>
+=item B<type_info> *NEW*
 
 B<Warning:> This method is experimental and may change or disappear.
 
@@ -2115,10 +2136,7 @@ NULL (undef) is returned for data types where this is not applicable.
 =item NULLABLE (integer)
 
 Indicates whether the data type accepts a NULL value:
-
-  0 - yes
-  1 - no
-  2 - unknown
+0 = no, 1 = yes, 2 = unknown.
 
 =item CASE_SENSITIVE (boolean)
 
@@ -2442,7 +2460,13 @@ rows or an error occurs fetchrow_hashref returns undef.
 
 The keys of the hash are the same names returned by $sth->{NAME}. If
 more than one field has the same name there will only be one entry in
-the returned hash.
+the returned hash for those fields.
+
+Note that using fetchrow_hashref is currently I<not portable> between
+databases because different databases return fields names with
+different letter cases (some all uppercase, some all lower, and some
+return the letter case used to create the table). This will be addressed
+in a future version of the DBI.
 
 Because of the extra work fetchrow_hashref and perl have to perform it
 is not as efficient as fetchrow_arrayref or fetchrow_array and is not
@@ -2648,11 +2672,47 @@ trailing space.
 
   print "First column name: $sth->{NAME}->[0]\n";
 
+=item B<TYPE>  (array-ref, read-only) *NEW*
+
+Returns a I<reference> to an array of integer values for each
+column. The value indicates the data type of the corresponding column.
+
+The values used correspond to the international standards (ANSI X3.135
+and ISO/IEC 9075) which, in general terms means ODBC. Driver specific
+types which don't exactly match standard types should generally return
+the same values as an ODBC driver supplied by the makers of the
+database. That might include private type numbers the vendor has
+officially registered. See:
+
+  ftp://jerry.ece.umassd.edu/isowg3/dbl/SQL_Registry
+
+Where there's no vendor supplied ODBC driver to be compatible with the
+DBI driver can use type numbers in the range now officially reserved
+for use by the DBI: -9999 to -9000.
+
+All possible values for TYPE should have at least one entry in the
+output of the L</type_info_all> method.
+
+=item B<PRECISION>  (array-ref, read-only) *NEW*
+
+Returns a I<reference> to an array of integer values for each
+column.  For nonnumeric columns the value generally refers to either
+the maximum length or the defined length of the column.  For numeric
+columns the value refers to the maximum number of digits used by the
+data type (without considering a sign character or decimal point).
+Note that for floating point types (REAL, FLOAT, DOUBLE) the 'display
+size' can be up to 7 characters greater than the precision (for the
+sign + decimal point + the letter E + a sign + 2 or 3 digits).
+
+=item B<SCALE>  (array-ref, read-only) *NEW*
+
+Returns a I<reference> to an array of integer values for each column.
+NULL (undef) values indicate columns where scale is not applicable.
 
 =item B<NULLABLE>  (array-ref, read-only)
 
 Returns a I<reference> to an array indicating the possibility of each
-column returning a null.
+column returning a null: 0 = no, 1 = yes, 2 = unknown.
 
   print "First column may return NULL\n" if $sth->{NULLABLE}->[0];
 
@@ -2662,6 +2722,11 @@ column returning a null.
 Returns the name of the cursor associated with the statement handle if
 available. If not available or the database driver does not support the
 C<"where current of ..."> SQL syntax then it returns undef.
+
+
+=item B<Statement>  (string, read-only) *NEW*
+
+Returns the statement string passed to the L</prepare> method.
 
 
 =back

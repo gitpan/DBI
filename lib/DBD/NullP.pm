@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: NullP.pm,v 1.2 1997/12/10 16:50:14 timbo Exp $
+#   $Id: NullP.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -21,7 +21,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'NullP',
-	    'Version' => '$Revision: 1.2 $',
+	    'Version' => '$Revision: 10.1 $',
 	    'Attribution' => 'DBD Example Null Perl stub by Tim Bunce',
 	    }, [ qw'example implementors private data']);
 	$drh;

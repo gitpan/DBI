@@ -15,7 +15,7 @@ print "1..$tests\n";
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 1.2 $',
+		'Version' => '$Revision: 10.1 $',
 	    },
 	    77	# 'implementors data'
 	    );

@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.48 1998/08/09 20:48:38 timbo Exp $
+/* $Id: DBIXS.h,v 10.1 1998/08/14 20:17:38 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *

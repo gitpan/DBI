@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.84 1998/08/10 23:48:07 timbo Exp $
+/* $Id: DBI.xs,v 10.1 1998/08/14 20:17:38 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *

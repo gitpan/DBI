@@ -12,8 +12,6 @@ Upload PPT presentation to CPAN.
 
 fetch_scroll handling via get_fbav.
 
-Add $sth->{Statement}.
-
 Add $sth->{RowCacheSize} and $dbh->prepare($stmt, { RowCacheSize => $n });
 
 Add per-handle debug file pointer (or at least a macro that _looks_ like that).

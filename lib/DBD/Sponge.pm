@@ -6,7 +6,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: Sponge.pm,v 1.4 1998/08/09 20:48:38 timbo Exp $
+#   $Id: Sponge.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -22,7 +22,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Sponge',
-	    'Version' => '$Revision: 1.4 $',
+	    'Version' => '$Revision: 10.1 $',
 	    'Attribution' => 'DBD Sponge (fake cursor driver) by Tim Bunce',
 	    });
 	$drh;
@@ -56,9 +56,8 @@
 	# we need to set NUM_OF_FIELDS
 	my $firstrow = $rows->[0];
 	$sth->STORE(NUM_OF_FIELDS => scalar @$firstrow);
-	my $names = $attribs->{names}
+	$sth->{NAME} = $attribs->{NAME}
 		|| [ map { "col$_" } 1..@$firstrow ];
-	$sth->{NAME} = $names if $names;
 
 	$outer;
     }

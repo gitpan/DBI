@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 1.11 1998/08/09 20:48:38 timbo Exp $
+# $Id: DBD.pm,v 10.1 1998/08/14 20:21:36 timbo Exp $
 #
 # Copyright (c) 1997 Jonathan Leffler and Tim Bunce
 #
@@ -21,8 +21,8 @@ DBI::DBD - DBD Driver Writer's Guide (draft)
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 1.11 $
-	$Date: 1998/08/09 20:48:38 $
+	$Revision: 10.1 $
+	$Date: 1998/08/14 20:21:36 $
 
 This document is very much a minimal draft which will need to be revised
 frequently (and extensively).

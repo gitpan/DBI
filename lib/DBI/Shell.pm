@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 2.7 $, 10);
+$VERSION = substr(q$Revision: 10.1 $, 10);
 
 
 sub shell {
@@ -66,7 +66,7 @@ use Term::ReadLine;
 use Getopt::Long;
 use Data::Dumper;
 
-use DBI 0.93;
+use DBI 0.93 qw(:sql_types :utils);
 
 
 sub usage {
@@ -253,7 +253,7 @@ sub new {
     $sh->{chistory} = [];	# command history
     $sh->{rhistory} = [];	# result  history
 
-    print "DBI::Shell $DBI::Shell::VERSION\n";
+    print "DBI::Shell $DBI::Shell::VERSION for DBI $DBI::VERSION\n";
 
     return $sh;
 }
@@ -491,8 +491,17 @@ sub show_header {
 
 sub show_row {
     my ($sh, $rowref) = @_;
-    local $^W = 0;	# don't warn about undefs (NULLs)
-    print join(',', @$rowref), "\n";
+	my @row = @$rowref;
+	# XXX note that neat/neat_list output is *not* ``safe''
+	# in the sense the it does not escape any chars and
+	# may truncate the string and may translate non-printable chars.
+	# We only deal with simple escaping here.
+	foreach(@row) {
+		next unless defined;
+		s/'/\\'/g;
+		s/\n/ /g;
+	}
+    print neat_list(\@row, 9999, ","),"\n";
 }
 
 sub show_trailer {
@@ -541,7 +550,7 @@ sub do_go {
 
 	my $sth = $sh->{dbh}->prepare($sh->{current_buffer});
 
-	$sh->sth_go($sth);
+	$sh->sth_go($sth, 1);
     };
     if ($@) {
 	my $err = $@;
@@ -559,17 +568,18 @@ sub do_go {
 
 
 sub sth_go {
-    my ($sh, $sth) = @_;
+    my ($sh, $sth, $execute) = @_;
 
-    my @params;
-    my $params = $sth->{NUM_OF_PARAMS};
-    foreach(1..$params) {
-	local $|=1;
-	my $val = $sh->{term}->readline("Parameter $_ value: ");
-	push @params, $val;
+    if ($execute || !$sth->{Active}) {
+	my @params;
+	my $params = $sth->{NUM_OF_PARAMS};
+	print "Statement has $params parameters:\n" if $params;
+	foreach(1..$params) {
+	    my $val = $sh->{term}->readline("Parameter $_ value: ");
+	    push @params, $val;
+	}
+	$sth->execute(@params);
     }
-
-    my $rv = $sth->execute(@params);
 	
     $sh->{sth} = $sth;
     $sh->show_header($sth->{NAME});
@@ -752,7 +762,8 @@ sub do_get {
 
 sub do_perl {
     my ($sh, @args) = @_;
-    eval $sh->{current_buffer};
+	$DBI::Shell::eval::dbh = $sh->{dbh};
+    eval "package DBI::Shell::eval; $sh->{current_buffer}";
     if ($@) { $sh->err("Perl failed: $@") }
     $sh->run_command('clear');
 }
@@ -808,17 +819,14 @@ sub do_type_info {
     my $ti_cols = shift @$ti;
     my @names = sort { $ti_cols->{$a} <=> $ti_cols->{$b} } keys %$ti_cols;
     my $sth = $sh->prepare_from_data("type_info", $ti, \@names);
-    $sh->sth_go($sth);
+    $sh->sth_go($sth, 0);
 }
 
 
 sub prepare_from_data {
     my ($sh, $statement, $data, $names) = @_;
     my $sponge = DBI->connect("dbi:Sponge:","","",{ RaiseError => 1 });
-    my $sth = $sponge->prepare($statement, {
-	rows => $data,
-	names => $names,
-    });
+    my $sth = $sponge->prepare($statement, { rows=>$data, NAME=>$names });
     return $sth;
 }
 
@@ -826,8 +834,10 @@ sub prepare_from_data {
 sub do_table_info {
     my ($sh, @args) = @_;
     my $dbh = $sh->{dbh};
-    my $sth = $dbh->tables(@args);	  # scalar context first
+    my $sth = $dbh->table_info(@args);
     unless(ref $sth) {
+	print "Driver has not implemented the table_info() method, ",
+		"trying tables()\n";
 	my @tables = $dbh->tables(@args); # else try list context
 	unless (@tables) {
 	    print "No tables exist ",
@@ -839,7 +849,7 @@ sub do_table_info {
 		[ "TABLE_NAME" ]
 	);
     }
-    $sh->sth_go($sth);
+    $sh->sth_go($sth, 0);
 }
 
 

@@ -13,7 +13,6 @@ dbd_xsh.h	Prototypes for standard Driver.xst interface
 dbi_sql.h	Definitions based on SQL CLI / ODBC (#inc'd by DBIXS.h)
 dbiproxy.PL	Frontend for DBI::ProxyServer
 dbish.PL	Frontend for DBI::Shell
-info/registry.txt	A snapshot of the SQL3 registry (probably out of date)
 lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/Proxy.pm	Proxy driver

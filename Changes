@@ -1,3 +1,13 @@
+Changes in DBI 1.00,	14th August 1998
+
+  The DBI is no longer 'alpha' software!
+  Added $dbh->tables and $dbh->table_info.
+  Documented \%attr arg to data_sources method.
+  Added $sth->{TYPE}, $sth->{PRECISION} and $sth->{SCALE}.
+  Added $sth->{Statement}.
+  DBI::Shell now uses neat_list to print results
+  It also escapes "'" chars and converts newlines to spaces.
+
 Changes in DBI 0.95,	10th August 1998
 
   WARNING: THIS IS AN EXPERIMENTAL RELEASE!

@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 1.4 1998/02/04 17:35:24 timbo Exp $
+/* $Id: dbi_sql.h,v 10.1 1998/08/14 20:17:38 timbo Exp $
  *
  * Copyright (c) 1997  Tim Bunce  England
  *

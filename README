@@ -1,14 +1,18 @@
 DBI - The Perl Database Interface by Tim Bunce.
 
-Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England
+Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce  England.
 
 See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
-WARNING:
+RECENT NEWS:
 
-    THIS IS ALPHA SOFTWARE. It is *only* 'Alpha' because the
-    interface (API) is not finalised. The Alpha status does
-    not reflect code quality or stability.
+    The DBI is now formally released (no longer alpha or beta).
+
+    The DBI now comes bundled with DBI::Shell, DBD::Proxy and
+    DBD::ProxyServer modules. These *are* still alpha.
+
+    Note that recent additions to the DBI spec (marked *NEW*) may
+    take a little while to be fully supported by individual drivers.
 
 QUICK START GUIDE:
 
@@ -44,8 +48,7 @@ See also ftp://ftp.demon.co.uk/pub/perl/db/ and "CPAN" ftp sites.
 
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
 
-    Build, test and install Perl 5
-    (at least version 5.003 but preferably 5.004_04 or later).
+    Build, test and install Perl 5 (preferably 5.004_04 or later).
     It is very important to test it and actually install it!
     (You can use "Configure -Dprefix=..." to build a private copy.)
 
@@ -111,7 +114,7 @@ Tim Bunce.
 =======================================================================
 
 If you get an error like "fatal: relocation error: symbol not found: ..."
-Do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
+do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
 just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
 Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;
 mv /opt/gnu/bin/ld /opt/gnu/bin/gld'. You can add -v to the gcc command
@@ -120,6 +123,7 @@ in the Makefile to see what GCC is using.
 If you get compiler warnings like "value computed is not used" and
 "unused variable" you can ignore them.
 
-For perl5.004_5x: If you get "`thr' undeclared" compiler error, you'll
-need to add "dTHR;" to the top of the function that has the error.
+For perl5.005 onwards: If you get "`thr' undeclared" compiler error,
+you'll need to add "dTHR;" to the top of the function that has the error.
 
+End.
