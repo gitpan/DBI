@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.13 2002/06/05 22:39:41 timbo Exp $
+# $Id: DBI.pm,v 11.14 2002/06/13 12:25:54 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.25; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.26; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -34,8 +34,8 @@ DBI - Database independent interface for Perl
   $ary_ref = $dbh->selectcol_arrayref($statement);
   $ary_ref = $dbh->selectcol_arrayref($statement, \%attr);
 
-  $ary_ref  = $dbh->selectrow_arrayref($statement);
   @row_ary  = $dbh->selectrow_array($statement);
+  $ary_ref  = $dbh->selectrow_arrayref($statement);
   $hash_ref = $dbh->selectrow_hashref($statement);
 
   $sth = $dbh->prepare($statement);
@@ -60,8 +60,7 @@ DBI - Database independent interface for Perl
   $hash_ref = $sth->fetchrow_hashref;
 
   $ary_ref  = $sth->fetchall_arrayref;
-  $ary_ref  = $sth->fetchall_arrayref( { ... } );
-  $ary_ref  = $sth->fetchall_arrayref( [ ... ] );
+  $ary_ref  = $sth->fetchall_arrayref( $slice, $max_rows );
 
   $hash_ref = $sth->fetchall_hashref( $key_field );
 
@@ -108,8 +107,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.25
-(C<$Date: 2002/06/05 22:39:41 $>).
+This is the DBI specification that corresponds to the DBI version 1.26
+(C<$Date: 2002/06/13 12:25:54 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
@@ -136,7 +135,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.13 $, 10);
+my $Revision = substr(q$Revision: 11.14 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -212,7 +211,7 @@ BEGIN {
 	neat neat_list dump_results looks_like_number
    ) ],
    profile   => [ qw(
-	dbi_profile dbi_profile_merge
+	dbi_profile dbi_profile_merge dbi_time
    ) ],
 );
 
@@ -378,7 +377,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	fetchrow_array    => undef,
 	fetchrow   	  => undef, # old alias for fetchrow_array
 
-	fetchall_arrayref => { U =>[1,2] },
+	fetchall_arrayref => { U =>[1,3] },
 	fetchall_hashref  => { U =>[2,2] },
 
 	blob_read  =>	{ U =>[4,5,'$field, $offset, $len [, \\$buf [, $bufoffset]]'] },
@@ -806,7 +805,9 @@ sub available_drivers {
 	}
 	closedir(DBI::DIR);
     }
-    return sort @drivers;
+
+    # "return sort @drivers" will not DWIM in scalar context.
+    return wantarray ? sort @drivers : @drivers;
 }
 
 sub data_sources {
@@ -1212,19 +1213,15 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return $row;
     }
 
+    # selectrow_arrayref also has C implementation in Driver.xst
     sub selectrow_arrayref { return _do_selectrow('fetchrow_arrayref', @_); }
     sub selectrow_hashref {  return _do_selectrow('fetchrow_hashref',  @_); }
 
     sub selectrow_array {
-	my ($dbh, $stmt, $attr, @bind) = @_;
-	my $sth = (ref $stmt) ? $stmt
-			      : $dbh->prepare($stmt, $attr);
-	return unless $sth;
-	$sth->execute(@bind) || return;
-	my @row = $sth->fetchrow_array;
-	$sth->finish if @row;
-	return $row[0] unless wantarray;
-	return @row;
+	my $row = _do_selectrow('fetchrow_arrayref', @_)
+	    or return;
+	return $row->[0] unless wantarray;
+	return @$row;
     }
 
     sub selectall_arrayref {
@@ -1239,7 +1236,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		for (@$slice) { $_-- }
 	    }
 	}
-	return $sth->fetchall_arrayref($slice);
+	return $sth->fetchall_arrayref($slice, $attr->{MaxRows});
     }
 
     sub selectall_hashref {
@@ -1518,16 +1515,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my %errstr_cache;
 	@$tuple_sts = () if $tuple_sts; # reset the status array
 	$tuple_sts->[$len-1] = undef;	# presize array
-use Data::Dumper;
-#warn Dumper([ \@bind_ids, \%hash_of_arrays]);
 	for (my $i=0; $i < $len; ++$i) {	# for each tuple
 
 	    my @tuple = map {
 		my $a = $hash_of_arrays{$_};
-#warn "$_=$a";
 		ref($a) ? $a->[$i] : $a
 	    } @bind_ids;
-#warn Dumper(\@tuple);
 	    my $rc = $sth->execute(@tuple);
 	    if ($rc) {
 		$rowcount += $tuple_sts->[$i] = $rc;
@@ -1544,27 +1537,34 @@ use Data::Dumper;
 
 
     sub fetchall_arrayref {
-	my $sth = shift;
-	my $slice= shift || [];
-	my $mode = ref $slice;
+	my ($sth, $slice, $max_rows) = @_;
+	$max_rows = -1 unless defined $max_rows;
+	my $mode = ref($slice) || 'ARRAY';
 	my @rows;
 	my $row;
 	if ($mode eq 'ARRAY') {
 	    # we copy the array here because fetch (currently) always
 	    # returns the same array ref. XXX
-	    if (@$slice) {
-		push @rows, [ @{$row}[ @$slice] ] while($row = $sth->fetch);
+	    if ($slice && @$slice) {
+		$max_rows = -1 unless defined $max_rows;
+		push @rows, [ @{$row}[ @$slice] ]
+		    while($max_rows-- and $row = $sth->fetch);
+	    }
+	    elsif (defined $max_rows) {
+		$max_rows = -1 unless defined $max_rows;
+		push @rows, [ @$row ]
+		    while($max_rows-- and $row = $sth->fetch);
 	    }
 	    else {
-		# return $sth->_fetchall_arrayref;
-		push @rows, [ @$row ] while($row = $sth->fetch);
+		push @rows, [ @$row ]          while($row = $sth->fetch);
 	    }
 	}
 	elsif ($mode eq 'HASH') {
+	    $max_rows = -1 unless defined $max_rows;
 	    if (keys %$slice) {
 		my @o_keys = keys %$slice;
 		my @i_keys = map { lc } keys %$slice;
-		while ($row = $sth->fetchrow_hashref('NAME_lc')) {
+		while ($max_rows-- and $row = $sth->fetchrow_hashref('NAME_lc')) {
 		    my %hash;
 		    @hash{@o_keys} = @{$row}{@i_keys};
 		    push @rows, \%hash;
@@ -1572,14 +1572,15 @@ use Data::Dumper;
 	    }
 	    else {
 		# XXX assumes new ref each fetchhash
-		push @rows, $row while ($row = $sth->fetchrow_hashref());
+		push @rows, $row
+		    while ($max_rows-- and $row = $sth->fetchrow_hashref());
 	    }
 	}
 	else { Carp::croak("fetchall_arrayref($mode) invalid") }
 	return \@rows;
     }
 
-    sub fetchall_hashref {
+    sub fetchall_hashref {	# XXX may be better to fetchall_arrayref then convert to hashes
 	my ($sth, $key_field) = @_;
 
 	my $hash_key_name = $sth->{FetchHashKeyName};
@@ -2461,16 +2462,21 @@ level is equal to or greater than that level. C<$min_level> defaults to 1.
 
 =item C<func>
 
-  $h->func(@func_arguments, $func_name);
+  $h->func(@func_arguments, $func_name) or die ...;
 
 The C<func> method can be used to call private non-standard and
 non-portable methods implemented by the driver. Note that the function
 name is given as the last argument.
 
-This method is not directly related to calling stored procedures.
+It's also important to note that the func() method does not clear
+a previous error ($DBI::err etc.) and it does not trigger automatic
+error detection (RaiseError etc.) so you must check the return
+status and/or $h->err to detect errors.
+
+(This method is not directly related to calling stored procedures.
 Calling stored procedures is currently not defined by the DBI.
 Some drivers, such as DBD::Oracle, support it in non-portable ways.
-See driver documentation for more details.
+See driver documentation for more details.)
 
 =back
 
@@ -2609,7 +2615,7 @@ Even more sadly, for Perl 5.5 and 5.6.0 it does work but leaks memory!
 For backwards compatibility, you could just use C<eval { ... }> instead.
 
 
-=item C<HandleError> (code ref, inherited) I<NEW>
+=item C<HandleError> (code ref, inherited)
 
 This attribute can be used to provide your own alternative behaviour
 in case of errors. If set to a reference to a subroutine then that
@@ -2624,7 +2630,7 @@ the method that failed (typically undef).
 If the subroutine returns a false value then the C<RaiseError>
 and/or C<PrintError> attributes are checked and acted upon as normal.
 
-For example, to get a full stack trace for any error:
+For example, to C<die> with a full stack trace for any error:
 
   use Carp;
   $h->{HandleError} = sub { confess(shift) };
@@ -2649,7 +2655,15 @@ Using a C<my> inside a subroutine to store the previous C<HandleError>
 value is important.  See L<perlsub> and L<perlref> for more information
 about I<closures>.
 
-It is possible for C<HandleError> to hide an error, to a limited
+It is possible for C<HandleError> to alter the error message that
+will be used by C<RaiseError> and C<PrintError> if it returns false.
+It can do that by altering the value of $_[0]. This example appends
+a stack trace to all errors and, unlike the previous example using
+Carp::confess, this will work C<PrintError> as well as C<RaiseError>:
+
+  $h->{HandleError} = sub { $_[0]=Carp::longmess($_[0]); 0; };
+
+It is also possible for C<HandleError> to hide an error, to a limited
 degree, by using L</set_err> to reset $DBI::err and $DBI::errstr,
 and altering the return value of the failed method. For example:
 
@@ -4410,8 +4424,8 @@ rely on the current behaviour.
 =item C<fetchall_arrayref>
 
   $tbl_ary_ref = $sth->fetchall_arrayref;
-  $tbl_ary_ref = $sth->fetchall_arrayref( $columns_array_ref );
-  $tbl_ary_ref = $sth->fetchall_arrayref( $columns_hash_ref  );
+  $tbl_ary_ref = $sth->fetchall_arrayref( $slice );
+  $tbl_ary_ref = $sth->fetchall_arrayref( $slice, $max_rows  );
 
 The C<fetchall_arrayref> method can be used to fetch all the data to be
 returned from a prepared and executed statement handle. It returns a
@@ -4423,25 +4437,24 @@ data fetched thus far, which may be none.  You should check C<$sth->E<gt>C<err>
 afterwards (or use the C<RaiseError> attribute) to discover if the data is
 complete or was truncated due to an error.
 
-When passed an array reference, C<fetchall_arrayref> uses L</fetchrow_arrayref>
+If $slice is an array reference, C<fetchall_arrayref> uses L</fetchrow_arrayref>
 to fetch each row as an array ref. If the parameter array is not empty
 then it is used as a slice to select individual columns by perl array
 index number (starting at 0, unlike column and parameter numbers which
 start at 1).
 
-With no parameters, C<fetchall_arrayref> acts as if passed an empty array ref.
+With no parameters, or if $slice is undefined, C<fetchall_arrayref>
+acts as if passed an empty array ref.
 
-When passed a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
-to fetch each row as a hash reference. If the parameter hash is empty then
-fetchrow_hashref is simply called in a tight loop and the keys in the hashes
+If $slice is a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
+to fetch each row as a hash reference. If the $slice hash is empty then
+fetchrow_hashref() is simply called in a tight loop and the keys in the hashes
 have whatever name lettercase is returned by default from fetchrow_hashref.
-(See L</FetchHashKeyName> attribute.)
-
-If the parameter hash is not empty, then it is used as a slice to
-select individual columns by name.  The values of the hash should be
-set to 1.  The key names of the returned hashes match the letter case
-of the names in the parameter hash, regardless of the
-L</FetchHashKeyName> attribute.
+(See L</FetchHashKeyName> attribute.) If the $slice hash is not
+empty, then it is used as a slice to select individual columns by
+name.  The values of the hash should be set to 1.  The key names
+of the returned hashes match the letter case of the names in the
+parameter hash, regardless of the L</FetchHashKeyName> attribute.
 
 For example, to fetch just the first column of every row:
 
@@ -4462,6 +4475,13 @@ To fetch only the fields called "foo" and "bar" of every row as a hash ref
 
 The first two examples return a reference to an array of array refs.
 The third and forth return a reference to an array of hash refs.
+
+If $max_rows is defined and greater than or equal to zero then it
+is used to limit the number of rows fetched before returning.
+fetchall_arrayref() can then be called again to fetch more rows.
+This is especially useful when you need the better performance of
+fetchall_arrayref() but don't have enough memory to fetch and return
+all the rows in one go.
 
 
 =item C<fetchall_hashref>

@@ -40,6 +40,10 @@ ok(0, ref $switch eq 'DBI::dr');
 ok(0, @drivers);
 ok(0, "@drivers" =~ m/ExampleP/i);	# ignore case for VMS & Win32
 
+# Due to a subtle "feature" of sort, this was broken.
+my $num_drivers = DBI->available_drivers;
+ok(0, $num_drivers);
+
 $switch->debug(0);
 ok(0, 1);
 $switch->{DebugDispatch} = 0;	# handled by Switch
@@ -100,5 +104,5 @@ else {
   ok(0, DBI::hash("foo2",1) == -1263462437,  DBI::hash("foo2",1));
 }
 
-BEGIN { $tests = 38 }
+BEGIN { $tests = 39 }
 exit 0;

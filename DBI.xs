@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 11.10 2002/06/05 22:39:41 timbo Exp $
+/* $Id: DBI.xs,v 11.11 2002/06/13 12:25:54 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
@@ -1104,9 +1104,6 @@ dbih_get_fbav(imp_sth)	/* Called once per-fetch: must be fast	*/
 {
     AV *av;
 
-    if (DBIc_TYPE(imp_sth) != DBIt_ST)
-	croak("dbih_get_fbav: bad handle type: %d", DBIc_TYPE(imp_sth));
-
     if ( (av = DBIc_FIELDS_AV(imp_sth)) == Nullav)
 	av = dbih_setup_fbav(imp_sth);
 
@@ -1277,6 +1274,7 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	char *class = "DBI::Profile";
 	if (on && (!SvROK(valuesv) || (SvTYPE(SvRV(valuesv)) != SVt_PVHV)) ) {
 	    /* not a hash ref so use DBI::Profile to work out what to do */
+	    dTHR;
 	    dSP;
 	    I32 returns;
 	    TAINT_NOT; /* the require is presumed innocent till proven guilty */
@@ -1345,6 +1343,9 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     }
     else if (keylen==10  && strEQ(key, "TraceLevel")) {
 	set_trace(h, SvIV(valuesv), Nullch);
+    }
+    else if (keylen==9  && strEQ(key, "TraceFile")) { /* XXX undocumented and readonly */
+	set_trace_file(valuesv);
     }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
@@ -1554,7 +1555,7 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
 	    valuesv = *svp;
 	else if (!isUPPER(*key))
 	    valuesv = &sv_undef;	/* dbd_*, private_* etc	*/
-	else if (strEQ(key, "HandleError"))
+	else if (strEQ(key, "HandleError") || strEQ(key, "Profile"))
 	    valuesv = &sv_undef;
 	else
 	    croak("Can't get %s->{%s}: unrecognised attribute",neatsvpv(h,0),key);
@@ -1785,7 +1786,7 @@ clear_cached_kids(h, imp_xxh, meth_name, trace_level)
 }
 
 static double
-dbi_highres_time() {
+dbi_time() {
 # ifdef HAS_GETTIMEOFDAY
     struct timeval when;
     gettimeofday(&when, (struct timezone *) 0);
@@ -2122,7 +2123,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     imp_xxh = DBIh_COM(h); /* get common Internal Handle Attributes	*/
 
     if (DBIc_has(imp_xxh,DBIcf_Profile)) {
-	profile_t1 = dbi_highres_time(); /* just get start time here */
+	profile_t1 = dbi_time(); /* just get start time here */
     }
 
     if (tainting && items > 1		      /* method call has args	*/
@@ -2252,7 +2253,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    char *imp_meth_name = (isGV(imp_msv)) ? GvNAME(imp_msv) : meth_name;
 	    HV *imp_stash = DBIc_IMP_STASH(imp_xxh);
 	    PerlIO_printf(logfp, "%c   -> %s ",
-			call_depth>1 ? '0'+call_depth : ' ', imp_meth_name);
+			call_depth>1 ? '0'+call_depth-1 : ' ', imp_meth_name);
 	    if (imp_meth_name[0] == 'A' && strEQ(imp_meth_name,"AUTOLOAD"))
 		    PerlIO_printf(logfp, "\"%s\" ", meth_name);
 	    if (isGV(imp_msv) && GvSTASH(imp_msv) != imp_stash)
@@ -2332,23 +2333,15 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_ERRSTR(imp_xxh),0));
 	}
 	PerlIO_printf(logfp,"%c%c  <- %s",
-		    (call_depth > 1)                ? '0'+call_depth : ' ',
-		    (DBIc_is(imp_xxh, DBIcf_Taint)) ? 'T'            : ' ',
+		    (call_depth > 1)                ? '0'+call_depth-1 : ' ',
+		    (DBIc_is(imp_xxh, DBIcf_Taint)) ? 'T'              : ' ',
 		    meth_name);
-	if (debug==1) { /* make debug level 1 for some methods more useful */
-	    if (	(*meth_name=='S' && strEQ(meth_name,"STORE"))
-	    	||	(*meth_name=='p' && strEQ(meth_name,"prepare"))
-	    	||	(*meth_name=='e' && strEQ(meth_name,"execute"))
-	    	||	(*meth_name=='d' && strEQ(meth_name,"do"))
-	    ) {
-		/* we only have the first two parameters available here */
-		PerlIO_printf(logfp,"(");
-		if (items >= 1)
-		    PerlIO_printf(logfp,"%s", neatsvpv(st1,0));
-		if (items >= 2)
-		    PerlIO_printf(logfp," %s", neatsvpv(st2,0));
-		PerlIO_printf(logfp,"%s)", (items > 2) ? " ..." : "");
-	    }
+	if (debug==1 && items>=2) { /* make level 1 more useful */
+	    /* we only have the first two parameters available here */
+	    PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
+	    if (items >= 3)
+		PerlIO_printf(logfp," %s", neatsvpv(st2,0));
+	    PerlIO_printf(logfp,"%s)", (items > 3) ? " ..." : "");
 	}
 
 	if (gimme & G_ARRAY)
@@ -2406,6 +2399,9 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
     if (tainting
 	&& DBIc_is(imp_xxh, DBIcf_Taint)      /* taint checks requested	*/
+	/* XXX this would taint *everything* being returned from *any*	*/
+	/* method that doesn't have IMA_NO_TAINT_OUT set.		*/
+	/* DISABLED: just tainting fetched data in get_fbav seems ok	*/
 	&& 0/* XXX disabled*/ /* !(ima && ima->flags & IMA_NO_TAINT_OUT) */
     ) {
 	dTHR;
@@ -2519,7 +2515,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 	if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines below */
 	    dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
-		profile_t1, dbi_highres_time());
+		profile_t1, dbi_time());
 	}
 	if (!hook_svp) {
 	    if (DBIc_has(imp_xxh, DBIcf_PrintError))
@@ -2530,7 +2526,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     }
     else if (profile_t1 && !is_DESTROY) { /* see also dbi_profile() call a few lines above */
 	dbi_profile(h, imp_xxh, Nullch, imp_msv ? imp_msv : (SV*)cv,
-		profile_t1, dbi_highres_time());
+		profile_t1, dbi_time());
     }
 
     XSRETURN(outitems);
@@ -3141,6 +3137,10 @@ _svdump(sv)
     sv_dump(sv);
 #endif
     }
+
+
+double
+dbi_time()
 
 
 SV *

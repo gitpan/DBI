@@ -3,6 +3,7 @@ DBI.pm	The Database Interface Module Perl code
 DBI.xs	The Database Interface Module XS code
 DBIXS.h	The DBI XS public interface for Drivers (DBD::...)
 Driver.xst	Template driver xs file
+Driver_xst.h	Template driver xs support code
 MANIFEST
 Makefile.PL	The Makefile generator
 Perl.xs	Test harness (currently) for Driver.xst
@@ -18,7 +19,8 @@ lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/Proxy.pm	Proxy driver
 lib/DBD/Sponge.pm	A driver for fake cursors (precached data)
-lib/DBI/Const/GetInfo.pm	GetInfo data based on standards plus tools
+lib/DBI/Const/GetInfoType.pm	GetInfo type code data based on standards
+lib/DBI/Const/GetInfoReturn.pm	GetInfo return values plus tools based on standards
 lib/DBI/Const/GetInfo/ANSI.pm	GetInfo data based on ANSI standard
 lib/DBI/Const/GetInfo/ODBC.pm	GetInfo data based on ODBC standard
 lib/DBI/DBD.pm		Some basic help for people writing DBI drivers
@@ -33,6 +35,7 @@ lib/Win32/DBIODBC.pm	An experimental Win32::ODBC emulation layer for DBI
 t/01basics.t
 t/02dbidrv.t
 t/03hleak.t
+t/04mods.t
 t/10examp.t
 t/15array.t
 t/20meta.t

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 11.5 2002/05/25 17:36:13 timbo Exp $
+# $Id: DBD.pm,v 11.6 2002/06/13 12:25:54 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 11.5 $
-  $Date: 2002/05/25 17:36:13 $
+  $Revision: 11.6 $
+  $Date: 2002/06/13 12:25:54 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -1752,9 +1752,11 @@ BEGIN { if ($^O eq 'VMS') {
     import  VMS::Filespec;
 }}
 
+use DBI::Const::GetInfoType qw(%GetInfoType);
+
 @ISA = qw(Exporter);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.5 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.6 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
@@ -1860,11 +1862,11 @@ write_getinfo_pm generates a DBD::<foo>::GetInfo package.
 
 Usage:
 
-  perl -MDBI::DBD -e write_getinfo_pm dbi:Foo:Bar username password > DBD/<foo>/GetInfo.pm
+  perl -MDBI::DBD -e write_getinfo_pm dbi:ODBC:foo_db username password > DBD/<foo>/GetInfo.pm
 
 or
 
-  perl -MDBI::DBD -e 'write_getinfo_pm("dbi:...","username","password")' > DBD/<foo>/GetInfo.pm
+  perl -MDBI::DBD -e 'write_getinfo_pm("dbi:ODBC:foo_db","username","password")' > DBD/<foo>/GetInfo.pm
 
 This method generates a DBD::<foo>::GetInfo package from the data source you
 specified in the parameter list or in the environment variable DBI_DSN.
@@ -1900,9 +1902,9 @@ Please replace <foo> with the name of your driver.
 =cut
 
 sub write_getinfo_pm {
-    require DBI::Const::GetInfo;
 
-    my $dbh = DBI->connect( @_ ? @_ : @ARGV ) or die $DBI::errstr;
+    my ($dsn, $user, $pass) = @_ ? @_ : @ARGV;
+    my $dbh = DBI->connect( $dsn, $user, $pass ) or die $DBI::errstr;
     #  $dbh->{ RaiseError } = 1;
        $dbh->{ PrintError } = 1;
 
@@ -1911,9 +1913,9 @@ package DBD::<foo>::GetInfo;
 
 use DBD::<foo>();
 
-my $fmt = '%02d.%02d.%1d%1d%1d%1d';   # ODBC version string: ##.##.#####
+my $ver_fmt = '%02d.%02d.%04d';   # ODBC version string: ##.##.#####
 
-my $sql_driver_ver = sprintf $fmt, split (/\./, $DBD::<foo>::VERSION);
+my $sql_driver_ver = sprintf $ver_fmt, split (/\./, $DBD::<foo>::VERSION);
 
 my @Keywords = qw(
 PERL
@@ -1940,7 +1942,7 @@ sub sql_user_name {
 %info = (
 PERL
 
-    my $h = \%DBI::Const::GetInfo::InfoTypes;
+    my $h = \%GetInfoType;
     my $Comma = ' ';
 
     for ( sort keys %$h ) {

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.6 2002/05/20 21:03:53 timbo Exp $
+# $Id: Makefile.PL,v 11.7 2002/06/13 12:25:54 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -44,7 +44,8 @@ if ($Config{archname} =~ /-thread\b/i) {
     print "*** You are using a perl with experimental threading enabled!\a\n";
     print "*** You should be aware that using multiple threads is unstable\n";
     print "*** are should NOT be done in production environments.\n";
-    print "DBI thread mutex protection is ", $::opt_thread ? "enabled\n" : "disabled!\n";
+    print "DBI 5.005-style thread mutex protection is ", $::opt_thread ? "enabled\n" : "disabled!\n";
+    print "DBI hs not been tested with new perl iThreads\n";
     print "\n";
     sleep 5;
 }

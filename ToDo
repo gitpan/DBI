@@ -1,7 +1,17 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Define install_method so apps using things like DBD::AnyData can
+avoid using func() so much. Especially as func is marked as 'keep error'
+so RaiseError doesn't work.
+
 Sort out DBIcDBISTATE() and DBIS mess
+
+Add ima flags to force profile to not use Statement for dbh on some methods
+that obviously have little or nothing to do with the current $dbh Statement:
+	disconnect begin_work ping get_info table_info quote quote_identifier
+
+fetchall_hashref: may be better to call fetchall_arrayref then convert to hashes
 
 Sponge behave_like - generalize?
 
@@ -11,18 +21,13 @@ Ship separate DBD::TemplateP and DBD::TemplateXS drivers as examples.
 
 Check/fix: local($h->{PrintError})=0; resets $DBI::errstr at end of scope
 
-Implement _fetchall_arrayref XS
-and perhaps within Driver.xst!
-
-ShowTracePid attrib
+ShowTracePid attrib	( or just add to trace level change message)
 Add UnimpMethodHook (in XS)
 Test and integrate with DProf?
 FetchHashReuse attrib (=1 or ={}) copy from dbh to sth.
 Record attrib STOREs so can be replayed (or use subclass?)
 
-Add to AdvDBI tutorial trace section: call depth and tainting info
-
-Merge DBIx::AnyDBD functionality into the DBI
+Merge/document  DBIx::AnyDBD functionality into the DBI
 
 make lasth return outer handle
 
@@ -38,7 +43,7 @@ tested in a numeric context (eg $a='S23'; foo() if $a==-1; $sth->execute($a))
 So if SvNVOK is true but the value is 0 then should also do looks_like_number()
 to be sure.
 
-Rename finish to cancel_select :-) [or just add an alias and docs :-]
+Rename finish to discard_pending_rows :-) [or just add an alias and docs :-]
 
 begin_work
 add details of the DBI book to the docs

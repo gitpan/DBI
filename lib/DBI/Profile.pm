@@ -245,6 +245,28 @@ an empty string is used.
 Replaced with the name of the DBI method that the profile sample
 relates to.
 
+=item DBIprofile_MethodClass
+
+Replaced with the fully qualified name of the DBI method, including
+the package, that the profile sample relates to. This shows you
+where the method was implemented. For example:
+
+  'DBD::_::db::selectrow_arrayref' =>
+      0.022902s
+  'DBD::mysql::db::selectrow_arrayref' =>
+      2.244521s / 99 = 0.022445s avg (first 0.022813s, min 0.022051s, max 0.028932s)
+
+The "DBD::_::db::selectrow_arrayref" shows that the driver has
+inherited the selectrow_arrayref method provided by the DBI.
+
+But you'll note that there is only one call to
+DBD::_::db::selectrow_arrayref but another 99 to
+DBD::mysql::db::selectrow_arrayref. That's because after the first
+call Perl has cached the method to speed up method calls.
+You may also see some names begin with an asterix ('C<*>').
+Both of these effects are subject to change in later releases.
+
+
 =back
 
 Other magic cookie values may be added in the future.
@@ -276,7 +298,12 @@ Which shows the total time spent inside the DBI, with a count of
 the total number of method calls and the name of the script being
 run, then a formated version of the profile data tree.
 
-In this example the paths in the tree are only one level deep and
+If the results are being formated when the perl process is exiting
+(which is usually the case when the DBI_PROFILE environment variable
+is used) then the percentage of time the process spent inside the
+DBI is also shown.
+
+In the example above the paths in the tree are only one level deep and
 use the Statement text as the value (that's the default behaviour).
 
 The merged profile data at the 'leaves' of the tree are presented
@@ -420,9 +447,9 @@ use Exporter ();
 use UNIVERSAL ();
 use Carp;
 
-use DBI qw(dbi_profile dbi_profile_merge);
+use DBI qw(dbi_time dbi_profile dbi_profile_merge);
 
-$VERSION = sprintf "%d.%02d", '$Revision: 1.1 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 1.2 $ ' =~ /(\d+)\.(\d+)/;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(
@@ -494,10 +521,15 @@ sub format {
 
     if (@$leaves) {
 	dbi_profile_merge(my $totals=[], @$leaves);
-	my ($count, $total_time) = @$totals;
+	my ($count, $dbi_time) = @$totals;
 	(my $progname = $0) =~ s:.*/::;
-	$prologue .= sprintf "%f seconds (%d method calls) $progname\n",
-	    $total_time, $count if $count;
+	if ($count) {
+	    $prologue .= sprintf "%f seconds ", $dbi_time;
+	    my $perl_time = dbi_time() - $^T;
+	    $prologue .= sprintf "%.2f%% ", $dbi_time/$perl_time*100
+		if $DBI::PERL_ENDING && $perl_time;
+	    $prologue .= sprintf "(%d method calls) $progname\n", $count;
+	}
 
 	if (@$leaves == 1 && $self->{Data}->{DBI}) {
 	    $detail = "";	# hide it

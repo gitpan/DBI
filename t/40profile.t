@@ -13,7 +13,7 @@ BEGIN {
 	exit 0;
     }
 
-    plan tests => 5;
+    plan tests => 6;
 }
 
 #
@@ -26,6 +26,8 @@ $Data::Dumper::Terse = 1;
 
 my $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1, AutoCommit=>1, });
 ok($dbh);
+
+ok(!$dbh->{Profile} && !$ENV{DBI_PROFILE});
 
 $dbh->{Profile} = "4";
 my $profile = $dbh->{Profile};
@@ -51,6 +53,7 @@ DBI->trace(0, $logfile);
 undef $profile;
 undef $sth;
 undef $dbh;
+DBI->trace(0, undef); # force close of log file for Windows
 
 ok(-s $logfile);
 unlink $logfile;
