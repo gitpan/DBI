@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.74 1997/07/16 18:17:58 timbo Exp $
+/* $Id: DBI.xs,v 1.75 1997/07/18 12:44:09 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -40,11 +40,12 @@ static int        dbih_set_attr  _((SV *h, SV *keysv, SV *valuesv));
 static SV        *dbih_get_attr  _((SV *h, SV *keysv));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
 static int	  bind_as_num _((int sql_type, int p, int s));
+static U32	  dbi_hash _((char *string, long i));
 static SV *dbih_make_com _((SV *parent_h, char *imp_class, STRLEN imp_size, STRLEN extra));
 static SV *dbih_make_fdsv _((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
 char *neatsvpv _((SV *sv, STRLEN maxlen));
 
-int imp_maxsize;
+static int imp_maxsize;
 
 DBISTATE_DECLARE;
 
@@ -128,6 +129,7 @@ dbi_bootinit()
     dbis->make_fdsv = dbih_make_fdsv;
     dbis->neat_svpv = neatsvpv;
     dbis->bind_as_num = bind_as_num;
+    dbis->hash      = dbi_hash;
 
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
     /* We want a handle reference but we don't want to increment	*/
@@ -215,6 +217,18 @@ mkvname(stash, item, uplevel)	/* construct a variable name	*/
     sv_catpv(sv, "::");
     sv_catpv(sv, item);
     return SvPV(sv, na);
+}
+
+
+static U32
+dbi_hash(key, i)
+    char *key;
+    long i; /* spare */
+{
+    STRLEN klen = strlen(key);
+    U32 hash = 0;
+    PERL_HASH(hash, key, klen);
+    return hash;
 }
 
 
@@ -688,7 +702,7 @@ dbih_sth_bind_col(sth, col, ref, attribs)
 }
 
 
-int
+static int
 bind_as_num(sql_type, p, s)
     int sql_type;
     int p, s;		/* not used (yet?), pass as zero */
@@ -1281,8 +1295,10 @@ PROTOTYPES: DISABLE
 
 
 BOOT:
-    items = items;	/* avoid 'unused variable' warning		*/
+    items = items;		/* avoid 'unused variable' warning	*/
+    assert(sizeof(int) >= 4);	/* for dbi_hash() codes in switch() XXX	*/
     dbi_bootinit();
+
 
 I32
 constant(...)

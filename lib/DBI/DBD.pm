@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 1.3 1997/07/16 18:17:58 timbo Exp $
+# $Id: DBD.pm,v 1.4 1997/07/18 13:18:19 timbo Exp $
 #
 # Copyright (c) 1997 Jonathan Leffler and Tim Bunce
 #
@@ -21,8 +21,8 @@ DBI::DBD - DBD Driver Writer's Guide (draft)
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 1.3 $
-	$Date: 1997/07/16 18:17:58 $
+	$Revision: 1.4 $
+	$Date: 1997/07/18 13:18:19 $
 
 This document is very much a minimal draft which will need to be revised
 frequently (and extensively).
@@ -448,6 +448,7 @@ $DBI::DBD::VERSION = $DBI::VERSION;
 
 
 sub dbd_postamble {
+    # we must be careful of quotes for Win32 here.
     '
 DBI_DRIVER_XST=$(INSTALLSITEARCH)/auto/DBI/Driver.xst
 
@@ -456,7 +457,7 @@ $(BASEEXT).xs: $(BASEEXT).xsi
 $(BASEEXT).c: $(BASEEXT).xsi
 
 $(BASEEXT).xsi: $(INSTALLSITEARCH)/auto/DBI/Driver.xst
-	perl -p -e \'s/{DRIVER}/$(BASEEXT)/g\' < $(DBI_DRIVER_XST) > $(BASEEXT).xsi
+	perl -p -e "s/{DRIVER}/$(BASEEXT)/g" < $(DBI_DRIVER_XST) > $(BASEEXT).xsi
 ';
 }
 

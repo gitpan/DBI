@@ -1,6 +1,6 @@
 require 5.003;
 
-$DBI::VERSION = '0.86'; # ==> also update the version in the pod text below!
+$DBI::VERSION = '0.87'; # ==> also update the version in the pod text below!
 
 =head1 NAME
 
@@ -19,6 +19,7 @@ DBI - Database independent interface for Perl
  
   $rv  = $dbh->do($statement);
   $rv  = $dbh->do($statement, \%attr);
+  $rv  = $dbh->do($statement, \%attr, @bind_values);
  
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare($statement, \%attr);
@@ -46,8 +47,8 @@ DBI - Database independent interface for Perl
 
 =head2 NOTE
  
-This is the draft DBI specification that corresponds to the DBI version 0.85. 
-($Date: 1997/07/16 18:17:58 $) 
+This is the draft DBI specification that corresponds to the DBI version 0.87. 
+($Date: 1997/07/18 13:18:19 $) 
  
  * The DBI specification is currently evolving quite quickly so it is
  * important to check that you have the latest copy. The RECENT CHANGES
@@ -56,14 +57,17 @@ This is the draft DBI specification that corresponds to the DBI version 0.85.
 
  * Note also that whenever the DBI changes the drivers take some time to
  * catch up. Recent versions of the DBI have added many new features that
- * may not be supported by your driver yet.
+ * may not yet be supported by the drivers you use. Talk to the authors of
+ * those drivers if you need the features.
  
 Please also read the DBI FAQ which is installed as a DBI::FAQ module so
 you can use perldoc to read it by executing the C<perldoc DBI::FAQ> command.
  
 =head2 RECENT CHANGES 
                                                                                 
-A brief summary of significant user-visible changes in recent versions:
+A brief summary of significant user-visible changes in recent versions
+(if a recent version isn't mentioned it simply means that there were no
+significant user-visible changes in that version).
 
 =over 4 
 
@@ -75,9 +79,6 @@ Added DBI->trace() to set global trace level (like per-handle $h->trace).
 PERL_DBI_DEBUG env var renamed DBI_DEBUG (old name still works for now).
 Updated docs, including commit, rollback, AutoCommit and Transactions sections.
 Added bind_param method and execute(@bind_values) to docs.
-
-Note that this DBI release contains and documents many new features
-that won't appear in drivers for some time.
 
 =item DBI 0.85 - 25th June 1997
  
@@ -122,9 +123,9 @@ Added DBI->data_sources($driver) method for implementation by drivers.
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 1.78 $, 10);
+my $Revision = substr(q$Revision: 1.80 $, 10);
 
-# $Id: DBI.pm,v 1.78 1997/07/16 18:17:58 timbo Exp $
+# $Id: DBI.pm,v 1.80 1997/07/18 13:18:19 timbo Exp $
 #
 # Copyright (c) 1995,1996,1997, Tim Bunce
 #
@@ -991,6 +992,45 @@ Typical method call sequence for a non-select statement:
       execute.
 
 
+=head2 Placeholders and Bind Values
+
+Some drivers support Placeholders and Bind Values. These drivers allow
+a database statement to contain placeholders, sometimes called
+parameter markers, that indicate values that will be supplied later,
+before the prepared statement is executed.  For example, an application
+might use the following to insert a row of data into the SALES table:
+
+  insert into sales (product_code, qty, price) values (?, ?, ?)
+
+or the following, to select the description for a product:
+
+  select product_description from products where product_code = ?
+
+The C<?> characters are the placeholders.  The association of actual
+values with placeholders is known as binding and the values are
+referred to as bind values.
+
+Without using placeholders, the insert statement above would have to
+contain the literal values to be inserted and it would have to be
+re-prepared and re-executed for each row. With placeholders, the insert
+statement only needs to be prepared once. The bind values for each row
+can be given to the execute method each time it's called. By avoiding
+the need to re-prepare the statement for each row the application
+typically many times faster! Here's an example:
+
+  my $sth = $dbh->prepare(q{
+    insert into sales (product_code, qty, price) values (?, ?, ?)
+  }) || die $dbh->errstr;
+  while(<>) {
+      chop;
+      my($product_code, $qty, $price) = split(/,/);
+      $sth->execute($product_code, $qty, $price) || die $dbh->errstr;
+  }
+  $dbh->commit || die $dbh->errstr;
+
+See L</execute> and L</bind_param> for more details.
+
+
 =head1 THE DBI CLASS
 
 =head2 DBI Class Methods
@@ -1398,6 +1438,7 @@ has been called. Portable applications should take this into account.
 
   $rc  = $dbh->do($statement)           || die $dbh->errstr;
   $rc  = $dbh->do($statement, \%attr)   || die $dbh->errstr;
+  $rv  = $dbh->do($statement, \%attr, @bind_values) || ...
 
 Prepare and execute a statement. Returns the number of rows affected
 (-1 if not known or not available) or undef on error.
@@ -1406,12 +1447,12 @@ This method is typically most useful for non-select statements which
 either cannot be prepared in advance (due to a limitation in the
 driver) or which do not need to be executed repeatedly.
 
-The default do method is similar to:
+The default do method is logically similar to:
 
   sub do {
-      my($dbh, $statement) = @_;
+      my($dbh, $statement, $attr, @bind_values) = @_;
       my $sth = $dbh->prepare($statement) or return undef;
-      $sth->execute() or return undef;
+      $sth->execute(@bind_values) or return undef;
       my $rows = $sth->rows;
       ($rows == 0) ? "0E0" : $rows;
   }
@@ -1423,6 +1464,9 @@ Example:
       where status = 'DONE'
   }) || die $dbh->errstr;
 
+Using placeholders and C<@bind_values> with the C<do> method can be
+useful because it avoids the need to correctly quote any variables
+in the $statement.
 
 =item B<commit>
 

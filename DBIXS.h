@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.40 1997/07/16 18:17:58 timbo Exp $
+/* $Id: DBIXS.h,v 1.41 1997/07/18 12:44:09 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -340,9 +340,11 @@ typedef struct {
     int         (*set_attr)	_((SV *h, SV *keysv, SV *valuesv));
     SV        * (*get_attr)	_((SV *h, SV *keysv));
     AV        * (*get_fbav)	_((imp_sth_t *imp_sth));
-    AV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
+    SV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
     int         (*bind_as_num)	_((int sql_type, int p, int s));
+    U32         (*hash)		_((char *string, long i));
 
+    void *pad[10];
 } dbistate_t;
 
 #ifndef DBIS

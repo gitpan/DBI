@@ -1,5 +1,10 @@
 
-Changes in DBI 0.86,	XXth June 1997
+Changes in DBI 0.87,	18th July 1997
+
+  Fixed minor type clashes.
+  Added more docs about placeholders and bind values.
+
+Changes in DBI 0.86,	16th July 1997
 
   Fixed failed connect causing 'unblessed ref' and other errors.
   Drivers must handle AutoCommit FETCH and STORE else DBI croaks.
