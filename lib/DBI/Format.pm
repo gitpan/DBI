@@ -23,7 +23,7 @@ package DBI::Format;
 
 use Text::Abbrev;
 
-$DBI::Format::VERSION = $DBI::Format::VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+$DBI::Format::VERSION = $DBI::Format::VERSION = (qw$Revision: 11.3 $)[1];
 
 
 sub available_formatters {
@@ -31,21 +31,22 @@ sub available_formatters {
     my @fmt;
     my @dir = grep { -d "$_/DBI/Format" } @INC;
     foreach my $dir (@dir) {
-	opendir DIR, "$dir/DBI/Format" or warn "Unable to read $dir/DBI: $!\n";
-	push @fmt, map { m/^(\w+)\.pm$/i ? ($1) : () } readdir DIR;
-	closedir DIR;
+		opendir DIR, "$dir/DBI/Format" or warn "Unable to read $dir/DBI: $!\n";
+		push @fmt, map { m/^(\w+)\.pm$/i ? ($1) : () } readdir DIR;
+		closedir DIR;
     }
     my %fmt = map { (lc($_) => "DBI::Format::$_") } @fmt;
-    $fmt{box}  = "DBI::Format::Box";
-    $fmt{neat} = "DBI::Format::Neat";
-    $fmt{raw} = "DBI::Format::Raw";
-    $fmt{string} = "DBI::Format::String";
+		$fmt{box}  = "DBI::Format::Box";
+		$fmt{neat} = "DBI::Format::Neat";
+		$fmt{raw} = "DBI::Format::Raw";
+		$fmt{string} = "DBI::Format::String";
+		$fmt{html} = "DBI::Format::HTML";
     my $formatters = \%fmt;
     if ($use_abbrev) {
 	$formatters = abbrev(keys %fmt);
-	foreach my $abbrev (keys %$formatters) {
-	    $formatters->{$abbrev} = $fmt{ $formatters->{$abbrev} } || die;
-	}
+		foreach my $abbrev (sort keys %$formatters) {
+			$formatters->{$abbrev} = $fmt{ $formatters->{$abbrev} } || die;
+		}
     }
     return $formatters;
 }
@@ -57,15 +58,21 @@ sub formatter {
     my $formatters = available_formatters($use_abbrev);
     my $fmt = $formatters->{$mode};
     if (!$fmt) {
-	$formatters = available_formatters(0);
-	die "Format '$mode' unavailable. Available formats: ".
-		join(", ", sort keys %$formatters)."\n";
+		$formatters = available_formatters(0);
+		die "Format '$mode' unavailable. Available formats: ".
+			join(", ", sort keys %$formatters)."\n";
     }
-    no strict 'refs';
-    unless (%{$class."::"}) {
-	eval "require $fmt";
-	die "$@\n" if $@;
-    }
+	{
+		# Attempt to determine if format mode is in the base class.
+    	no strict 'refs';
+		eval "$fmt->new()";
+		if ( $@ and $@ =~ m/locate/ ) {
+			eval "use $fmt";
+			die "$@\n" if $@;
+		} elsif ($@) {
+			die "$@\n" if $@;
+    	}
+	}
     return $fmt;
 }
 
@@ -81,12 +88,17 @@ sub new {
 
 sub setup_fh {
     my ($self, $fh)  = @_;
-    return $fh if ref($fh) =~ m/GLOB\(/;
-    $fh ||= \*STDOUT;
-    if ($fh !~ /=/) {	# not blessed
-	require FileHandle;
-	bless $fh => "FileHandle";
+    if (ref($fh) =~ m/glob/i) {
+    	return $fh;
     }
+
+    $fh ||= \*STDOUT;
+
+    if ($fh !~ /=/) {	# not blessed
+		require FileHandle;
+		bless $fh => "FileHandle";
+    }
+
     return $fh;
 }
 
@@ -98,6 +110,21 @@ sub trailer {
     my $rows = delete $self->{'rows'};
     print $fh ("[$rows rows of $sth->{NUM_OF_FIELDS} fields returned]\n");
 		delete $self->{'sep'};
+}
+
+sub _determine_width {
+    my($self , $type, $precision) = @_;
+	my $width = 
+		($type == DBI::SQL_DATE)? 8 :
+		($type == DBI::SQL_INTEGER 
+			and defined $precision
+			and $precision > 15 ) ? 10 :
+		($type == DBI::SQL_NUMERIC 
+			and defined $precision
+			and $precision > 15 ) ? 10 :
+			defined($precision) ?  $precision: 0;
+
+	return $width;
 }
 
 
@@ -158,7 +185,6 @@ sub header {
 	      $type == DBI::SQL_SMALLINT()  ||
 	      $type == DBI::SQL_FLOAT()     ||
 	      $type == DBI::SQL_REAL()      ||
-	      $type == DBI::SQL_BIGINT()    ||
 	      $type == DBI::SQL_TINYINT()));
     }
     $self->{'widths'} = \@widths;
@@ -261,24 +287,20 @@ sub header {
     my $names = $sth->{'NAME'};
     my $type;
     for (my $i = 0;  $i < $sth->{'NUM_OF_FIELDS'};  $i++) {
-	$type = $types->[$i];
-	push(@widths, 
-		($type == DBI::SQL_DATE)? 8 :
-		($type == DBI::SQL_INTEGER and $sth->{PRECISION}->[$i] > 15 )? 10 :
-		($type == DBI::SQL_NUMERIC and $sth->{PRECISION}->[$i] > 15 )? 10 :
-			defined($sth->{PRECISION}->[$i]) ? 
-				$sth->{PRECISION}->[$i]: 0);
-	push(@right_justify,
+		$type = $types->[$i];
+		push(@widths, $self->_determine_width( 
+			$type, $sth->{PRECISION}->[$i] ));
+
+		push(@right_justify,
 	     ($type == DBI::SQL_NUMERIC()   ||
 	      $type == DBI::SQL_DECIMAL()   ||
 	      $type == DBI::SQL_INTEGER()   ||
 	      $type == DBI::SQL_SMALLINT()  ||
 	      $type == DBI::SQL_FLOAT()     ||
 	      $type == DBI::SQL_REAL()      ||
-	      $type == DBI::SQL_BIGINT()    ||
 	      $type == DBI::SQL_TINYINT()));
     	my $format_names;
-	$format_names .= sprintf("%%-%ds ", $widths[$i]);
+		$format_names .= sprintf("%%-%ds ", $widths[$i]);
     	print $fh (sprintf($format_names, $names->[$i]));
     }
     $self->{'widths'} = \@widths;
@@ -326,6 +348,92 @@ sub trailer {
     my $self = shift;
     my $widths = delete $self->{'widths'};
     my $right_justify = delete $self->{'right_justify'};
+    $self->SUPER::trailer(@_);
+} 
+
+package DBI::Format::HTML;
+
+@DBI::Format::HTML::ISA = qw(DBI::Format::Base);
+
+sub header {
+    my($self, $sth, $fh) = @_;
+    $self->{'fh'} = $self->setup_fh($fh);
+    $self->{'sth'} = $sth;
+    $self->{'data'} = [];
+    my $types = $sth->{'TYPE'};
+    my @right_justify;
+    my @widths;
+    my $names = $sth->{'NAME'};
+    my $type;
+    for (my $i = 0;  $i < $sth->{'NUM_OF_FIELDS'};  $i++) {
+	push(@widths, defined($names->[$i]) ? length($names->[$i]) : 0);
+	$type = $types->[$i];
+	push(@right_justify,
+	     ($type == DBI::SQL_NUMERIC()   ||
+	      $type == DBI::SQL_DECIMAL()   ||
+	      $type == DBI::SQL_INTEGER()   ||
+	      $type == DBI::SQL_SMALLINT()  ||
+	      $type == DBI::SQL_FLOAT()     ||
+	      $type == DBI::SQL_REAL()      ||
+	      $type == DBI::SQL_TINYINT()));
+    }
+    $self->{'widths'} = \@widths;
+    $self->{'right_justify'} = \@right_justify;
+}
+
+
+sub row {
+    my($self, $orig_row) = @_;
+    my $i = 0;
+    my $col;
+    my $widths = $self->{'widths'};
+    my @row = @$orig_row; # don't mess with the original row
+    map {
+	if (!defined($_)) {
+	    $_ = ' (NULL) ';
+	} else {
+	    $_ =~ s/\n/\\n/g;
+	    $_ =~ s/\t/\\t/g;
+	    $_ =~ s/[\000-\037\177-\237]/./g;
+	}
+	if (length($_) > $widths->[$i]) {
+	    $widths->[$i] = length($_);
+	}
+	++$i;
+    } @row;
+    push @{$self->{data}}, \@row;
+}
+
+
+sub trailer {
+    my $self = shift;
+    my $widths = delete $self->{'widths'};
+    my $right_justify = delete $self->{'right_justify'};
+    my $sth  = $self->{'sth'};
+    my $data = $self->{'data'};
+    $self->{'rows'} = @$data;
+
+    my $format_sep = '+';
+    my $format_names = '<TR>';
+    my $format_rows = '<TR>';
+    for (my $i = 0;  $i < $sth->{'NUM_OF_FIELDS'};  $i++) {
+	$format_names .= sprintf("<TH>%%-%ds</TH>", $widths->[$i]);
+	$format_rows  .= sprintf("<TD>%%"
+			. ($right_justify->[$i] ? "" : "-") . "%ds</TD>",
+			$widths->[$i]);
+    }
+    $format_sep   .= "\n";
+    $format_names .= "</TR>\n";
+    $format_rows  .= "</TR>\n";
+
+    my $fh = $self->{'fh'};
+    print $fh("<TABLE>\n");
+    print $fh(sprintf($format_names, @{$sth->{'NAME'}}));
+    foreach my $row (@$data) {
+	print $fh (sprintf($format_rows, @$row));
+    }
+    print $fh ("</TABLE>\n");
+
     $self->SUPER::trailer(@_);
 }
 
@@ -443,8 +551,8 @@ separated list.
 
 =head2 String
 
-Row is written using a string format.  Future releases may include the ability
-set the string format, if someone contributes it.
+Row is written using a string format.  Future releases will include th ability
+set the string format.
 
 
 =head1 AUTHOR AND COPYRIGHT
@@ -466,4 +574,3 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<DBI::Shell(3)>, L<DBI(3)>, L<dbish(1)>
-

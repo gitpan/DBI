@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 11.3 2002/01/10 15:14:06 timbo Exp $
+# $Id: test.pl,v 11.4 2002/05/20 21:03:53 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 11.3 $}."\n";
+    print q{DBI test application $Revision: 11.4 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
     warn $@ if $@;
@@ -95,13 +95,13 @@ else {
     print "Testing handle creation speed...\n";
     my $null_dbh = DBI->connect('dbi:NullP:','','');
     my $null_sth = $null_dbh->prepare('');	# create one to warm up
-    $count = 5000;
+    $count = 10_000;
     my $i = $count;
     my $t1 = new Benchmark;
     $null_dbh->prepare('') while $i--;
     my $td = Benchmark::timediff(Benchmark->new, $t1);
     my $tds= Benchmark::timestr($td);
-    my $dur = $td->cpu_a;
+    my $dur = $td->cpu_a || (1/$count); # fudge if cpu_a==0
     printf "$count NullP statement handles cycled in %.1f cpu+sys seconds (%d per sec)\n\n",
 	    $dur, $count / $dur;
 

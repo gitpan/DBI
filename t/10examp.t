@@ -111,8 +111,8 @@ my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 ok(0, !defined $cursor_e);
 ok(0, $DBI::err);
 ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name/);
-ok(0, $DBI::err    == $dbh->err);
-ok(0, $DBI::errstr eq $dbh->errstr);
+ok(0, $DBI::err    == $dbh->err,    "DBI::err='$DBI::err', dbh->err=".$dbh->err);
+ok(0, $DBI::errstr eq $dbh->errstr, "DBI::errstr='$DBI::errstr', dbh->errstr=".$dbh->errstr);
 
 ok(0, $dbh->errstr eq $dbh->func('errstr'));
 

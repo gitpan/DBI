@@ -1,6 +1,6 @@
-/* $Id: DBI.xs,v 11.6 2002/02/07 03:00:53 timbo Exp $
+/* $Id: DBI.xs,v 11.7 2002/05/20 21:03:53 timbo Exp $
  *
- * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
+ * Copyright (c) 1994-2002  Tim Bunce  Ireland.
  *
  * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
@@ -37,6 +37,7 @@ static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 #endif
 
 #ifndef PerlIO
+x x x x
 #  define PerlIO FILE
 #  define PerlIO_printf fprintf
 #  define PerlIO_stderr() stderr
@@ -592,7 +593,7 @@ dbi_cond_signal(imp_xxh)
     if (!imp_xxh || !DBIc_THR_COND(imp_xxh))
 	return;
     DBI_LOCK;
-    if (PL_threadnum && DBIS->debug >= 4)
+    if (DBIS->debug >= 4)
 	PerlIO_printf(DBILOGFP,"    .. thread %lu leaving %s\n",
 		DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
     DBIc_THR_USER(imp_xxh) = DBIc_THR_USER_NONE; /* free for other thread to enter */
@@ -2000,25 +2001,23 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
 
 #ifdef DBI_USE_THREADS		/* only pay the cost with threaded perl	*/
-	if (PL_threadnum) {	/* and only if > one thread exists	*/
-	    DBI_LOCK;
-	    while(DBIc_THR_USER(imp_xxh) != DBIc_THR_USER_NONE && DBIc_THR_USER(imp_xxh) != thr->tid) {
-		if (debug >= 4) {
-		    PerlIO_printf(DBILOGFP,"    .. %s: thread %lu waiting for thread %lu to leave %s\n",
-			    meth_name, thr->tid, DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
-		    PerlIO_flush(DBILOGFP);
-		}
-		COND_WAIT(DBIc_THR_COND(imp_xxh), DBIS->mutex);
-	    }
-	    DBIc_THR_USER(imp_xxh) = thr->tid;
+	DBI_LOCK;
+	while(DBIc_THR_USER(imp_xxh) != DBIc_THR_USER_NONE && DBIc_THR_USER(imp_xxh) != thr->tid) {
 	    if (debug >= 4) {
-		PerlIO_printf(DBILOGFP,"    .. %s: thread %lu entering %s\n",
-			meth_name, thr->tid, HvNAME(DBIc_IMP_STASH(imp_xxh)));
+		PerlIO_printf(DBILOGFP,"    .. %s: thread %lu waiting for thread %lu to leave %s\n",
+			meth_name, thr->tid, DBIc_THR_USER(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)));
 		PerlIO_flush(DBILOGFP);
 	    }
-	    SAVEDESTRUCTOR(dbi_cond_signal, imp_xxh);  /* arrange later cond signal	*/
-	    DBI_UNLOCK;
+	    COND_WAIT(DBIc_THR_COND(imp_xxh), DBIS->mutex);
 	}
+	DBIc_THR_USER(imp_xxh) = thr->tid;
+	if (debug >= 4) {
+	    PerlIO_printf(DBILOGFP,"    .. %s: thread %lu entering %s\n",
+		    meth_name, thr->tid, HvNAME(DBIc_IMP_STASH(imp_xxh)));
+	    PerlIO_flush(DBILOGFP);
+	}
+	SAVEDESTRUCTOR(dbi_cond_signal, imp_xxh);  /* arrange later cond signal	*/
+	DBI_UNLOCK;
 #endif
 
 	if (!imp_msv) {
@@ -2574,7 +2573,7 @@ preparse(SV *dbh, char *statement, IV ps_return, IV ps_accept, void *foo)
 			char buf[99];
 			sprintf(buf, "preparse found placeholder :%d out of sequence, expected :%d", pln, idx);
 			set_err(dbh, imp_xxh, 1, buf, 0);
-			return 0;
+			return &sv_undef;
                    }
 		   while(isDIGIT(*src)) src++;
                    idx++;
@@ -2605,7 +2604,7 @@ preparse(SV *dbh, char *statement, IV ps_return, IV ps_accept, void *foo)
 	    char buf[99];
 	    sprintf(buf, "preparse found mixed placeholder styles (%s / %s)", style, laststyle);
 	    set_err(dbh, imp_xxh, 1, buf, 0);
-            return 0;
+            return &sv_undef;
         }
 	laststyle = style;
     }
@@ -2990,7 +2989,7 @@ FETCH(sv)
     /* default to method call via stash of implementor of DBI_LAST_HANDLE */
     imp_stash = DBIc_IMP_STASH(imp_xxh);
     if (DBIS->debug >= 2)
-        fprintf(DBILOGFP,"    >> %s::%s\n", HvNAME(imp_stash), meth);
+        PerlIO_printf(DBILOGFP,"    >> %s::%s\n", HvNAME(imp_stash), meth);
     ST(0) = DBI_LAST_HANDLE;
     if ((imp_gv = gv_fetchmethod(imp_stash,meth)) == NULL) {
         croak("Can't locate $DBI::%s object method \"%s\" via package \"%s\"",

@@ -1,6 +1,6 @@
-/* $Id: DBIXS.h,v 11.3 2002/02/05 02:12:25 timbo Exp $
+/* $Id: DBIXS.h,v 11.4 2002/05/20 21:03:53 timbo Exp $
  *
- * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
+ * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
  * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
@@ -405,7 +405,7 @@ typedef struct {
 /* note that USE_ITHREADS implies MULTIPLICITY                      */
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT) || defined(PERL_CAPI)
 
-# define DBISTATE_DECLARE
+# define DBISTATE_DECLARE typedef int dummy_dbistate /* keep semicolon from feeling lonely */
 # define DBISTATE_ASSIGN(st)
 # define DBISTATE_INIT
 static dbistate_t **get_dbistate() {
@@ -441,9 +441,10 @@ static dbistate_t **get_dbistate() {
 /* attribs value. One day we may add some extra magic in here.		*/
 #define DBD_ATTRIBS_CHECK(func, h, attribs)	\
     if ((attribs) && SvOK(attribs)) {		\
+	STRLEN lna=0;				\
 	if (!SvROK(attribs) || SvTYPE(SvRV(attribs))!=SVt_PVHV)		\
 	    croak("%s->%s(...): attribute parameter '%s' is not a hash ref",	\
-		    SvPV(h,na), func, SvPV(attribs,na));		\
+		    SvPV(h,lna), func, SvPV(attribs,lna));		\
     } else (attribs) = Nullsv
 
 #define DBD_ATTRIB_GET_SVP(attribs, key,klen)			\

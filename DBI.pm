@@ -1,14 +1,14 @@
-# $Id: DBI.pm,v 11.7 2002/02/07 03:00:53 timbo Exp $
+# $Id: DBI.pm,v 11.9 2002/05/22 13:14:13 timbo Exp $
 #
-# Copyright (c) 1994-2000  Tim Bunce  England
+# Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
 
-require 5.004;
+require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.21; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.22; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -104,8 +104,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.21
-(C<$Date: 2002/02/07 03:00:53 $>).
+This is the DBI specification that corresponds to the DBI version 1.22
+(C<$Date: 2002/05/22 13:14:13 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
@@ -132,7 +132,7 @@ namespace. See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.7 $, 10);
+my $Revision = substr(q$Revision: 11.9 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -214,7 +214,14 @@ $DBI::dbi_debug = $ENV{DBI_TRACE} || $ENV{PERL_DBI_DEBUG} || 0;
 # If you get an error here like "Can't find loadable object ..."
 # then you haven't installed the DBI correctly. Read the README
 # then install it again.
-bootstrap DBI;
+if ( $ENV{DBI_PUREPERL} ) {
+    eval { bootstrap DBI } if       $ENV{DBI_PUREPERL} == 1;
+    require DBI::PurePerl  if $@ or $ENV{DBI_PUREPERL} >= 2;
+    $DBI::PurePerl ||= 0; # just to silence "only used once" warnings
+}
+else {
+    bootstrap DBI;
+}
 
 $EXPORT_TAGS{preparse_flags} = [ grep { /^DBIpp_\w\w_/ } keys %{__PACKAGE__."::"} ];
 
@@ -352,6 +359,10 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	bind_param	=> { U =>[3,4,'$parameter, $var [, \%attr]'] },
 	bind_param_inout=> { U =>[4,5,'$parameter, \\$var, $maxlen, [, \%attr]'] },
 	execute		=> { U =>[1,0,'[@args]'], O=>0x40 },
+
+	bind_param_array  => { U =>[3,4,'$parameter, $var [, \%attr]'] },
+#	bind_param_inout_array => { U =>[4,5,'$parameter, \\@var, $maxlen, [, \%attr]'] },
+	execute_array     => { U =>[2,0,'\\%attribs [, @args]'] },
 
 	fetch    	  => undef, # alias for fetchrow_arrayref
 	fetchrow_arrayref => undef,
@@ -1239,7 +1250,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $key = ($attr) ? join("~~", $statement, @attr_keys, @{$attr}{@attr_keys}) : $statement;
 	my $sth = $cache->{$key};
 	if ($sth) {
-	    if ($sth->FETCH('Active')) {
+	    if ($sth->FETCH('Active') && ($allow_active||0) != 2) {
 		Carp::carp("prepare_cached($statement) statement handle $sth was still active")
 		    if !$allow_active;
 		$sth->finish;
@@ -1382,6 +1393,129 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub cancel  { undef }
     sub bind_param { Carp::croak("Can't bind_param, not implement by driver") }
+
+#
+# ********************************************************
+#
+#	BEGIN ARRAY BINDING
+#
+#	Array binding support for drivers which don't support
+#	array binding, but have sufficient interfaces to fake it.
+#	NOTE: mixing scalars and arrayrefs requires using bind_param_array
+#	for *all* params...unless we modify bind_param for the default
+#	case...
+#
+#	2002-Apr-10	D. Arnold
+
+    sub bind_param_array {
+	my $sth = shift;
+	my ($p_id, $value_array, $attr) = @_;
+
+	return $sth->DBI::set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
+	    if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
+
+	return $sth->DBI::set_err(1, "Can't use named placeholders for non-driver supported bind_param_array")
+	    unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
+
+	# get/create arrayref to hold params
+	my $hash_of_arrays = $sth->{ParamArrays} ||= { };
+
+	if (ref $value_array eq 'ARRAY') {
+	    # check that input has same length as existing
+	    # find first arrayref entry (if any)
+	    foreach (keys %$hash_of_arrays) {
+		my $v = $$hash_of_arrays{$_};
+		next unless ref $v eq 'ARRAY';
+		return $sth->DBI::set_err(1,
+			"Arrayref for parameter $p_id has ".@$value_array." elements"
+			." but parameter $_ has ".@$v)
+		    if @$value_array != @$v;
+	    }
+	}
+
+	# If the bind has attribs then we rely on the driver conforming to
+	# the DBI spec in that a single bind_param() call with those attribs
+	# makes them 'sticky' and apply to all later execute(@values) calls.
+	# Since we only call bind_param() if we're given attribs then
+	# applications using drivers that don't support bind_param can still
+	# use bind_param_array() so long as they don't pass any attribs.
+
+	$$hash_of_arrays{$p_id} = $value_array;
+	return $sth->bind_param($p_id, undef, $attr) 
+		if $attr;
+	1;
+    }
+
+    sub bind_param_inout_array { 
+	die "bind_param_inout_array not yet supported";
+	#	just throw to regular case, binding is same here
+	my $sth = shift;
+	my ($p_num, $value_array, $attr) = @_;
+	$sth->bind_param_array($p_num, $value_array, $attr);
+	$sth->{ParamArraysInOut} = 1;
+	1;
+    }
+
+    sub execute_array {
+	my $sth = shift;
+	my ($attribs, @array_of_arrays) = @_;
+
+	# get tuple status array or hash attribute (if any)
+	my $tuple_sts = $attribs->{ArrayTupleStatus};
+	return $sth->DBI::set_err(1, "ArrayTupleStatus attribute must be an arrayref")
+		if $tuple_sts and ref $tuple_sts ne 'ARRAY';
+
+	# bind all supplied arrays
+	if (@array_of_arrays) {
+	    $sth->{ParamArrays} = { };	# clear out old params
+	    my $NUM_OF_PARAMS = $sth->FETCH('NUM_OF_PARAMS');
+	    return $sth->DBI::set_err(1, @array_of_arrays." bind values supplied but $NUM_OF_PARAMS expected")
+		    if @array_of_arrays != $NUM_OF_PARAMS;
+	    $sth->bind_param_array($_, $array_of_arrays[$_-1]) or return
+		    foreach (1..@array_of_arrays);
+	}
+
+	# no binds, no args, why did they call us ? just toss it to execute()
+	return $sth->execute
+		unless $sth->{ParamArrays};
+
+	# get the length of a bound array
+	my $len = 1; # in case all are scalars
+	my %hash_of_arrays = %{$sth->{ParamArrays}};
+	foreach (keys(%hash_of_arrays)) {
+	    my $ary = $hash_of_arrays{$_};
+	    $len = @$ary if ref $ary eq 'ARRAY';
+	}
+	my @bind_ids = 1..keys(%hash_of_arrays);
+
+	my ($errcount, $rowcount);
+	my %errstr_cache;
+	@$tuple_sts = () if $tuple_sts; # reset the status array
+	$tuple_sts->[$len-1] = undef;	# presize array
+use Data::Dumper;
+#warn Dumper([ \@bind_ids, \%hash_of_arrays]);
+	for (my $i=0; $i < $len; ++$i) {	# for each tuple
+
+	    my @tuple = map {
+		my $a = $hash_of_arrays{$_};
+#warn "$_=$a";
+		ref($a) ? $a->[$i] : $a
+	    } @bind_ids;
+#warn Dumper(\@tuple);
+	    my $rc = $sth->execute(@tuple);
+	    if ($rc) {
+		$rowcount += $tuple_sts->[$i] = $rc;
+		next;
+	    }
+
+	    return unless $tuple_sts;	# return error if no status provided
+	    $errcount++;
+	    my $err = $sth->err;
+	    $tuple_sts->[$i] = [ $err, $errstr_cache{$err} ||= $sth->errstr ];
+	}
+	return ($errcount) ? undef : $rowcount;
+    }
+
 
     sub fetchall_arrayref {
 	my $sth = shift;
@@ -2879,14 +3013,6 @@ C<prepare_cached> with the same C<$statement> and C<%attr> values, then the
 corresponding cached C<$sth> will be returned without contacting the
 database server.
 
-This caching can be useful in some applications, but it can also cause
-problems and should be used with care. If the cached C<$sth> being
-returned is active (i.e., is a C<SELECT> that may still have data to be
-fetched) then a warning will be generated and C<finish> will be called
-for you.  The warning can be suppressed by setting C<$allow_active> to
-true.  The cache can be accessed (and cleared) via the L</CachedKids>
-attribute.
-
 Here are some examples of C<prepare_cached>:
 
   sub insert_hash {
@@ -2908,6 +3034,55 @@ Here are some examples of C<prepare_cached>:
     $sth = $dbh->prepare_cached("SELECT * FROM $table $qualifier");
     return $dbh->selectall_arrayref($sth, {}, @values);
   }
+
+I<Caveat emptor:> This caching can be useful in some applications,
+but it can also cause problems and should be used with care. Here
+is a contrived case where caching would cause a significant problem:
+
+  my $sth = $dbh->prepare_cached('SELECT * FROM foo WHERE bar=?');
+  $sth->execute($bar);
+  while (my $data = $sth->fetchrow_hashref) {
+    my $sth2 = $dbh->prepare_cached('SELECT * FROM foo WHERE bar=?');
+    $sth2->execute($data->{bar});
+    while (my $data2 = $sth2->fetchrow_arrayref) {
+      do_stuff(...);
+    }
+  }
+
+In this example, since both handles are preparing the exact same statement,
+C<$sth2> will not be its own statement handle, but a duplicate of C<$sth>
+returned from the cache. The results will certainly not be what you expect.
+Typically the the inner fetch loop will work normally, fetching all
+the records and terminating when there are no more, but now $sth
+is the same as $sth2 the outer fetch loop will also terminate.
+
+The C<$allow_active> parameter lets you adjust DBI's behavior when
+prepare_cached is returning a statement handle that is still active.
+There are three settings:
+
+=over 4
+
+B<0>: A warning will be generated, and C<finish> will be called on
+the statement handle before it is returned.  This is the default
+behavior if C<$allow_active> is not passed.
+
+B<1>: C<finish> will be called on the statement handle, but the
+warning is suppressed.
+
+B<2>: DBI will not touch the statement handle before returning it.
+You will need to check C<$sth->E<gt>C<{Active}> on the returned
+statement handle and deal with it in your own code.
+
+=back
+
+Because the cache used by prepare_cached() is keyed by all the
+parameters, including any attributes passed, you can also avoid
+this issue by doing something like:
+
+  my $sth = $dbh->prepare_cached("...", { dbi_dummy => __FILE__.__LINE__ });
+
+which will ensure that prepare_cached only returns statements cached
+by that line of code in that source file. 
 
 
 =item C<commit>
@@ -2976,11 +3151,11 @@ Generally, if you want your changes to be commited or rolled back when
 you disconnect, then you should explicitly call L</commit> or L</rollback>
 before disconnecting.
 
-If you disconnect from a database while you still have active statement
-handles, you will get a warning. The statement handles should either be
-cleared (destroyed) before disconnecting, or the C<finish> method
-should be called on
-each one.
+If you disconnect from a database while you still have active
+statement handles (e.g., SELECT statement handles that may have
+more data to fetch), you will get a warning. The warning may indicate
+that a fetch loop terminated early, perhaps due to an uncaught error.
+To avoid the warning call the C<finish> method on the active handles.
 
 
 =item C<ping>
@@ -3120,7 +3295,9 @@ B<REMARKS>: A description of the table. May be NULL (C<undef>).
 Note that C<table_info> might not return records for all tables.
 Applications can use any valid table regardless of whether it's
 returned by C<table_info>.
-See also L</tables> and L</"Standards Reference Information">.
+
+See also L</tables>, L</"Catalog Methods"> and
+L</"Standards Reference Information">.
 
 =item C<column_info> I<NEW>
 
@@ -3234,7 +3411,7 @@ and ORDINAL_POSITION.
 Note: There is some overlap with statement attributes (in perl) and
 SQLDescribeCol (in ODBC). However, SQLColumns provides more metadata.
 
-See also L</"Standards Reference Information">.
+See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
 =item C<primary_key_info> I<NEW>
 
@@ -3277,7 +3454,7 @@ Note: This field is named B<ORDINAL_POSITION> in SQL/CLI.
 B<PK_NAME>: The primary key constraint identifier.
 This field is NULL (C<undef>) if not applicable to the data source.
 
-See also L</"Standards Reference Information">.
+See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
 =item C<primary_key> I<NEW>
 
@@ -3404,7 +3581,7 @@ The value of this column is UNIQUE if the foreign key references an alternate
 key and PRIMARY if the foreign key references a primary key, or it
 may be undefined if the driver doesn't have access to the information.
 
-See also L</"Standards Reference Information">.
+See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
 
 =item C<tables> I<NEW>
@@ -3779,13 +3956,11 @@ last commit are undone.
 
 If C<AutoCommit> is on, then the effect is the same as if the DBI
 called C<commit> automatically after every successful database
-operation. In other words, calling C<commit> or C<rollback> explicitly while
+operation. So calling C<commit> or C<rollback> explicitly while
 C<AutoCommit> is on would be ineffective because the changes would
 have already been commited.
 
-Changing C<AutoCommit> from off to on should issue a L</commit> in most drivers.
-
-Changing C<AutoCommit> from on to off should have no immediate effect.
+Changing C<AutoCommit> from off to on will trigger a L</commit>.
 
 For databases which don't support a specific auto-commit mode, the
 driver has to commit each statement automatically using an explicit
@@ -3799,11 +3974,13 @@ B<* Databases in which a transaction must be explicitly started>
 For these databases, the intention is to have them act like databases in
 which a transaction is always active (as described above).
 
-To do this, the DBI driver will automatically begin a transaction when
-C<AutoCommit> is turned off (from the default "on" state) and will
-automatically begin another transaction after a L</commit> or L</rollback>.
-In this way, the application does not have to treat these databases as a
-special case.
+To do this, the driver will automatically begin an explicit transaction
+when C<AutoCommit> is turned off, or after a L</commit> or
+L</rollback> (or when the application issues the next database
+operation after one of those events).
+
+In this way, the application does not have to treat these databases
+as a special case.
 
 See L</commit>, L</disconnect> and L</Transactions> for other important
 notes about transactions.
@@ -4181,10 +4358,14 @@ is rarely needed, but can sometimes be helpful in very specific
 situations to allow the server to free up resources (such as sort
 buffers).
 
-When all the data has been fetched from a C<SELECT> statement, the driver
-should automatically call C<finish> for you. So you should I<not> normally
-need to call it explicitly. (Adding calls to C<finish> after each
-fetch loop is a common mistake, don't do it, it can mask other problems.)
+When all the data has been fetched from a C<SELECT> statement, the
+driver should automatically call C<finish> for you. So you should
+I<not> normally need to call it explicitly I<except> when you know
+that you've not fetched all the data from a statement handle.
+The most common example is when you only want to fetch one row,
+but in that case the C<selectrow_*> methods may be better anyway.
+Adding calls to C<finish> after each fetch loop is a common mistake,
+don't do it, it can mask genuine problems like uncaught fetch errors.
 
 Consider a query like:
 
@@ -4203,9 +4384,8 @@ unavailable if they have not already been accessed (and thus cached).
 
 The C<finish> method does not affect the transaction status of the
 database connection.  It has nothing to do with transactions. It's mostly an
-internal "housekeeping" method that is rarely needed. There's no need
-to call C<finish> if you're about to destroy or re-execute the statement
-handle.  See also L</disconnect> and the L</Active> attribute.
+internal "housekeeping" method that is rarely needed.
+See also L</disconnect> and the L</Active> attribute.
 
 The C<finish> method should have been called C<cancel_select>.
 
@@ -4462,6 +4642,59 @@ See also the L</RowCacheSize> database handle attribute.
 
 =head1 FURTHER INFORMATION
 
+=head2 Catalog Methods
+
+An application can retrieve metadata information from the DBMS by issuing
+appropriate queries on the views of the Information Schema. Unfortunately,
+C<INFORMATION_SCHEMA> views are seldom supported by the DBMS.
+Special methods (catalog methods) are available to return result sets
+for a small but important portion of that metadata:
+
+  column_info
+  foreign_key_info
+  primary_key_info
+  table_info
+
+All catalog methods accept arguments in order to restrict the result sets.
+Passing C<undef> to an optional argument does not constrain the search for
+that argument.
+However, an empty string ('') is treated as a regular search criteria
+and will only match an empty value.
+
+B<Note>: SQL/CLI and ODBC differ in the handling of empty strings. An
+empty string will not restrict the result set in SQL/CLI.
+
+Most arguments in the catalog methods accept only I<ordinary values>, e.g.
+the arguments of C<primary_key_info()>.
+Such arguments are treated as a literal string, i.e. the case is significant
+and quote characters are taken literally.
+
+Some arguments in the catalog methods accept I<search patterns> (strings
+containing '_' and/or '%'), e.g. the C<$table> argument of C<column_info()>.
+Passing '%' is equivalent to leaving the argument C<undef>.
+
+B<Caveat>: The underscore ('_') is valid and often used in SQL identifiers.
+Passing such a value to a search pattern argument may return more rows than
+expected!
+To include pattern characters as literals, they must be preceded by an
+escape character which can be achieved with
+
+  $esc = $dbh->get_info( 14 );  # SQL_SEARCH_PATTERN_ESCAPE
+  $search_pattern =~ s/([_%])/$esc$1/g;
+
+The ODBC and SQL/CLI specifications define a way to change the default
+behavior described above: All arguments (except I<list value arguments>)
+are treated as I<identifier> if the C<SQL_ATTR_METADATA_ID> attribute is
+set to C<SQL_TRUE>.
+I<Quoted identifiers> are very similar to I<ordinary values>, i.e. their
+body (the string within the quotes) is interpreted literally.
+I<Unquoted identifiers> are compared in UPPERCASE.
+
+The DBI (currently) does not support the C<SQL_ATTR_METADATA_ID> attribute,
+i.e. it behaves like an ODBC driver where C<SQL_ATTR_METADATA_ID> is set to
+C<SQL_FALSE>.
+
+
 =head2 Transactions
 
 Transactions are a fundamental part of any robust database system. They
@@ -4511,6 +4744,9 @@ After calling C<commit> or C<rollback> many drivers will not let you
 fetch from a previously active C<SELECT> statement handle that's a child
 of the same database handle. A typical way round this is to connect the
 the database twice and use one connection for C<SELECT> statements.
+
+See L</AutoCommit> and L</disconnect> for other important information
+about transactions.
 
 
 =head2 Handling BLOB / LONG / Memo Fields
@@ -4813,35 +5049,11 @@ sure you have spelled the attribute name correctly; case is significant
 
 =back
 
-=head2 Warnings
+=head1 Pure-Perl DBI
 
-=over 4
-
-=item Database handle destroyed without explicit disconnect
-
-A C<$dbh> handle went out of scope or the program ended before the handle
-was disconnected from the database.  You should always explicitly call
-C<disconnect> when you are finished using a database handle. If using
-transactions then you should also explicitly call C<commit> or C<rollback>
-before C<disconnect>.
-
-=item DBI Handle cleared whilst still holding %d cached kids!
-
-Most probably due to a DBI bug. Possibly a DBD driver bug. Please report it.
-
-=item DBI Handle cleared whilst still active!
-
-Most probably due to a DBI bug. Possibly a DBD driver bug. Please report it.
-
-=item DBI Handle has uncleared implementors data
-
-Most probably a DBD driver bug. Please report it.
-
-=item DBI Handle has %d uncleared child handles
-
-Most probably due to a DBI bug. Possibly a DBD driver bug. Please report it.
-
-=back
+A pure-perl emulation of the DBI is included in the distribution
+for people using pure-perl drivers who, for whatever reason, can't
+install the compiled DBI. See L<DBI::PurePerl>.
 
 =head1 SEE ALSO
 
@@ -4990,7 +5202,7 @@ C<perl5-porters>.
 
 =head1 COPYRIGHT
 
-The DBI module is Copyright (c) 1994-2000 Tim Bunce. England.
+The DBI module is Copyright (c) 1994-2002 Tim Bunce. Ireland.
 All rights reserved.
 
 You may distribute under the terms of either the GNU General Public

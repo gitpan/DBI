@@ -18,19 +18,24 @@ lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/Proxy.pm	Proxy driver
 lib/DBD/Sponge.pm	A driver for fake cursors (precached data)
+lib/DBI/Const/GetInfo.pm	GetInfo data based on standards plus tools
+lib/DBI/Const/GetInfo/ANSI.pm	GetInfo data based on ANSI standard
+lib/DBI/Const/GetInfo/ODBC.pm	GetInfo data based on ODBC standard
 lib/DBI/DBD.pm		Some basic help for people writing DBI drivers
 lib/DBI/FAQ.pm		The DBI FAQ in module form for perldoc
 lib/DBI/Format.pm		Class for formatting rows of data
 lib/DBI/ProxyServer.pm	The proxy drivers server
+lib/DBI/PurePerl.pm	A DBI.xs emulation in Perl
 lib/DBI/Shell.pm	The DBI interactive shell
 lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
 lib/Win32/DBIODBC.pm	An experimental Win32::ODBC emulation layer for DBI
-t/basics.t	Test script for very basic DBI functionality
-t/dbidrv.t	Test script for loading drivers and using DBI vars
-t/examp.t	Test script for the DBI using the ExampleP driver
-t/meta.t	Test script for metadata methods
-t/preparse.t	Test script for the preparse() function
-t/proxy.t	Test script for the proxy driver
-t/shell.t	Test script for DBI::Shell
-t/subclass.t	Test script for subclassing the DBI
+t/01basics.t
+t/02dbidrv.t
+t/10examp.t
+t/15array.t
+t/20meta.t
+t/30subclass.t
+t/60preparse.t
+t/70shell.t
+t/80proxy.t
 test.pl	A very simple test harness using ExampleP.pm

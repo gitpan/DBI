@@ -1,13 +1,42 @@
 =head1 NAME
 
-DBI::Changes - Log of significant changes to the DBI
+DBI::Changes - List of significant changes to the DBI
 
 =cut
 
-Need to add DbTypeSubclass (ala DBIx::AnyDBD) docs
-Remove Handlers.
+Threads - slower for 5.5 threads - or remove support? (& dTHR's & DBI::DBD docs)
+Need to add docs for DbTypeSubclass (ala DBIx::AnyDBD)
+Move FIRSTKEY/NEXTKEY/EXISTS/DELETE? to XS (and pureperl)
 
 =head1 CHANGES
+
+=head2 Changes in DBI 1.22,    22nd May 2002
+
+  Added execute_array() and bind_param_array() with special thanks
+    to Dean Arnold. Not yet documented. See t/15array.t for examples.
+    All drivers now automatically support these methods.
+  Added DBI::PurePerl, a transparent DBI emulation for pure-perl drivers
+    with special thanks to Jeff Zucker. Perldoc DBI::PurePerl for details.
+  Added DBI::Const::GetInfo* modules thanks to Steffen Goeldner.
+  Added write_getinfo_pm utility to DBI::DBD thanks to Steffen Goeldner.
+  Added $allow_active==2 mode for prepare_cached() thanks to Stephen Clouse.
+
+  Updated DBI::Format to Revision 11.4 thanks to Tom Lowery.
+  Use File::Spec in Makefile.PL (helps VMS etc) thanks to Craig Berry.
+  Extend $h->{Warn} to commit/rollback ineffective warning thanks to Jeff Baker.
+  Extended t/preparse.t and removed "use Devel::Peek" thanks to Scott Hildreth.
+  Only copy Changes to blib/lib/Changes.pm once thanks to Jonathan Leffler.
+  Updated internals for modern perls thanks to Jonathan Leffler and Jeff Urlwin.
+  Tested with perl 5.7.3 (just using default perl config).
+
+  Documentation changes:
+
+  Added 'Catalog Methods' section to docs thanks to Steffen Goeldner.
+  Updated README thanks to Michael Schwern.
+  Clarified that driver may choose not to start new transaction until
+    next use of $dbh after commit/rollback.
+  Clarified docs for finish method.
+  Clarified potentials problems with prepare_cached() thanks to Stephen Clouse.
 
 
 =head2 Changes in DBI 1.21,    7th February 2002

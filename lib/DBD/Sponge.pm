@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.3 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm,v 11.3 2002/02/05 02:12:25 timbo Exp $
+#   $Id: Sponge.pm,v 11.4 2002/05/22 13:14:13 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -50,36 +50,49 @@
     sub prepare {
 	my($dbh, $statement, $attribs) = @_;
 	my $rows = delete $attribs->{'rows'}
-	    || Carp::croak("No rows attribute supplied to prepare");
+	    or return $dbh->set_err(1,"No rows attribute supplied to prepare");
 	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'   => $statement,
 	    'rows'        => $rows,
+	    (map { exists $attribs->{$_} ? ($_=>$attribs->{$_}) : () }
+		qw(execute_hook)
+	    ),
 	});
 	if (my $behave_like = $attribs->{behave_like}) {
 	    $outer->{$_} = $behave_like->{$_}
 		foreach (qw(RaiseError PrintError HandleError ShowErrorStatement));
 	}
-	# we need to set NUM_OF_FIELDS
-	my $numFields;
-	if ($attribs->{'NUM_OF_FIELDS'}) {
-	    $numFields = $attribs->{'NUM_OF_FIELDS'};
-	} elsif ($attribs->{'NAME'}) {
-	    $numFields = @{$attribs->{NAME}};
-	} elsif ($attribs->{'TYPE'}) {
-	    $numFields = @{$attribs->{TYPE}};
-	} elsif (my $firstrow = $rows->[0]) {
-	    $numFields = scalar @$firstrow;
-	} else {
-	    DBI::set_err($dbh, 1, 'Cannot determine NUM_OF_FIELDS');
-	    return undef;
+
+	if ($statement =~ /^\s*insert\b/) {	# very basic, just for testing execute_array()
+	    $sth->{is_insert} = 1;
+	    my $NUM_OF_PARAMS = $attribs->{NUM_OF_PARAMS}
+		or return $dbh->set_err(1,"NUM_OF_PARAMS not specified for INSERT statement");
+	    $sth->STORE('NUM_OF_PARAMS' => $attribs->{NUM_OF_PARAMS} );
 	}
-	$sth->STORE('NUM_OF_FIELDS' => $numFields);
-	$sth->{NAME} = $attribs->{NAME}
-		|| [ map { "col$_" } 1..$numFields ];
-	$sth->{TYPE} = $attribs->{TYPE}
-		|| [ (DBI::SQL_VARCHAR()) x $numFields ];
-	$sth->{PRECISION} = $attribs->{PRECISION}
-		|| [ map { length($sth->{NAME}->[$_]) } 0..$numFields -1 ];
+	else {	#assume select
+
+	    # we need to set NUM_OF_FIELDS
+	    my $numFields;
+	    if ($attribs->{'NUM_OF_FIELDS'}) {
+		$numFields = $attribs->{'NUM_OF_FIELDS'};
+	    } elsif ($attribs->{'NAME'}) {
+		$numFields = @{$attribs->{NAME}};
+	    } elsif ($attribs->{'TYPE'}) {
+		$numFields = @{$attribs->{TYPE}};
+	    } elsif (my $firstrow = $rows->[0]) {
+		$numFields = scalar @$firstrow;
+	    } else {
+		DBI::set_err($dbh, 1, 'Cannot determine NUM_OF_FIELDS');
+		return undef;
+	    }
+	    $sth->STORE('NUM_OF_FIELDS' => $numFields);
+	    $sth->{NAME} = $attribs->{NAME}
+		    || [ map { "col$_" } 1..$numFields ];
+	    $sth->{TYPE} = $attribs->{TYPE}
+		    || [ (DBI::SQL_VARCHAR()) x $numFields ];
+	    $sth->{PRECISION} = $attribs->{PRECISION}
+		    || [ map { length($sth->{NAME}->[$_]) } 0..$numFields -1 ];
+	}
 
 	$outer;
     }
@@ -103,7 +116,7 @@
 		MINIMUM_SCALE	=> 13,
 		MAXIMUM_SCALE	=> 14,
 	    },
-	    [ 'VARCHAR', DBI::SQL_VARCHAR, undef, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
+	    [ 'VARCHAR', DBI::SQL_VARCHAR(), undef, "'","'", undef, 0, 1, 1, 0, 0,0,undef,0,0 ],
 	];
 	return $ti;
     }
@@ -124,7 +137,7 @@
         # else pass up to DBI to handle
         if ($attrib eq 'AutoCommit') {
             return 1 if $value; # is already set
-            croak("Can't disable AutoCommit");
+            Carp::croak("Can't disable AutoCommit");
         }
         return $dbh->SUPER::STORE($attrib, $value);
     }
@@ -139,8 +152,22 @@
     use strict;
 
     sub execute {
-	my ($sth) = @_;
-	1;
+	my $sth = shift;
+	if (my $hook = $sth->{execute_hook}) {
+	    &$hook($sth, @_) or return;
+	}
+
+	if ($sth->{is_insert}) {
+	    my $row;
+	    $row = (@_) ? [ @_ ] : die "bind_param not supported yet" ;
+	    my $NUM_OF_PARAMS = $sth->{NUM_OF_PARAMS};
+	    return $sth->set_err(1, @$row." values bound (@$row) but $NUM_OF_PARAMS expected")
+		if @$row != $NUM_OF_PARAMS;
+	    $sth->trace_msg("inserting (@$row)\n");
+	    push @{ $sth->{rows} }, $row;
+	}
+	# else do nothing for select as data is already in $sth->{rows}
+	return 1;
     }
 
     sub fetch {

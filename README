@@ -1,55 +1,6 @@
-Thuesday, March 12, 2002
-
-Dear MacPerl Users,
-
-this is the DBI 1.21 module with a shared library compiled for MacPerl 5.6.1 (and higher). 
-This was compiled with MPW's MrC (PPC). Passed all tests with the MPW MrC build of the 
-MacPerl 5.6.1 application. Let me know of any problems you might encounter.
-
-
-*** NOTE:
-This package contains shared libraries, which are loaded dynamically by MacPerl -- 
-well, normally. Currently, dynamic loading of shared libs might NOT work with the MPW 
-MacPerl tool, when build with Apple's MrC compiler. However, dynamic loading always works 
-reliable with the MacPerl application (the official MacPerl release has been built with 
-the Codewarrior compilers, so don't worry too much). Note also that dynamic loading is 
-NOT supported by the 68K versions of the MacPerl application and tool. And finally, note 
-that this distribution will NOT work with good old MacPerl 5.2.0r4.
-
-
-You can download the DBI-1.21-bin56Mac.tar.gz tarball from my CPAN directory
-
-    $CPAN/authors/id/T/TW/TWEGNER/
-
-
-
-INSTALLATION
-============
-The module is best installed using Chris Nandor's installme.plx droplet. Simply drop the 
-packed archive or the unpacked folder on the droplet. Answer the upcoming question 
-"Convert all text and MacBinary files?" with "Yes". This should install the module properly. 
-
-Since MacPerl 5.6.1 beta 1, the installer is part of the MacPerl disribution.
-	
-
-Have fun.
-
---
-Thomas Wegner
-
-<wegner_thomas@yahoo.com>
-
-
-
-
-
-############################ ORIGINAL FOLLOWS ##############################
-
-
-
 DBI - The Perl Database Interface by Tim Bunce.
 
-Copyright (c) 1994-2000  Tim Bunce  England.
+Copyright (c) 1994-2002  Tim Bunce  Ireland.
 
 See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
@@ -93,7 +44,7 @@ See also http://www.perl.com/CPAN/
 
 BEFORE BUILDING, TESTING AND INSTALLING this you will need to:
 
-    Build, test and install Perl 5 (preferably 5.004_04 or later).
+    Build, test and install Perl 5 (5.005_03 or later).
     It is very important to test it and actually install it!
     (You can use "Configure -Dprefix=..." to build a private copy.)
 
@@ -161,10 +112,6 @@ using gcc <3.x then try not using GNU as or GNU ld on Solaris.
 ---
 If you get compiler warnings like "value computed is not used" and
 "unused variable" you can ignore them.
-
----
-For perl5.005 onwards: If you get "`thr' undeclared" compiler error,
-you'll need to add "dTHR;" to the top of the function that has the error.
 
 ---
 If you get compiler errors refering to Perl's own header files

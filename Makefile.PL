@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.5 2002/02/07 03:00:53 timbo Exp $
+# $Id: Makefile.PL,v 11.6 2002/05/20 21:03:53 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
@@ -15,10 +15,12 @@ use ExtUtils::MakeMaker 5.16, qw(WriteMakefile $Verbose);
 use Getopt::Long;
 use Config;
 use File::Find;
+use File::Spec;
 use strict;
 
 use Test::Harness;	# tests use it so check it's loadable early
 
+use DBI::DBD;
 
 $| = 1;
 $^W = 1;
@@ -96,7 +98,7 @@ my %opts = (
     },
 );
 
-if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
+if ($] >= 5.6 ) {
     $opts{ABSTRACT_FROM} = 'DBI.pm';
     $opts{AUTHOR} = 'Tim Bunce (dbi-users@perl.org)';
     $opts{CAPI} = 'TRUE' if $Config{archname} =~ /-object\b/i;
@@ -135,7 +137,11 @@ my ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      @Config{qw( privlibexp archlibexp sitelibexp sitearchexp man3direxp ) };
 
 $Verbose = $::opt_v;
-WriteMakefile( %opts );
+WriteMakefile(
+    dbd_edit_mm_attribs(\%opts, {
+	create_pp_tests => 1,
+    })
+);
 
 warn <<EOT;
 
@@ -208,7 +214,7 @@ Here's a list of probable old files and directories:
     # install files that DBD's may need
     File::Find::find( sub {
 	$File::Find::prune = 1, return if -d $_ && '.' ne $_;
-	$self->{PM}->{$_} = '$(INST_ARCHAUTODIR)/' . $_
+	$self->{PM}->{$_} = File::Spec->catfile($self->{INST_ARCHAUTODIR}, $_)
 	    if '.h' eq substr( $_, -2 ) || '.xst' eq substr( $_, -4 );
         }, '.' );
 
@@ -217,24 +223,24 @@ Here's a list of probable old files and directories:
 
 
 sub post_constants {
+    my($self) = shift;
 
     # ensure that Driver.xst and related code gets tested
-
-    BEGIN {
-	require 'lib/DBI/DBD.pm';
-	import DBI::DBD;
-    }
-    my $xst = dbd_postamble();
+    my $xst = main::dbd_postamble();
     $xst =~ s/\$\(BASEEXT\)/Perl/g;
-    my $dir_sep = ($os eq 'MSWin32') ? '\\' : '/';
     $xst .= '
 DBI.c: Perl$(OBJ_EXT)
 
 # make Changes file available as installed pod docs "perldoc DBI::Changes"
-config :: $(INST_LIBDIR)' . $dir_sep . '.exists
-	@$(MKPATH) $(INST_LIBDIR)/DBI
-	@$(RM_F) $(INST_LIBDIR)/DBI/Changes.pm
-	$(CP) Changes $(INST_LIBDIR)/DBI/Changes.pm
+inst_libdbi = ' . File::Spec->catdir($self->{INST_LIB}, 'DBI') . '
+changes_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Changes.pm') . '
+
+config :: $(changes_pm)
+
+$(changes_pm): Changes
+	$(NOECHO) $(MKPATH) $(inst_libdbi)
+	$(NOECHO) $(RM_F) $(changes_pm)
+	$(CP) Changes $(changes_pm)
 ';
 
     return $xst;

@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
+# $Id: DBD.pm,v 11.4 2002/05/22 13:23:57 timbo Exp $
 #
 # Copyright (c) 1997-2000 Jonathan Leffler, Jochen Wiedmann and Tim Bunce
 #
@@ -15,8 +15,8 @@ DBI::DBD - DBD Driver Writer's Guide
 
 =head1 VERSION and VOLATILITY
 
-  $Revision: 11.2 $
-  $Date: 2001/08/24 22:10:44 $
+  $Revision: 11.4 $
+  $Date: 2002/05/22 13:23:57 $
 
 This document is a minimal draft which is in need of further work.
 
@@ -45,7 +45,7 @@ If in I<any> doubt at all, please do contact the dbi-dev mailing list
 
 The primary web-site for locating DBI software and information is
 
-  http://www.symbolstone.org/technology/perl/DBI
+  http://dbi.perl.org/
 
 There are 2 main and one auxilliary mailing lists for people working
 with DBI.  The primary lists are dbi-users@isc.org for general users
@@ -55,7 +55,7 @@ The auxilliary list is dbi-announce@isc.org for announcing new
 releases of DBI or DBD drivers.
 
 You can join these lists by accessing the web-site
-L<http://www.isc.org/dbi-lists.html>.
+L<http://www.perl.org/dbi-lists.html>.
 The lists are closed so you cannot send email to any of the lists
 unless you join the list first.
 
@@ -137,24 +137,27 @@ your drivers name:
   use DBI::DBD;
   use ExtUtils::MakeMaker;
 
-  ExtUtils::MakeMaker::WriteMakefile(
-      'NAME'         => 'DBD::Driver',
-      'VERSION_FROM' => 'Driver.pm',
-      'INC'          => $DBI_INC_DIR,
-      'dist'         => { 'SUFFIX'   => '.gz',
-                            'COMPRESS' => 'gzip -9f' },
-      'realclean'    => '*.xsi'
+  WriteMakefile(
+      dbd_edit_mm_attribs( {
+	  'NAME'         => 'DBD::Driver',
+	  'VERSION_FROM' => 'Driver.pm',
+	  'INC'          => $DBI_INC_DIR,
+	  'dist'         => { 'SUFFIX'   => '.gz',
+				'COMPRESS' => 'gzip -9f' },
+	  'realclean'    => '*.xsi'
+      } )
   );
 
   package MY;
-  sub postamble { dbd_postamble(@_); }
+  sub postamble { return main::dbd_postamble(@_); }
   sub libscan {
       my ($self, $path) = @_;
       ($path =~ m/\~$/) ? undef : $path;
   }
 
-See also L<ExtUtils::MakeMaker(3)>. L<ExtUtils::MM_Unix(3)>. 
+Note the calls to dbd_edit_mm_attribs() and dbd_postamble().
 
+See also L<ExtUtils::MakeMaker(3)>. L<ExtUtils::MM_Unix(3)>. 
 
 =head2 README file
 
@@ -1728,19 +1731,6 @@ For example, consider this STORE method from the I<DBD::CSV> class:
       ...
   }
 
-
-=head1 ACKNOWLEDGEMENTS
-
-Tim Bunce - for writing DBI and managing the DBI specification and the
-DBD::Oracle driver.
-
-
-=head1 AUTHORS
-
-Jonathan Leffler <jleffler@informix.com>,
-Jochen Wiedmann <joe@ispsoft.de>,
-and Tim Bunce.
-
 =cut
 
 
@@ -1764,11 +1754,12 @@ BEGIN { if ($^O eq 'VMS') {
 
 @ISA = qw(Exporter);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.2 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
 
 @EXPORT = qw(
     dbd_dbi_dir dbd_dbi_arch_dir
     dbd_edit_mm_attribs dbd_postamble
+    write_getinfo_pm
 );
 
 BEGIN {
@@ -1778,9 +1769,37 @@ BEGIN {
 
 
 sub dbd_edit_mm_attribs {
-    my %a = @_;
+    # this both edits the attribs in-place and returns the flattened attribs
+    my $mm_attr = shift;
+    my $dbd_attr = shift || {};
+    croak "dbd_edit_mm_attribs( \%makemaker [, \%other ]): too many parameters"
+	if @_;
 
-    return %a;
+    # decide what needs doing
+
+    # do whatever needs doing
+    if ($dbd_attr->{create_pp_tests}) {
+	# XXX need to convert this to work within the generated Makefile
+	# so 'make' creates them and 'make clean' deletes them
+	die "Can't create DBI::PurePerl tests unless 't' directory exists"
+		unless -d 't';
+	opendir DIR, 't';
+	my @tests = grep { /\.t$/ } readdir DIR;
+	closedir DIR;
+	foreach my $test (@tests) {
+	    next if $test =~ /^zz_.*_pp\.t$/;
+	    $test =~ s/\.t$//;
+	    my $pp_test = "t/zz_${test}_pp.t";
+	    print "Creating extra DBI::PurePerl test: $pp_test\n";
+	    open PPT, ">$pp_test" or warn "Can't create $pp_test: $!";
+	    print PPT "#!perl -w\n";
+	    print PPT "\$ENV{DBI_PUREPERL}=0;\n";
+	    print PPT "do 't/$test.t';\n";
+	    print PPT "exit 0\n";
+	    close PPT or warn "Error writing $pp_test: $!";
+	}
+    }
+    return %$mm_attr;
 }
 
 
@@ -1806,6 +1825,7 @@ sub dbd_dbi_arch_dir {
 
 
 sub dbd_postamble {
+    my $self = shift;
     my $dbidir = dbd_dbi_dir();
     my $xstdir = dbd_dbi_arch_dir();
     my $xstfile= '$(DBI_INSTARCH_DIR)/Driver.xst';
@@ -1833,6 +1853,148 @@ $(BASEEXT).xsi: $(DBI_DRIVER_XST)
 ';
 }
 
+
+=head1 write_getinfo_pm
+
+write_getinfo_pm generates a DBD::<foo>::GetInfo package.
+
+Usage:
+
+  perl -MDBI::DBD -e write_getinfo_pm dbi:Foo:Bar username password > DBD/<foo>/GetInfo.pm
+
+or
+
+  perl -MDBI::DBD -e 'write_getinfo_pm("dbi:...","username","password")' > DBD/<foo>/GetInfo.pm
+
+This method generates a DBD::<foo>::GetInfo package from the data source you
+specified in the parameter list or in the environment variable DBI_DSN.
+DBD::<foo>::GetInfo should help a DBD author implementing the DBI get_info()
+method.
+Because you are just creating this package, it's very unlikly that DBD::<foo>
+already provides a good implementation for get_info(). Thus you will probable
+connect via DBD::ODBC.
+
+If you connect via DBD::ODBC, you should use version 0.38 or greater;
+
+Please have a critical look at the data returned! ODBC driver vary dramatically
+in their quality.
+
+The generator assumes that most values are static and places these values
+directly in the %info hash. A few examples show the use of CODE references
+and the implementation via subroutines.
+It's very likely that you have to write additional subroutines for values
+depending on the session state or server version, e.g. SQL_DBMS_VER.
+
+A possible implementation of DBD::<foo>::get_info() may look like:
+
+  sub get_info {
+    my($dbh, $info_type) = @_;
+    require DBD::<foo>::GetInfo;
+    my $v = $DBD::<foo>::GetInfo::info{int($info_type)};
+    $v = $v->($dbh) if ref $v eq 'CODE';
+    return $v;
+  }
+
+Please replace <foo> with the name of your driver.
+
+=cut
+
+sub write_getinfo_pm {
+    require DBI::Const::GetInfo;
+
+    my $dbh = DBI->connect( @_ ? @_ : @ARGV ) or die $DBI::errstr;
+    #  $dbh->{ RaiseError } = 1;
+       $dbh->{ PrintError } = 1;
+
+    print <<'PERL';
+package DBD::<foo>::GetInfo;
+
+use DBD::<foo>();
+
+my $fmt = '%02d.%02d.%1d%1d%1d%1d';   # ODBC version string: ##.##.#####
+
+my $sql_driver_ver = sprintf $fmt, split (/\./, $DBD::<foo>::VERSION);
+
+my @Keywords = qw(
+PERL
+    {
+	local $\ = "\n";
+	local $, = "\n";
+	print split /,/, $dbh->get_info( 89 );
+    }
+    print <<'PERL';
+);
+
+sub sql_data_source_name {
+    my $dbh = shift;
+    return 'dbi:<foo>:' . $dbh->{Name};
+}
+sub sql_keywords {
+    return join ',', @Keywords;
+}
+sub sql_user_name {
+    my $dbh = shift;
+    return $dbh->{CURRENT_USER};
+}
+
+%info = (
+PERL
+
+    my $h = \%DBI::Const::GetInfo::InfoTypes;
+    my $Comma = ' ';
+
+    for ( sort keys %$h ) {
+	my $nr = $h->{$_};
+	my $Val = $dbh->get_info( $nr );
+	$Comma = '#' unless defined $Val;
+	printf "$Comma %5d => ", $nr;
+	if ( $_ eq 'SQL_DATA_SOURCE_NAME') {
+	    $Val = '\&sql_data_source_name';
+	}
+	elsif ( $_ eq 'SQL_KEYWORDS') {
+	    $Val = '\&sql_keywords';
+	}
+	elsif ( $_ eq 'SQL_DRIVER_VER') {
+	    $Val = '$sql_driver_ver';
+	}
+	elsif ( $_ eq 'SQL_USER_NAME') {
+	    $Val = '\&sql_user_name';
+	}
+	elsif ( not defined $Val ) {
+	    $Val = 'undef';
+	}
+	elsif ( $Val eq '') {
+	    $Val = "''";
+	}
+	elsif ( $Val =~ /\D/) {
+	    $Val =~ s/\\/\\\\/g;
+	    $Val =~ s/'/\\'/g;
+	    $Val = "'$Val'";
+	}
+	printf '%-30s', $Val;
+    }
+    continue {
+	$Comma = ',';
+	print '  # ', $_, "\n";
+    }
+
+    print <<'PERL';
+);
+
+1;
+PERL
+}
+
 1;
 
 __END__
+
+=head1 AUTHORS
+
+Jonathan Leffler <jleffler@informix.com>,
+Jochen Wiedmann <joe@ispsoft.de>,
+Steffen Goeldner <s.goeldner@eurodata.de>,
+and Tim Bunce.
+
+=cut
+

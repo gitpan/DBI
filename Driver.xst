@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.3 2002/01/10 15:14:06 timbo Exp $
+#  $Id: Driver.xst,v 11.4 2002/05/20 21:03:53 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997,1998  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -70,7 +70,7 @@ commit(dbh)
     SV *	dbh
     CODE:
     D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit) && DBIc_WARN(imp_dbh))
 	warn("commit ineffective with AutoCommit enabled");
     ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
@@ -79,7 +79,7 @@ rollback(dbh)
     SV *	dbh
     CODE:
     D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit))
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit) && DBIc_WARN(imp_dbh))
 	warn("rollback ineffective with AutoCommit enabled");
     ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
