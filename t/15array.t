@@ -50,7 +50,7 @@ $dumped = Dumper($rows);
 ok( $dumped, "[[1,42,undef,'A'],[3,42,undef,'C']]");	# missing row containing B
 
 $dumped = Dumper($tuple_status);
-ok( $dumped, "[1,[1,'errmsg'],1]");			# row containing B has error
+ok( $dumped, "[1,[1,'errmsg','S1000'],1]");		# row containing B has error
 
 
 # --- change one param and re-execute
@@ -75,8 +75,11 @@ my $index = 0;
 my $fetchrow = sub { # generate 5 rows of two integer values
     return if $index >= 2;
     $index +=1;
-    # $index is quoted to avoid perl version differences
-    return [ "$index", 'a','b','c' ];
+    # There doesn't seem any reliable way to force $index to be
+    # treated as a string (and so dumped as such).  We just have to
+    # make the test case allow either 1 or '1'.
+    #
+    return [ $index, 'a','b','c' ];
 };
 @$rows = ();
 ok( $sth->execute_array({
@@ -86,7 +89,8 @@ ok( $sth->execute_array({
 ok( @$rows, 2 );
 ok( @$tuple_status, 2 );
 $dumped = Dumper($rows);
-ok( $dumped, "[['1','a','b','c'],['2','a','b','c']]");
+$dumped =~ s/'(\d)'/$1/g;
+ok( $dumped, "[[1,'a','b','c'],[2,'a','b','c']]");
 $dumped = Dumper($tuple_status);
 ok( $dumped, "[1,1]");
 

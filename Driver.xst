@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.11 2003/05/13 13:59:36 timbo Exp $
+#  $Id: Driver.xst,v 11.14 2003/08/22 21:23:39 timbo Exp $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #  Copyright (c) 2002       Jonathan Leffler
 #
@@ -206,8 +206,37 @@ do(dbh, statement, params = Nullsv)
     char *	statement
     SV *	params
     CODE:
+    {
     D_imp_dbh(dbh);
-    ST(0) = dbd_db_do4(dbh, imp_dbh, statement, params) ? &sv_yes : &sv_no;
+    IV retval;
+    retval = dbd_db_do4(dbh, imp_dbh, statement, params);
+    /* remember that dbd_db_do4 must return <= -2 for error	*/
+    if (retval == 0)		/* ok with no rows affected	*/
+	XST_mPV(0, "0E0");	/* (true but zero)		*/
+    else if (retval < -1)	/* -1 == unknown number of rows	*/
+	XST_mUNDEF(0);		/* <= -2 means error   		*/
+    else
+	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
+    }
+
+#endif
+
+
+#ifdef dbd_db_last_insert_id
+
+void
+last_insert_id(dbh, catalog, schema, table, field, attr=Nullsv)
+    SV *	dbh
+    SV *	catalog
+    SV *	schema
+    SV *	table
+    SV *	field
+    SV *	attr
+    CODE:
+    {
+    D_imp_dbh(dbh);
+    ST(0) = dbd_db_last_insert_id(dbh, imp_dbh, catalog, schema, table, field, attr);
+    }
 
 #endif
 
@@ -330,13 +359,35 @@ DESTROY(dbh)
 #ifdef dbd_take_imp_data
 
 void
-dbd_take_imp_data(h)
+take_imp_data(h)
     SV * h
     CODE:
     D_imp_xxh(h);
     ST(0) = (dbd_take_imp_data(h, imp_xxh, NULL))
 	? dbixst_bounce_method("DBD::~DRIVER~::db::SUPER::take_imp_data", items)
 	: &sv_undef;
+
+#endif
+
+#ifdef dbd_db_data_sources
+
+void
+data_sources(dbh, attr = Nullsv)
+    SV *dbh
+    SV *attr
+    PPCODE:
+    {
+	D_imp_dbh(dbh);
+	AV *av = dbd_db_data_sources(dbh, imp_dbh, attr);
+	if (av) {
+	    int i;
+	    int n = AvFILL(av)+1;
+	    EXTEND(sp, n);
+	    for (i = 0; i < n; ++i) {
+		PUSHs(AvARRAY(av)[i]);
+	    }
+	}
+    }
 
 #endif
 
@@ -459,6 +510,23 @@ execute(sth, ...)
 	XST_mUNDEF(0);		/* <= -2 means error   		*/
     else
 	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
+
+
+#ifdef dbd_st_execute_for_fetch
+
+void
+execute_for_fetch(sth, fetch_tuple_sub, tuple_status = Nullsv)
+    SV *	sth
+    SV *	fetch_tuple_sub
+    SV *	tuple_status
+    CODE:
+    {
+    D_imp_sth(sth);
+    ST(0) = dbd_st_execute_for_fetch(sth, imp_sth, fetch_tuple_sub, tuple_status);
+    }
+
+#endif
+
 
 
 void
@@ -591,7 +659,7 @@ DESTROY(sth)
     if (!DBIc_IMPSET(imp_sth)) {	/* was never fully set up	*/
 	STRLEN lna;
 	if (DBIc_WARN(imp_sth) && !dirty && DBIc_DBISTATE(imp_sth)->debug >= 2)
-	     PerlIO_printf(DBILOGFP,
+	     PerlIO_printf(DBIc_LOGPIO(imp_sth),
 		"Statement handle %s DESTROY ignored - never set up\n",
 		    SvPV(sth,lna));
     }
@@ -601,11 +669,11 @@ DESTROY(sth)
         }
 	if (DBIc_ACTIVE(imp_sth)) {
 	    D_imp_dbh_from_sth;
-	    if (DBIc_ACTIVE(imp_dbh)) {
+	    if (!dirty && DBIc_ACTIVE(imp_dbh)) {
 #ifdef dbd_st_finish3
-	    dbd_st_finish3(sth, imp_sth, 1);
+		dbd_st_finish3(sth, imp_sth, 1);
 #else
-	    dbd_st_finish(sth, imp_sth);
+		dbd_st_finish(sth, imp_sth);
 #endif
 	    }
 	    else {

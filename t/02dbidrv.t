@@ -5,7 +5,7 @@ use Test;
 use strict;
 
 BEGIN {
-	plan tests => 32;
+	plan tests => 36;
 }
 
 $|=1;
@@ -24,7 +24,7 @@ my $drh;
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 		'Name' => 'Test',
-		'Version' => '$Revision: 11.8 $',
+		'Version' => '$Revision: 11.10 $',
 	    },
 	    77	# 'implementors data'
 	    );
@@ -41,10 +41,11 @@ my $drh;
     sub DESTROY { undef }
 
     sub data_sources {	# just used to run tests 'inside' a driver
-	my $h = shift;
+	my ($h) = @_;
 	print "DBD::_::dr internals\n";
 	main::ok($h);
 	main::ok(!tied $h);
+	return ("dbi:Test:foo", "dbi:Test:bar");
     }
 }
 
@@ -78,6 +79,13 @@ my $drh;
 
 	#$h->trace(0);
     }
+
+    sub data_sources {	# just used to run tests 'inside' a driver
+	my ($dbh, $attr) = @_;
+	my @ds = $dbh->SUPER::data_sources($attr);
+	push @ds, "dbi:Test:baz";
+	return @ds;
+    }
 }
 
 $INC{'DBD/Test.pm'} = 'dummy';	# fool require in install_driver()
@@ -89,13 +97,16 @@ ok($drh);
 
 ok(DBI::_get_imp_data($drh), 77);
 
-$drh->data_sources;	# trigger driver internal tests above
+my @ds1 = DBI->data_sources("Test");
+ok(scalar @ds1, 2);
 
-do {			# scope to test DESTROY behaviour
+do {				# scope to test DESTROY behaviour
 
 my $dbh = $drh->connect;
+my @ds2 = $dbh->data_sources();
+ok(scalar @ds2, 3);
 
-$dbh->do('dummy');	# trigger more driver internal tests above
+$dbh->do('dummy');		# trigger more driver internal tests above
 
 $drh->set_err("41", "foo 41 drh");
 ok($drh->err, 41);

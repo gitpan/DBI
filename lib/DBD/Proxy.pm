@@ -262,6 +262,7 @@ sub AUTOLOAD {
 
 sub DESTROY {
     my $dbh = shift;
+    local $@ if $@;	# protect $@
     $dbh->disconnect if $dbh->SUPER::FETCH('Active');
 }
 

@@ -352,7 +352,7 @@ time per leaf node.
 The default method of reporting is for the DESTROY method of the
 Profile object to format the results and write them using:
 
-    DBI->trace_msg($results, 0)
+    DBI->trace_msg($results, 0);  # see $ON_DESTROY_DUMP below
 
 to write them to the DBI trace() filehandle (which defaults to
 STDERR). To direct the DBI trace filehandle to write to a file
@@ -364,6 +364,14 @@ trace level of 0. For example:
 The same effect can be achieved without changing the code by
 setting the C<DBI_TRACE> environment variable to C<0=filename>.
 
+The $DBI::Profile::ON_DESTROY_DUMP variable holds a code ref
+that's called to perform the output of the formatted results.
+The default value is:
+
+  $ON_DESTROY_DUMP = sub { DBI->trace_msg($results, 0) };
+
+Apart from making it easy to send the dump elsewhere, it can also
+be useful as a simple way to disable dumping results.
 
 =head1 CHILD HANDLES
 
@@ -465,14 +473,14 @@ many forward references.  (Patches welcome!)
 
 
 use strict;
-use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
+use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION $ON_DESTROY_DUMP);
 use Exporter ();
 use UNIVERSAL ();
 use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge);
 
-$VERSION = sprintf "%d.%02d", '$Revision: 1.6 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf "%d.%02d", '$Revision: 1.7 $ ' =~ /(\d+)\.(\d+)/;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(
@@ -491,6 +499,7 @@ use constant DBIprofile_Statement	=> -2100000001;
 use constant DBIprofile_MethodName	=> -2100000002;
 use constant DBIprofile_MethodClass	=> -2100000003;
 
+$ON_DESTROY_DUMP = sub { DBI->trace_msg(shift, 0) };
 
 sub new {
     my $class = shift;
@@ -630,8 +639,10 @@ sub format_profile_thingy {
 
 sub on_destroy {
     my $self = shift;
-    my $detail = $self->format() if $self->{Data};
-    DBI->trace_msg($detail, 0) if $detail;
+    return unless $ON_DESTROY_DUMP;
+    return unless $self->{Data};
+    my $detail = $self->format();
+    $ON_DESTROY_DUMP->($detail) if $detail;
 }
 
 sub DESTROY {

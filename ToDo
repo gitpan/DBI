@@ -1,6 +1,20 @@
 
 *** Assorted to-do items and random thoughts *** IN NO PARTICULAR ORDER ***
 
+Polish up and document _dbtype_names with an external interface and using get_info.
+
+Don't show attrib FETCH from cache if trace level is 1
+Always show fetch/fetchrow_arrayref return even at level 1?
+
+$sth->{ParamTypes} eg { "1" => SQL_VARCHAR, "2" => { TYPE=>SQL_VARCHAR, ora_type=>99 }};
+
+Give handles names: $h->{Id} ?
+Useful for reporting, Multiplex, DBD::AnyData etc etc
+May become useful for weakrefs etc
+
+Add architecture info to DBI and DBI::DBD build messages so
+users error reports are more useful.
+
 $dbh->get_inner_handle / set_inner_handle
 		use to make $dbh->connect return same handle
 Hook to call code ref on each fetch, pass fbav ref

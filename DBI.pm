@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.32 2003/05/15 17:48:40 timbo Exp $
+# $Id: DBI.pm,v 11.36 2003/08/22 21:23:39 timbo Exp $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2003  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = "1.37"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.38"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -21,7 +21,7 @@ DBI - Database independent interface for Perl
   use DBI;
 
   @driver_names = DBI->available_drivers;
-  @data_sources = DBI->data_sources($driver_name, \%attr);
+  @data_sources = DBI->data_sources($driver_name, \%attr, $dbh);
 
   $dbh = DBI->connect($data_source, $username, $auth, \%attr);
 
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.34
-(C<$Date: 2003/05/15 17:48:40 $>).
+(C<$Date: 2003/08/22 21:23:39 $>).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -153,7 +153,7 @@ See L</Naming Conventions and Name Space> and:
 
 package DBI;
 
-my $Revision = substr(q$Revision: 11.32 $, 10);
+my $Revision = substr(q$Revision: 11.36 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -385,6 +385,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
     db => {		# Database Session Class Interface
 	@Common_IF,
 	@TieHash_IF,
+	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
 	take_imp_data	=> { U =>[1,1], },
 	clone   	=> { U =>[1,1,''] },
 	connected   	=> { O=>0x0100 },
@@ -392,6 +393,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	commit     	=> { U =>[1,1], O=>0x0480|0x0800 },
 	rollback   	=> { U =>[1,1], O=>0x0480|0x0800 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x0200 },
+	last_insert_id	=> { U =>[3,4,'$table_name, $field_name [, \%attr ]'], O=>0x0100 },
 	preparse    	=> {  }, # XXX
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'], O=>0x0200 },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
@@ -429,6 +431,7 @@ my @Common_IF = (	# Interface functions common to all DBI classes
 	bind_param_array  => { U =>[3,4,'$parameter, $var [, \%attr]'] },
 	bind_param_inout_array => { U =>[4,5,'$parameter, \\@var, $maxlen, [, \%attr]'] },
 	execute_array     => { U =>[2,0,'\\%attribs [, @args]'] },
+	execute_for_fetch => { U =>[2,3,'$fetch_sub [, $tuple_status]'] },
 
 	fetch    	  => undef, # alias for fetchrow_arrayref
 	fetchrow_arrayref => undef,
@@ -549,7 +552,7 @@ sub connect {
 	    AutoCommit => 1,
 	    ref $attr           ? %$attr : (),
 	    # attributes in DSN take precedence over \%attr connect parameter
-	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec) : (),
+	    $driver_attrib_spec ? (split /\s*=>?\s*|\s*,\s*/, $driver_attrib_spec, -1) : (),
 	);
     }
     $attr = \%attributes; # now set $attr to refer to our local copy
@@ -581,7 +584,10 @@ sub connect {
 	my $dbh;
 	unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
 	    $user = '' if !defined $user;
-	    my $msg = "$class connect('$dsn','$user',...) failed: ".$drh->errstr;
+	    $dsn = '' if !defined $dsn;
+	    my $errstr = $drh->errstr;
+	    $errstr = '(no error string)' if !defined $errstr;
+	    my $msg = "$class connect('$dsn','$user',...) failed: $errstr";
 	    DBI->trace_msg("       $msg\n");
 	    unless ($attr->{HandleError} && $attr->{HandleError}->($msg, $drh, $dbh)) {
 		Carp::croak($msg) if $attr->{RaiseError};
@@ -643,16 +649,14 @@ sub connect {
 
 
 sub disconnect_all {
-    foreach(keys %DBI::installed_drh){
-	my $drh = $DBI::installed_drh{$_};
-	next unless ref $drh;	# avoid problems on premature death
-	$drh->disconnect_all();
+    while ( my ($name, $drh) = each %DBI::installed_drh ) {
+	$drh->disconnect_all() if ref $drh;
     }
 }
 
 
-sub disconnect {	# a regular beginners bug
-    Carp::croak("DBI->disconnect is not a DBI method. Read the DBI manual.");
+sub disconnect {		# a regular beginners bug
+    Carp::croak("DBI->disconnect is not a DBI method (read the DBI manual)");
 }
 
 
@@ -901,7 +905,7 @@ sub available_drivers {
 	opendir(DBI::DIR, $dbd_dir) || Carp::carp "opendir $dbd_dir: $!\n";
 	foreach $f (readdir(DBI::DIR)){
 	    next unless $f =~ s/\.pm$//;
-	    next if $f eq 'NullP' || $f eq 'Sponge';
+	    next if $f eq 'NullP';
 	    if ($seen_dbd{$f}){
 		Carp::carp "DBD::$f in $d is hidden by DBD::$f in $seen_dbd{$f}\n"
 		    unless $quiet;
@@ -917,10 +921,43 @@ sub available_drivers {
     return wantarray ? sort @drivers : @drivers;
 }
 
+sub installed_versions {
+    my ($class, $quiet) = @_;
+    my %error;
+    my %version = ( DBI => $DBI::VERSION );
+    $version{"DBI::PurePerl"} = $DBI::PurePerl::VERSION
+	if $DBI::PurePerl;
+    for my $driver ($class->available_drivers($quiet)) {
+	next if $DBI::PurePerl && grep { -d "$_/auto/DBD/$driver" } @INC;
+	my $drh = eval {
+	    local $SIG{__WARN__} = sub {};
+	    $class->install_driver($driver);
+	};
+	($error{"DBD::$driver"}=$@),next if $@;
+	no strict 'refs';
+	my $vers = ${"DBD::$driver" . '::VERSION'};
+	$version{"DBD::$driver"} = $vers || '?';
+    }
+    if (wantarray) {
+       return map { m/^DBD::(\w+)/ ? ($1) : () } sort keys %version;
+    }
+    if (!defined wantarray) {	# void context
+	require Config;		# add more detail
+	$version{OS}   = "$^O\t($Config::Config{osvers})";
+	$version{Perl} = "$]\t($Config::Config{archname})";
+	$version{$_}   = (($error{$_} =~ s/ \(\@INC.*//s),$error{$_})
+	    for keys %error;
+	printf "  %-16s: %s\n",$_,$version{$_}
+	    for reverse sort keys %version;
+    }
+    return \%version;
+}
+
+
 sub data_sources {
-    my ($class, $driver, @attr) = @_;
+    my ($class, $driver, @other) = @_;
     my $drh = $class->install_driver($driver);
-    my @ds = $drh->data_sources(@attr);
+    my @ds = $drh->data_sources(@other);
     return @ds;
 }
 
@@ -1528,6 +1565,13 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return $out[0] unless wantarray;
 	return @out;
     }
+
+    sub data_sources {
+	my ($dbh, @other) = @_;
+	my $drh = $dbh->{Driver}; # XXX proxy issues?
+	return $drh->data_sources(@other);
+    }
+
 }
 
 
@@ -1607,7 +1651,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# get tuple status array or hash attribute
 	my $tuple_sts = $attr->{ArrayTupleStatus};
 	return $sth->DBI::set_err(1, "ArrayTupleStatus attribute must be an arrayref")
-		if ref $tuple_sts ne 'ARRAY';
+		if $tuple_sts and ref $tuple_sts ne 'ARRAY';
 
 	# bind all supplied arrays
 	if (@array_of_arrays) {
@@ -1619,17 +1663,16 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		foreach (1..@array_of_arrays);
 	}
 
-	my $tuple_idx = 0;
-	my $fetch_tuple;
+	my $fetch_tuple_sub;
 
-	if ($fetch_tuple = $attr->{ArrayTupleFetch}) {	# fetch on demand
+	if ($fetch_tuple_sub = $attr->{ArrayTupleFetch}) {	# fetch on demand
 
 	    return $sth->DBI::set_err(1,
 		    "Can't use both ArrayTupleFetch and explicit bind values")
 		if @array_of_arrays; # previous bind_param_array calls will simply be ignored
 
-	    if (UNIVERSAL::isa($fetch_tuple,'DBI::st')) {
-		my $fetch_sth = $fetch_tuple;
+	    if (UNIVERSAL::isa($fetch_tuple_sub,'DBI::st')) {
+		my $fetch_sth = $fetch_tuple_sub;
 		return $sth->DBI::set_err(1,
 			"ArrayTupleFetch sth is not Active, need to execute() it first")
 		    unless $fetch_sth->{Active};
@@ -1639,10 +1682,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 			"$NUM_OF_FIELDS columns from ArrayTupleFetch sth but $NUM_OF_PARAMS expected")
 		    if defined($NUM_OF_FIELDS) && defined($NUM_OF_PARAMS)
 		    && $NUM_OF_FIELDS != $NUM_OF_PARAMS;
-		$fetch_tuple = sub { $fetch_sth->fetchrow_arrayref };
+		$fetch_tuple_sub = sub { $fetch_sth->fetchrow_arrayref };
 	    }
-	    elsif (!UNIVERSAL::isa($fetch_tuple,'CODE')) {
-		return $sth->DBI::set_err(1, "ArrayTupleFetch '$fetch_tuple' is not a code ref or statement handle");
+	    elsif (!UNIVERSAL::isa($fetch_tuple_sub,'CODE')) {
+		return $sth->DBI::set_err(1, "ArrayTupleFetch '$fetch_tuple_sub' is not a code ref or statement handle");
 	    }
 
 	}
@@ -1661,32 +1704,37 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    }
 	    my @bind_ids = 1..keys(%hash_of_arrays);
 
-	    $fetch_tuple = sub {
+	    my $tuple_idx = 0;
+	    $fetch_tuple_sub = sub {
 		return if $tuple_idx >= $len;
 		my @tuple = map {
 		    my $a = $hash_of_arrays{$_};
 		    ref($a) ? $a->[$tuple_idx] : $a
 		} @bind_ids;
+		++$tuple_idx;
 		return \@tuple;
 	    };
 	}
 
-	# this could be moved to XS/C one day...
-	my ($errcount, $rowcount);
-	my %errstr_cache;
-	@$tuple_sts = () if $tuple_sts; # reset the status array
-	while ( my $tuple = &$fetch_tuple() ) {
-	    my $rc = $sth->execute(@$tuple);
-	    if ($rc) {
-		$rowcount += $tuple_sts->[$tuple_idx++] = $rc;
+	return $sth->execute_for_fetch($fetch_tuple_sub, $tuple_sts);
+    }
+
+    sub execute_for_fetch {
+	my ($sth, $fetch_tuple_sub, $tuple_status) = @_;
+	@$tuple_status = () if $tuple_status; # reset the status array
+
+	my ($err_count, %errstr_cache);
+	while ( my $tuple = &$fetch_tuple_sub() ) {
+	    if ( my $rc = $sth->execute(@$tuple) ) {
+		push @$tuple_status, $rc;
 	    }
 	    else {
-		$errcount++;
+		$err_count++;
 		my $err = $sth->err;
-		$tuple_sts->[$tuple_idx++] = [ $err, $errstr_cache{$err} ||= $sth->errstr ];
+		push @$tuple_status, [ $err, $errstr_cache{$err} ||= $sth->errstr, $sth->state ];
 	    }
 	}
-	return ($errcount) ? undef : $tuple_idx;
+	return ($err_count) ? undef : scalar @$tuple_status;
     }
 
 
@@ -2047,6 +2095,25 @@ The C<?> characters are the placeholders.  The association of actual
 values with placeholders is known as I<binding>, and the values are
 referred to as I<bind values>.
 
+Note that the C<?> is not enclosed in quotation marks, even when the
+placeholder represents a string.  Some drivers also allow placeholders
+like C<:>I<name> and C<:>I<n> (e.g., C<:1>, C<:2>, and so on)
+in addition to C<?>, but their use is not portable.
+
+With most drivers, placeholders can't be used for any element of a
+statement that would prevent the database server from validating the
+statement and creating a query execution plan for it. For example:
+
+  "SELECT name, age FROM ?"         # wrong (will probably fail)
+  "SELECT name, ?   FROM people"    # wrong (but may not 'fail')
+
+Also, placeholders can only represent single scalar values.
+For example, the following
+statement won't work as expected for more than one value:
+
+  "SELECT name, age FROM people WHERE name IN (?)"    # wrong
+  "SELECT name, age FROM people WHERE name IN (?,?)"  # two names
+
 When using placeholders with the SQL C<LIKE> qualifier, you must
 remember that the placeholder substitutes for the whole string.
 So you should use "C<... LIKE ? ...>" and include any wildcard
@@ -2286,10 +2353,9 @@ has been disconnected or if the C<ping> method fails.
 Note that the behaviour of this method differs in several respects from the
 behaviour of persistent connections implemented by Apache::DBI.
 
-Caching can be useful in some applications, but it can also cause
-problems and should be used with care. The exact behaviour of this
-method is liable to change, so if you intend to use it in any production
-applications you should discuss your needs on the I<dbi-users> mailing list.
+Caching connections can be useful in some applications, but it can
+also cause problems, such as too many connections, and so should
+be used with care.
 
 The cache can be accessed (and cleared) via the L</CachedKids> attribute.
 
@@ -2305,26 +2371,60 @@ some drivers are hidden by others of the same name in earlier
 directories. Passing a true value for C<$quiet> will inhibit the warning.
 
 
+=item C<installed_versions>
+
+  DBI->installed_versions;
+  @ary  = DBI->installed_versions;
+  %hash = DBI->installed_versions;
+
+Calls available_drivers() and attempts to load each of them in turn
+using install_driver().  For each load that succeeds the driver
+name and version number are added to a hash. When running under
+L<DBI::PurePerl> drivers which appear not be pure-perl are ignored.
+
+When called in array context the list of successfully loaded drivers
+is returned (without the 'DBD::' prefix).
+
+When called in scalar context a reference to the hash is returned
+and the hash will also contain other entries for the C<DBI> version,
+C<OS> name, etc.
+
+When called in a void context the installed_versions() method will
+print out a formatted list of the hash contents, one per line.
+
+Due to the potentially high memory cost and unknown risks of loading
+in an unknown number of drivers that just happen to be installed
+on the system, this method is nor recommended for general use.
+It is primarily intended as a quick way to see from the command
+line what's installed. For example:
+
+  perl -MDBI -e 'DBI->installed_versions'
+
+
 =item C<data_sources>
 
   @ary = DBI->data_sources($driver);
   @ary = DBI->data_sources($driver, \%attr);
 
-Returns a list of all data sources (databases) available via the named
+Returns a list of data sources (databases) available via the named
 driver.  If C<$driver> is empty or C<undef>, then the value of the
 C<DBI_DRIVER> environment variable is used.
 
 The driver will be loaded if it hasn't been already. Note that if the
-driver loading fails then it I<dies> with an error message that
-includes the string "C<install_driver>" and the underlying problem.
+driver loading fails then data_sources() I<dies> with an error message
+that includes the string "C<install_driver>" and the underlying problem.
+
+A $dbh can also be used as the $driver argument.  In which case the
+$dbh serves to identify the driver and the driver may also use it
+to obtain more information about data sources, typically other
+databases managed by the same server that the $dbh is connected to.
 
 Data sources are returned in a form suitable for passing to the
 L</connect> method (that is, they will include the "C<dbi:$driver:>" prefix).
 
 Note that many drivers have no way of knowing what data sources might
 be available for it. These drivers return an empty or incomplete list
-or may require driver-specific attributes, such as a connected database
-handle, to be supplied.
+or may require a $dbh and/or driver-specific attributes.
 
 
 =item C<trace>
@@ -2381,6 +2481,7 @@ the DBI package also provides these utility functions:
 
 =item C<neat>
 
+  $str = DBI::neat($value);
   $str = DBI::neat($value, $maxlen);
 
 Return a string containing a neat (and tidy) representation of the
@@ -2388,8 +2489,11 @@ supplied value.
 
 Strings will be quoted, although internal quotes will I<not> be escaped.
 Values known to be numeric will be unquoted. Undefined (NULL) values
-will be shown as C<undef> (without quotes). Unprintable characters will
-be replaced by dot (.).
+will be shown as C<undef> (without quotes).
+
+If the string is flagged internally as utf8 then double quotes will
+be used, otherwise single quotes are used and unprintable characters
+will be replaced by dot (.).
 
 For result strings longer than C<$maxlen> the result string will be
 truncated to C<$maxlen-4> and "C<...'>" will be appended.  If C<$maxlen> is 0
@@ -3030,6 +3134,20 @@ The clone method can be used even if the database handle is disconnected.
 The C<clone> method was added in DBI 1.33. It is very new and likely
 to change.
 
+=item C<data_sources>
+
+  @ary = $dbh->data_sources();
+  @ary = $dbh->data_sources(\%attr);
+
+Returns a list of data sources (databases) available via the $dbh
+driver's data_sources() method, plus any extra data sources that
+the driver can discover via the connected $dbh. Typically the extra
+data sources are other databases managed by the same server process
+that the $dbh is connected to.
+
+Data sources are returned in a form suitable for passing to the
+L</connect> method (that is, they will include the "C<dbi:$driver:>" prefix).
+
 =item C<do>
 
   $rows = $dbh->do($statement)           or die $dbh->errstr;
@@ -3073,6 +3191,59 @@ The C<q{...}> style quoting used in this example avoids clashing with
 quotes that may be used in the SQL statement. Use the double-quote-like
 C<qq{...}> operator if you want to interpolate variables into the string.
 See L<perlop/"Quote and Quote-like Operators"> for more details.
+
+=item C<last_insert_id>
+
+  $rv = $dbh->last_insert_id($catalog, $schema, $table, $field);
+  $rv = $dbh->last_insert_id($catalog, $schema, $table, $field, \%attr);
+
+Returns a value 'identifying' the row just inserted, if possible.
+Typically this would be a value assigned by the database server
+to a column with an I<auto_increment> or I<serial> type.
+Returns undef if the driver does not support the method or can't
+determine the value.
+
+The $catalog, $schema, $table, and $field parameters may be required
+for some drivers (see below).  If you don't know the parameter values
+and your driver does not need them, then use C<undef> for each.
+
+There are several caveats to be aware of with this method if you want
+to use it for portable applications:
+
+B<*> For some drivers the value may only available immediately after
+the insert statement has executed (e.g., mysql, Informix).
+
+B<*> For some drivers the $catalog, $schema, $table, and $field parameters
+are required (e.g., Pg), for others they are ignored (e.g., mysql).
+
+B<*> Drivers may return an indeterminate value if no insert has
+been performed yet.
+
+B<*> For some drivers the value may only be available if placeholders
+have I<not> been used (e.g., Sybase, MS SQL). In this case the value
+returned would be from the last non-placeholder insert statement.
+
+B<*> Some drivers may need driver-specific hints about how to get
+the value. For example, being told the name of the database 'sequence'
+object that holds the value. Any such hints are passed as driver-specific
+attributes in the \%attr parameter.
+
+B<*> If the underlying database offers nothing better, then some
+drivers may attempt to implement this method by executing
+"C<select max($field) from $table>". Drivers using any approach
+like this should issue a warning if C<AutoCommit> is true because
+it is generally unsafe - another process may have modified the table
+between your insert and the select. For situations where you know
+it is safe, such as when you have locked the table, you can silence
+the warning by passing C<Warn> => 0 in \%attr.
+
+B<*> If no insert has been performed yet, or the last insert failed,
+then the value is implementation defined.
+
+Given all the caveats above, it's clear that this method must be
+used with care.
+
+The C<last_insert_id> method was added in DBI 1.38.
 
 =item C<selectrow_array>
 
@@ -4333,27 +4504,8 @@ are indicated with question mark character (C<?>). For example:
   $sth->execute;
   DBI::dump_results($sth);
 
-Note that the C<?> is not enclosed in quotation marks, even when the
-placeholder represents a string.  Some drivers also allow placeholders
-like C<:>I<name> and C<:>I<n> (e.g., C<:1>, C<:2>, and so on)
-in addition to C<?>, but their use
-is not portable.  Undefined bind values or C<undef> can be used to
-indicate null values.
+See L</"Placeholders and Bind Values"> for more information.
 
-Some drivers do not support placeholders.
-
-With most drivers, placeholders can't be used for any element of a
-statement that would prevent the database server from validating the
-statement and creating a query execution plan for it. For example:
-
-  "SELECT name, age FROM ?"         # wrong (will probably fail)
-  "SELECT name, ?   FROM people"    # wrong (but may not 'fail')
-
-Also, placeholders can only represent single scalar values.
-For example, the following
-statement won't work as expected for more than one value:
-
-  "SELECT name, age FROM people WHERE name IN (?)"    # wrong
 
 B<Data Types for Placeholders>
 
@@ -4363,7 +4515,7 @@ knowing if the placeholder should be bound as a number or a string.
 
   $sth->bind_param(1, $value, { TYPE => SQL_INTEGER });
 
-As a short-cut for this common case, the data type can be passed
+As a short-cut for the common case, the data type can be passed
 directly, in place of the C<\%attr> hash reference. This example is
 equivalent to the one above:
 
@@ -4371,16 +4523,19 @@ equivalent to the one above:
 
 The C<TYPE> value indicates the standard (non-driver-specific) type for
 this parameter. To specify the driver-specific type, the driver may
-support a driver-specific attribute, such as C<{ ora_type =E<gt> 97 }>.  The
-data type for a placeholder cannot be changed after the first
-C<bind_param> call. However, it can be left unspecified, in which case it
-defaults to the previous value.
+support a driver-specific attribute, such as C<{ ora_type =E<gt> 97 }>.
 
 The SQL_INTEGER and other related constants can be imported using
 
   use DBI qw(:sql_types);
 
 See L</"DBI Constants"> for more information.
+
+The data type for a placeholder cannot be changed after the first
+C<bind_param> call. In fact the whole \%attr parameter is 'sticky'
+in the sense that a driver only needs to consider the \%attr parameter
+for the first call, for a given $sth and parameter. After that the driver
+may ignore the \%attr parameter for that placeholder.
 
 Perl only has string and number scalar data types. All database types
 that aren't numbers are bound as strings and must be in a format the
@@ -4621,6 +4776,51 @@ C<execute_array> call.
 
 The C<execute_array> method was added in DBI 1.22, and ArrayTupleFetch
 was added in 1.36.
+
+=item C<execute_for_fetch>
+
+  $rc = $sth->execute_for_fetch($fetch_tuple_sub);
+  $rc = $sth->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+
+The execute_for_fetch() method is used to perform bulk operations
+and is most often used via the execute_array() method, not directly.
+
+The fetch subroutine, referenced by $fetch_tuple_sub, is expected
+to return a reference to an array (known as a 'tuple') or undef.
+
+The execute_for_fetch() method calls $fetch_tuple_sub, without any
+parameters, until it returns a false value. Each tuple returned is
+used to provide bind values for an $sth->execute(@$tuple) call.
+
+The number of tuples executed is returned, regardless of the success
+or failure of those executions. Use tuple_status to check.
+
+If \@tuple_status is passed then the execute_for_fetch method uses
+it to return status information. The tuple_status array holds one
+element per tuple. If the corresponding execute() did not fail then
+the element holds the return value from execute(), which is typically
+a row count. If the execute() did fail then the element holds a
+reference to an array containing ($sth->err, $sth->errstr, $sth->state).
+
+Although each tuple returned by $fetch_tuple_sub is effectively used
+to call $sth->execute(@$tuple_array_ref) the exact timing may vary.
+Drivers are free to accumulate sets of tuples to pass to the
+database server in bulk group operations for more efficient execution.
+However, the $fetch_tuple_sub is specifically allowed to return
+the same array reference each time.
+
+For example:
+
+  my $sel = $dbh1->prepare("select foo, bar from table1");
+  $sel->execute;
+  my $ins = $dbh2->prepare("insert into table2 (foo, bar) values (?,?)");
+  $ins->execute;
+  my $fetch_tuple_sub = sub { $sel->fetchrow_arrayref };
+  my @tuple_status;
+  $rc = $ins->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+  my @errors = grep { ref $_ } @tuple_status;
+
+The C<execute_for_fetch> method was added in DBI 1.38.
 
 
 =item C<fetchrow_arrayref>

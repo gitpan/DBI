@@ -2,10 +2,10 @@ package DBI::DBD;
 
 use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
-$VERSION = sprintf("%d.%02d", q$Revision: 11.16 $ =~ /(\d+)\.(\d+)/o);
+$VERSION = sprintf("%d.%02d", q$Revision: 11.18 $ =~ /(\d+)\.(\d+)/o);
 
 
-# $Id: DBD.pm,v 11.16 2003/05/14 11:08:17 timbo Exp $
+# $Id: DBD.pm,v 11.18 2003/08/20 00:15:24 timbo Exp $
 #
 # Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -58,8 +58,8 @@ DBI::DBD - Perl DBI Database Driver Writer's Guide
 
 =head2 Version and volatility
 
-  $Revision: 11.16 $
-  $Date: 2003/05/14 11:08:17 $
+  $Revision: 11.18 $
+  $Date: 2003/08/20 00:15:24 $
 
 This document is I<still> a minimal draft which is in need of further work.
 
@@ -708,7 +708,7 @@ version 1.10 to precede version 1.9, so that using a raw CVS, RCS or
 SCCS version number is probably not appropriate (despite being very
 common). For RCS or CVS you can use this code:
 
-  $VERSION = sprintf "%d.%02d", '$Revision: 11.16 $ ' =~ /(\d+)\.(\d+)/;
+  $VERSION = sprintf "%d.%02d", '$Revision: 11.18 $ ' =~ /(\d+)\.(\d+)/;
 
 which pads out the fractional part with leading zeros so all is well
 (so long as you don't go past x.99)
@@ -2092,7 +2092,7 @@ to I<imp_drh_t>, I<imp_dbh_t> or I<imp_sth_t>.
   sv_setiv(DBIc_ERR(imp_xxh), (IV)rc);  /* set err early        */
   sv_setpv(errstr, what);
 
-If your database supports SQLSTATE, you shoudl also set the SQLSTATE value; for example,
+If your database supports SQLSTATE, you should also set the SQLSTATE value; for example,
 DBD::Informix includes the line:
 
   sv_setpv(DBIc_STATE(imp_xxh), SQLSTATE);
@@ -3531,6 +3531,7 @@ For example, consider this STORE method from the I<DBD::CSV> class:
 use Exporter ();
 use Config qw(%Config);
 use Carp;
+use Cwd;
 use strict;
 use vars qw(
     @ISA @EXPORT
@@ -3558,12 +3559,21 @@ BEGIN {
     require DBI unless $is_dbi;
 }
 
+sub _cwd_check {
+    my $cwd = cwd();
+    return unless $cwd =~ m/:/;
+    return if $^O eq 'darwin';
+    warn "*** Warning: Colons in the current directory path ($cwd) may cause problems\a\n";
+    sleep 2;
+}
+
 sub dbd_edit_mm_attribs {
     # this both edits the attribs in-place and returns the flattened attribs
     my $mm_attr = shift;
     my $dbd_attr = shift || {};
     croak "dbd_edit_mm_attribs( \%makemaker [, \%other ]): too many parameters"
 	if @_;
+    _cwd_check();
 
     # decide what needs doing
 
@@ -3604,9 +3614,8 @@ sub dbd_dbi_dir {
 }
 
 sub dbd_dbi_arch_dir {
-    if ($is_dbi) {
-	return '$(INST_ARCHAUTODIR)'
-    }
+    _cwd_check();
+    return '$(INST_ARCHAUTODIR)' if $is_dbi;
     my $dbidir = dbd_dbi_dir();
     my @try = map { "$_/auto/DBI" } @INC;
     my @xst = grep { -f "$_/Driver.xst" } @try;
@@ -3618,10 +3627,12 @@ sub dbd_dbi_arch_dir {
 
 sub dbd_postamble {
     my $self = shift;
+    _cwd_check();
     my $dbidir = dbd_dbi_dir();
     my $xstdir = dbd_dbi_arch_dir();
     my $xstfile= '$(DBI_INSTARCH_DIR)/Driver.xst';
     my $xstf_h = '$(DBI_INSTARCH_DIR)/Driver_xst.h';
+    my $QQ = ( $Config{make} eq 'dmake') ? '"' : '';
     if ($^O eq 'VMS') {
 	$dbidir = vmsify($dbidir.'/');
 	$xstdir = vmsify($xstdir.'/') unless $is_dbi;
@@ -3643,13 +3654,13 @@ $(BASEEXT).c: $(BASEEXT).xsi
 $(BASEEXT)$(OBJ_EXT): $(BASEEXT).xsi
 
 $(BASEEXT).xsi: $(DBI_DRIVER_XST) '.$xstf_h.'
-	$(PERL) -p -e "s/~DRIVER~/$(BASEEXT)/g" < $(DBI_DRIVER_XST) > $(BASEEXT).xsi
+	$(PERL) -p -e "s/~DRIVER~/$(BASEEXT)/g" $(DBI_DRIVER_XST) > $(BASEEXT).xsi
 
 # these two keep make -j4 working
-$(DBI_DRIVER_XST) :: pm_to_blib
+'.$QQ.'$(DBI_DRIVER_XST)'.$QQ.' :: pm_to_blib
 	$(NOECHO) $(NOOP)
 
-'.$xstf_h.' :: pm_to_blib
+'.$QQ.$xstf_h.$QQ.' :: pm_to_blib
 	$(NOECHO) $(NOOP)
 
 # ---

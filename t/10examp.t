@@ -1,4 +1,4 @@
-#!perl -Tw
+#!perl -wT
 
 use lib qw(blib/arch blib/lib);	# needed since -T ignores PERL5LIB
 #use blib;

@@ -76,7 +76,7 @@ ok(ref $dbh->{Profile}{Path}, 'ARRAY');
 # do a (hopefully) measurable amount of work
 my $sql = "select mode,size,name from ?";
 my $sth = $dbh->prepare($sql);
-for my $loop (1..20) { # enough work for low-resolution timers
+for my $loop (1..50) { # enough work for low-res timers or v.fast cpus
     $sth->execute(".");
     while ( my $hash = $sth->fetchrow_hashref ) {}
 }
@@ -90,17 +90,18 @@ ok(ref $data, 'ARRAY');
 ok(@$data == 7);
 ok((grep { defined($_)                } @$data) == 7);
 ok((grep { DBI::looks_like_number($_) } @$data) == 7);
-ok((grep { $_ >= 0                    } @$data) == 7);
+ok((grep { $_ >= 0                    } @$data) == 7) or warn "profile data: [@$data]\n";
 my ($count, $total, $first, $shortest, $longest, $time1, $time2) = @$data;
 ok($count > 3);
 ok($total > $first);
-ok($total > $longest);
-ok($longest > 0); # XXX theoretically not reliable
+ok($total > $longest) or warn "total $total > longest $longest: failed\n";
+ok($longest > 0) or warn "longest $longest > 0: failed\n"; # XXX theoretically not reliable
 ok($longest > $shortest);
 ok($time1 > 0);
 ok($time2 > 0);
-ok(time + 1 > $time1);
-ok(time + 1 > $time2);
+my $next = time + 1;
+ok($next > $time1) or warn "next $next > first $time1: failed\n";
+ok($next > $time2) or warn "next $next > last $time2: failed\n";
 ok($time1 <= $time2);
 
 # collect output
@@ -166,23 +167,6 @@ ok(exists $data->{foo}{$sql}{fetchrow_hashref});
 ok(exists $data->{foo}{$sql}{prepare}{bar});
 ok(ref $data->{foo}{$sql}{prepare}{bar}, 'ARRAY');
 ok(@{$data->{foo}{$sql}{prepare}{bar}} == 7);
-
-
-
-##########################################################################
-#
-# FIXME 
-#
-# This test produces the warning:
-#
-#   Profile attribute isn't a hash ref (DBI::Profile=HASH(0x831046c),7)
-#   at t/40profile.t line 130.
-#
-# It seems that $dbh->{Profile} is not an SVt_PVHV as DBI.xs expects
-# at line 1828.
-#
-#
-##########################################################################
 
 my $t1 = DBI::dbi_time;
 dbi_profile($dbh, "Hi, mom", "fetchhash_bang", $t1, $t1 + 1);

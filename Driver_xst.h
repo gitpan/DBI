@@ -1,5 +1,5 @@
 /*
-#  $Id: Driver_xst.h,v 1.4 2002/09/13 21:49:03 timbo Exp $
+#  $Id: Driver_xst.h,v 1.5 2003/08/20 00:15:24 timbo Exp $
 #  Copyright (c) 2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -49,8 +49,8 @@ dbdxst_bind_params(SV *sth, imp_sth_t *imp_sth, I32 items, I32 ax)
 	&& DBIc_NUM_PARAMS(imp_sth) != DBIc_NUM_PARAMS_AT_EXECUTE
     ) {
 	char errmsg[99];
-	sprintf(errmsg,"called with %ld bind variables when %d are needed",
-		items-1, DBIc_NUM_PARAMS(imp_sth));
+	sprintf(errmsg,"called with %d bind variables when %d are needed",
+		(int)items-1, DBIc_NUM_PARAMS(imp_sth));
 	sv_setpv(DBIc_ERRSTR(imp_sth), errmsg);
 	sv_setiv(DBIc_ERR(imp_sth), (IV)-1);
 	return 0;

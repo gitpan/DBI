@@ -104,5 +104,12 @@ else {
   ok(0, DBI::hash("foo2",1) == -1263462437,  DBI::hash("foo2",1));
 }
 
-BEGIN { $tests = 39 }
+my $installed_versions = DBI->installed_versions;
+ok(0, ref $installed_versions eq 'HASH');
+ok(0, %$installed_versions);
+my @installed_drivers = DBI->installed_versions;
+ok(0, @installed_drivers >= 1);
+ok(0, grep { $_ eq 'Sponge' } @installed_drivers);
+
+BEGIN { $tests = 43 }
 exit 0;

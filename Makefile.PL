@@ -1,13 +1,13 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 11.17 2003/05/15 17:48:40 timbo Exp $
+# $Id: Makefile.PL,v 11.18 2003/08/20 00:15:24 timbo Exp $
 #
 #  Copyright (c) 1994-2002  Tim Bunce  England
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 BEGIN {
-    require 5.005_03;
+    require 5.006_00;
     unshift @INC, "lib";
 }
 
@@ -184,7 +184,15 @@ WriteMakefile(
 	create_pp_tests => 1,
     })
 );
+# WriteMakefile call is last thing executed
+# so return value is propagated
 
+
+# =====================================================================
+
+package MY;
+
+sub postamble {
 warn <<EOT;
 
     Remember to actually *read* the README file!
@@ -199,12 +207,10 @@ warn <<EOT if $os eq 'MSWin32';
     That may be nmake or dmake depending on which Perl you are using.
     If using the Win32 ActiveState build then it is recommended that you
     use the ppm utility to fetch and install a prebuilt DBI instead.
+
 EOT
-
-
-# =====================================================================
-
-package MY;
+    return "";
+}
 
 sub libscan {
     my($self, $path) = @_;

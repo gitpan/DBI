@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 11.14 2003/05/13 13:52:05 timbo Exp $
+/* $Id: DBIXS.h,v 11.15 2003/05/26 23:28:42 timbo Exp $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -415,12 +415,10 @@ struct dbistate_st {
 # define DBISTATE_DECLARE typedef int dummy_dbistate /* keep semicolon from feeling lonely */
 # define DBISTATE_ASSIGN(st)
 # define DBISTATE_INIT
-static dbistate_t **get_dbistate() {
-    return ((dbistate_t**)&SvIVX(DBISTATE_ADDRSV));
-}
 # undef DBIS
-# define DBIS (*get_dbistate())
-# define dbis (*get_dbistate()) /* temp for bad drivers using 'dbis' instead of 'DBIS' */
+# define DBIS (*(dbistate_t**)&SvIVX(DBISTATE_ADDRSV))
+/* 'dbis' is temp for bad drivers using 'dbis' instead of 'DBIS' */
+# define dbis (*(dbistate_t**)&SvIVX(DBISTATE_ADDRSV))
 
 #else	/* plain and simple non perl object / multiplicity case */
 

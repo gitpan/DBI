@@ -49,7 +49,7 @@ my $dbh = DBI->connect("dbi:$driver:", '', '');
 #DBI->trace(9);
 my $imp_data = $dbh->take_imp_data;
 ok($imp_data);
-ok(length($imp_data), 112);
+ok(length($imp_data) >= 112); # 112 for 32bit, 116 for 64 bit as of DBI 1.37, but may change
 print Dumper($imp_data);
 
 {
