@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 1.2 1996/01/29 19:34:36 timbo Exp $
+#   $Id: ExampleP.pm,v 1.3 1997/05/06 22:23:17 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -28,7 +28,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 1.2 $',
+	    'Version' => '$Revision: 1.3 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -73,12 +73,13 @@
 
     sub prepare {
 	my($dbh, $statement)= @_;
-	my($fields, $param) = $statement =~ m/^select ([\w,\s]+) from (.*)/i;
+	my($fields, $param)
+		= $statement =~ m/^select ([\w,\s]+)\s+from\s+(.*?)/i;
 	my(@fields) = split(/\s*,\s*/, $fields);
 
 	my(@bad) = map($DBD::ExampleP::statnames{$_} ? () : $_, @fields);
 	if (@bad) {
-	    $dbh->event("ERROR", "Unknown field names: @bad");
+	    $dbh->event("ERROR", 1, "Unknown field names: @bad");
 	    return undef;
 	}
 
@@ -91,6 +92,10 @@
 	$outer->{NUM_OF_PARAMS} = 1;
 
 	$outer;
+    }
+
+    sub disconnect {
+	return 1;
     }
 
     sub DESTROY { undef }
@@ -117,12 +122,12 @@
 	$sth->finish;
 	$sth->{'datahandle'} = "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	opendir($sth->{'datahandle'}, $dir)
-		or ($sth->event("ERROR", "opendir($dir): $!"), return undef);
+		or ($sth->event("ERROR", 2, "opendir($dir): $!"), return undef);
 	$sth->{'dir'} = $dir;
 	1;
     }
 
-    sub fetchrow {
+    sub fetch {
 	my($sth) = @_;
 	my $f = readdir($sth->{'datahandle'});
 	unless($f){
@@ -133,7 +138,7 @@
 	# put in all the data fields
 	@s{@DBD::ExampleP::statnames} = (stat("$sth->{'dir'}/$f"), $f);
 	# return just what fields the query asks for
-	@s{ @{$sth->{'fields'}} };
+	[ @s{ @{$sth->{'fields'}} } ];
     }
 
     sub finish {
@@ -141,6 +146,7 @@
 	return undef unless $sth->{'datahandle'};
 	closedir($sth->{'datahandle'});
 	$sth->{'datahandle'} = undef;
+	return 1;
     }
 
     sub FETCH {

@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.65 1997/04/07 20:24:40 timbo Exp $
+/* $Id: DBI.xs,v 1.66 1997/05/06 22:23:17 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce
  *
@@ -14,8 +14,6 @@ static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 
 #ifndef _WIN32
 extern int perl_destruct_level;
-#else
-static int perl_destruct_level;
 #endif
 
 #define DBI_MAGIC '~'
@@ -27,7 +25,7 @@ static int perl_destruct_level;
 
 #ifndef PerlIO_setlinebuf
 #ifdef HAS_SETLINEBUF
-void setlinebuf _((FILE *iop));		/* often not declared in stdio.h */
+/*void setlinebuf _((FILE *iop));*/
 #define PerlIO_setlinebuf(f)        setlinebuf(f)
 #else
 #define PerlIO_setlinebuf(f)        setvbuf(f, Nullch, _IOLBF, 0)
@@ -416,11 +414,12 @@ dbih_dumpcom(imp_xxh, msg)
     if (!msg)
 	msg = "dbih_dumpcom";
     warn("%s 0x%lx (com 0x%lx)\n", msg, (IV)imp_xxh->com.std.my_h, (IV)imp_xxh);
-    if (DBIc_COMSET(imp_xxh))	sv_catpv(flags,"COMSET ");
-    if (DBIc_IMPSET(imp_xxh))	sv_catpv(flags,"IMPSET ");
-    if (DBIc_ACTIVE(imp_xxh))	sv_catpv(flags,"ACTIVE ");
-    if (DBIc_WARN(imp_xxh))	sv_catpv(flags,"WARN ");
-    if (DBIc_COMPAT(imp_xxh))	sv_catpv(flags,"COMPAT ");
+    if (DBIc_COMSET(imp_xxh))			sv_catpv(flags,"COMSET ");
+    if (DBIc_IMPSET(imp_xxh))			sv_catpv(flags,"IMPSET ");
+    if (DBIc_ACTIVE(imp_xxh))			sv_catpv(flags,"ACTIVE ");
+    if (DBIc_WARN(imp_xxh))			sv_catpv(flags,"WARN ");
+    if (DBIc_COMPAT(imp_xxh))			sv_catpv(flags,"COMPAT ");
+    if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
     warn("    FLAGS 0x%x: %s\n",	DBIc_FLAGS(imp_xxh), SvPV(flags,na));
     warn("    TYPE %d\n",	DBIc_TYPE(imp_xxh));
     warn("    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
@@ -614,6 +613,9 @@ dbih_set_attr(h, keysv, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "InactiveDestroy")) {
 	(on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
     }
+    else if (strEQ(key, "ChopBlanks")) {
+	(on) ? DBIc_on(imp_xxh,DBIcf_ChopBlanks) : DBIc_off(imp_xxh,DBIcf_ChopBlanks);
+    }
     else if (htype==DBIt_ST && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	if (DBIc_NUM_FIELDS(imp_sth) > 0)	/* don't change NUM_FIELDS! */
@@ -657,12 +659,12 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     if (htype==DBIt_ST      && keylen==13 && strEQ(key, "NUM_OF_FIELDS")) {
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_FIELDS(imp_sth));
-	cacheit = TRUE;
+	cacheit = TRUE;	/* can't change */
     }
     else if (htype==DBIt_ST && keylen==13 && strEQ(key, "NUM_OF_PARAMS")) {
 	D_imp_sth(h);
 	valuesv = newSViv(DBIc_NUM_PARAMS(imp_sth));
-	cacheit = TRUE;
+	cacheit = TRUE;	/* can't change */
     }
     else if (keylen==4  && strEQ(key, "Warn")) {
 	valuesv = DBIc_WARN(imp_xxh)		? &sv_yes : &sv_no;
@@ -672,6 +674,9 @@ dbih_get_attr(h, keysv)			/* XXX split into dr/db/st funcs */
     }
     else if (keylen==15 && strEQ(key, "InactiveDestroy")) {
 	valuesv = DBIc_IADESTROY(imp_xxh)	? &sv_yes : &sv_no;
+    }
+    else if (keylen==10 && strEQ(key, "ChopBlanks")) {
+	valuesv = DBIc_on(imp_xxh,DBIcf_ChopBlanks)	? &sv_yes : &sv_no;
     }
     else {	/* finally check the actual hash just in case	*/
 	svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
@@ -1319,7 +1324,7 @@ FETCH(sv)
     }
 /* something here is not quite right ! (wrong number of args to method for example) XXX? */
     PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
-    perl_call_sv((SV*)imp_gv, GIMME);
+    perl_call_sv((SV*)GvCV(imp_gv), GIMME);
 
 
 
@@ -1389,7 +1394,7 @@ fetchrow(sth)
 	    /* let dbih_get_fbav know what's going on	*/
 	    bound_av = dbih_get_fbav(imp_sth);
 	    for(i=0; i < num_fields; ++i) {	/* copy over the row	*/
-		sv_setsv(AvARRAY(bound_av)[num_fields], AvARRAY(av)[i]);
+		sv_setsv(AvARRAY(bound_av)[i], AvARRAY(av)[i]);
 	    }
 	}
 	for(i=0; i < num_fields; ++i) {
@@ -1488,11 +1493,11 @@ errstr(h)
     SV *    h
     CODE:
     D_imp_xxh(h);
-	SV *errstr = DBIc_ERRSTR(imp_xxh);
-	SV *err;
-	/* If there's no errstr but there is an err then use err */
-	if (!SvTRUE(errstr) && (err=DBIc_ERR(imp_xxh)) && SvTRUE(err))
-		errstr = err;
+    SV *errstr = DBIc_ERRSTR(imp_xxh);
+    SV *err;
+    /* If there's no errstr but there is an err then use err */
+    if (!SvTRUE(errstr) && (err=DBIc_ERR(imp_xxh)) && SvTRUE(err))
+	    errstr = err;
     ST(0) = sv_mortalcopy(errstr);
 
 

@@ -3,7 +3,21 @@ Current DBI Implementation Notes:
 	$ary_ref = $sth->fetch; currently always returns the same array ref.
 	This may be a feature that stays, then again it may not.
 
-    THINGS MAY CHANGE. See the README file and DBI pod text.
+	THINGS MAY CHANGE. See the README file and DBI pod text.
+
+Changes in DBI 0.80,	6th May 1997
+
+	Builds with no changes on NT using perl5.003_99 (with thanks to Jeffrey Urlwin).
+	Automatically supports Apache::DBI (with thanks to Edmund Mergl).
+	  DBI scripts no longer need to be modified to make use of Apache::DBI.
+	Added a ping method and an experimental connect_test_perf method.
+	Added a fetchhash and fetch_all methods.
+	The func method no longer pre-clears err and errstr. 
+	Added ChopBlanks attribute (currently defaults to off, that may change).
+	  Support for the attribute needs to be implemented by individual drivers.
+	Reworked tests into standard t/*.t form.
+	Added more pod text.  Fixed assorted bugs.
+	
 
 Changes in DBI 0.79,	7th Apr 1997
 

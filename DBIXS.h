@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.32 1997/04/07 20:24:40 timbo Exp $
+/* $Id: DBIXS.h,v 1.33 1997/05/06 22:23:17 timbo Exp $
  *
  * Copyright (c) 1994, 1995 Tim Bunce
  *
@@ -51,7 +51,7 @@ typedef struct imp_xxh_st imp_xxh_t;	/* any (defined below)		*/
 /* component structures */
 
 typedef struct dbih_com_std_st {
-    U16  flags;
+    U16  flags;		/* XXX will change to U32 at some point		*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
     SV   *my_h;		/* copy of owner inner handle (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
@@ -136,23 +136,30 @@ typedef struct {		/* -- STATEMENT --			*/
 #define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_av)
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
 
-#define DBIcf_COMSET	0x0001	/* needs to be clear'd before free'd	*/
-#define DBIcf_IMPSET	0x0002	/* has implementor data to be clear'd	*/
-#define DBIcf_ACTIVE	0x0004	/* needs finish/disconnect before clear	*/
-#define DBIcf_IADESTROY	0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
-#define DBIcf_WARN  	0x0010	/* warn about poor practice etc  	*/
-#define DBIcf_COMPAT  	0x0020	/* compat/emulation mode (eg oraperl)	*/
+#define DBIcf_COMSET	 0x0001	/* needs to be clear'd before free'd	*/
+#define DBIcf_IMPSET	 0x0002	/* has implementor data to be clear'd	*/
+#define DBIcf_ACTIVE	 0x0004	/* needs finish/disconnect before clear	*/
+#define DBIcf_IADESTROY	 0x0008	/* do DBIc_ACTIVE_off before DESTROY	*/
+#define DBIcf_WARN  	 0x0010	/* warn about poor practice etc  	*/
+#define DBIcf_COMPAT  	 0x0020	/* compat/emulation mode (eg oraperl)	*/
+
+#define DBIcf_ChopBlanks 0x0040	/* rtrim spaces from fetch char columns	*/
 
 #define DBIcf_INHERITMASK 	/* what flags to pass on to children	*/ \
-	(DBIcf_WARN | DBIcf_COMPAT)
+	(DBIcf_WARN | DBIcf_COMPAT | DBIcf_ChopBlanks)
 
-#define DBIc_COMSET(imp)	(DBIc_FLAGS(imp) &   DBIcf_COMSET)
-#define DBIc_COMSET_on(imp)	(DBIc_FLAGS(imp) |=  DBIcf_COMSET)
-#define DBIc_COMSET_off(imp)	(DBIc_FLAGS(imp) &= ~DBIcf_COMSET)
+/* general purpose flag setting and testing macros */
+#define DBIc_is(imp, flag)	(DBIc_FLAGS(imp) &   (flag))
+#define DBIc_on(imp, flag)	(DBIc_FLAGS(imp) |=  (flag))
+#define DBIc_off(imp,flag)	(DBIc_FLAGS(imp) &= ~(flag))
 
-#define DBIc_IMPSET(imp)	(DBIc_FLAGS(imp) &   DBIcf_IMPSET)
-#define DBIc_IMPSET_on(imp)	(DBIc_FLAGS(imp) |=  DBIcf_IMPSET)
-#define DBIc_IMPSET_off(imp)	(DBIc_FLAGS(imp) &= ~DBIcf_IMPSET)
+#define DBIc_COMSET(imp)	DBIc_is(imp, DBIcf_COMSET)
+#define DBIc_COMSET_on(imp)	DBIc_on(imp, DBIcf_COMSET)
+#define DBIc_COMSET_off(imp)	DBIc_off(imp,DBIcf_COMSET)
+
+#define DBIc_IMPSET(imp)	DBIc_is(imp, DBIcf_IMPSET)
+#define DBIc_IMPSET_on(imp)	DBIc_on(imp, DBIcf_IMPSET)
+#define DBIc_IMPSET_off(imp)	DBIc_off(imp,DBIcf_IMPSET)
 
 #define DBIc_ACTIVE(imp)	(DBIc_FLAGS(imp) &   DBIcf_ACTIVE)
 #define DBIc_ACTIVE_on(imp)	/* adjust parent's active kid count */	\

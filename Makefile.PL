@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.57 1997/02/21 15:06:52 timbo Exp $
+# $Id: Makefile.PL,v 1.58 1997/05/07 13:17:23 timbo Exp $
 
 BEGIN { require 5.003 }
 
@@ -61,8 +61,9 @@ directories you MUST delete old DBI files and directories from your
 	    my @old;
 	    while(<FIND>) {
 		next unless m:\bDB(I|D$):;
-		next if m:^$Config{sitelibexp}/:;
-		next if m:^$Config{sitearchexp}/:;
+		next if m:^\Q$Config{sitelibexp}/:;
+		next if m:^\Q$Config{sitearchexp}/:;
+		next if m:^\Q$Config{man3direxp}/:;
 		chop;
 		push @old, $_;
 	    }

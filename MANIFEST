@@ -10,5 +10,7 @@ lib/DBD/NullP.pm	An empty example Driver module
 lib/DBD/ExampleP.pm	A very simple example Driver module
 lib/DBD/Sponge.pm	A driver for fake cursors (precached data)
 lib/DBI/W32ODBC.pm	An experimental DBI emulation layer for Win32::ODBC
-test.pl	A simple test application using ExampleP.pm
-t/min.t	A trivial test script for 'make test'
+t/basics.t	Test script for very basic DBI functionality
+t/dbidrv.t	Test script for loading drivers and using DBI vars
+t/examp.t	Test script for the DBI using the ExampleP driver
+test.pl	A very simple test harness using ExampleP.pm

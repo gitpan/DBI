@@ -1,19 +1,22 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.18 1997/04/07 20:24:40 timbo Exp $
+# $Id: test.pl,v 1.19 1997/05/06 22:23:17 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Artistic License, as specified in the Perl README file.
 
-# This is just my DBI test script, it's not as clean as it could be :-)
+# This is now mostly an empty shell. The tests have moved to t/*.t
+# See t/*.t for more detailed tests.
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.18 $}."\n";
-	$| = 1; chop($cwd = `pwd`); unshift(@INC, ".", "$cwd/../../lib");
+	print q{DBI test application $Revision: 1.19 $}."\n";
+	$| = 1;
 }
+
+use blib;
 
 use DBI;
 
@@ -33,7 +36,7 @@ print "opt_h=$::opt_h\n" if $::opt_h;
 print "opt_m=$::opt_m\n" if $::opt_m;
 
 my $count = 0;
-my $ps = (-d '/proc') ? "ps -p " : "ps -l";
+my $ps = (-d '/proc') ? "ps -lp " : "ps -l";
 my $driver = $ARGV[0] || ($::opt_m ? 'NullP' : 'ExampleP');
 
 # Now ask for some information from the DBI Switch
@@ -42,125 +45,34 @@ $switch->debug($::opt_h); # 2=detailed handle trace
 
 print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
 
-#$switch->{DebugDispatch} = 1;
 $switch->{DebugDispatch} = $::opt_d if $::opt_d;
 $switch->{DebugLog}      = $::opt_l if $::opt_l;
-print "DebugDispatch: $switch->{'DebugDispatch'}\n";
 
-print "Available Drivers: ",join(", ",DBI->available_drivers()),"\n";
-
-print "Read DBI special variables (expect: empty string, 99, 99):\n";
-print "err:    ";	print "$DBI::err\n";
-DBI::set_err($switch, "99");
-print "err:    ";	print "$DBI::err\n";
-print "errstr: ";	print "$DBI::errstr\n";
-
-print "Attempt to modify DBI special variables.\n";
-print "Expect a 'Can't modify' error message:\n";
-$DBI::rows = 1;
-print "\n";
+print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 
 
-my($dbh);   # first, get connected using either of these methods:
-$dbh = DBI->connect('', '', '', $driver);
+my $dbh = DBI->connect('', '', '', $driver);
 $dbh->debug($::opt_h);
 
 if ($::opt_m) {
 
-	mem_test($dbh) while 1;
+    mem_test($dbh) while 1;
 
 } else {
 
-	run_test($dbh);
+	# new experimental connect_test_perf method
+    DBI->connect_test_perf('', '', '', $driver, {
+	    dbi_loops=>2, dbi_par=>5, dbi_verb=>1
+    });
 }
 
-print "$0 done (global destruction will follow)\n\n";
+print "$0 done\n";
 exit 0;
 
 
-sub run_test{
+sub mem_test {	# harness to help find basic leaks
     my($dbh) = @_;
-
-    print "Connected as $dbh\n\n";
-
-    $dbh->commit;
-
-    print "Test error handling: prepare()'ing an invalid query.\n";
-    print "Expect prepare to return UNDEF and an error message:\n";
-    my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
-    print "Error not detected!\n" if $cursor_e;
-    $cursor_e = 'UNDEF' unless defined $cursor_e;
-    print "prepare returned $cursor_e. \$DBI::err=$DBI::err\n\n";
-
-    my $cursor_a = $dbh->prepare("select mode,ino,name from ?");
-    print "Cursor prepare'd as $cursor_a\n";
-    # $cursor_a->debug(2);
-
-    my($cursor_b) = $dbh->prepare("select blocks,size,name from ?");
-    print "Prepared as $cursor_b\n";
-    # $cursor_b->debug(2);
-
-    # Test object attributes
-
-    print "Number of fields: $cursor_a->{'NUM_OF_FIELDS'}\n";
-    print "Data type of first field: $cursor_a->{'DATA_TYPE'}->[0]\n";
-    print "Driver name: $cursor_a->{'Database'}->{'Driver'}->{'Name'}\n";
-    print "\n";
-
-	my($dir1, $dir2) = ($Config{archlib}, $Config{bin});
-    $cursor_a->execute( $dir1 );
-    $cursor_b->bind_param(1, $dir2);
-    $cursor_b->execute();
-
-    print "Fetching data from both cursors.\n";
-    print "Expect several rows of data:\n";
-    my(@row_a, @row_b);
-	my $rows = 0;
-    while((@row_a = $cursor_a->fetchrow)
-       && (@row_b = $cursor_b->fetchrow)){
-	    die "fetchrow scalar context problem" if @row_a==1 or @row_b==1;
-	    print "@row_a, @row_b\n";
-		last if ++$rows >= 5;
-    }
-
-    print "\nAutomatic method parameter usage check.\n";
-    print "Expect a 'DBI ... invalid' error and a 'Usage: ...' message:\n";
-    eval { $dbh->commit('dummy') };
-    warn "$@\n";
-
-	my $quoted = $dbh->quote("quote's");
-	die "Quoting failed ($quoted)" if $quoted ne "'quote''s'";
-
-    print "Preparing new \$cursor_a to replace current \$cursor_a.\n";
-    print "We enable debugging on current to watch it's destruction.\n";
-    print "Expect several lines of DBI trace information:\n";
-    $cursor_a->debug(2);
-    $cursor_a = $dbh->prepare("select mtime,name from ?");
-
-    print "\nExecuting via func redirect: \$h->func(..., 'execute')\n";
-    $cursor_a->func('/tmp', 'execute');
-
-    print "\nBinding columns of \$cursor_a to variables.\n";
-    my($col0, $col1);
-    $cursor_a->bind_columns(undef, \($col0, $col1));
-    print "\nFetching one row from new \$cursor_a with a bound column.\n";
-    print "Expect a large number follwed by a dot:\n";
-    my $row_ref = $cursor_a->fetch;
-    print join(' ',@$row_ref),"\n";
-
-    print "bind_columns ", ($col0 and $col0 eq $row_ref->[0]) ? "worked\n" :
-		"didn't work (bound:$col0 fetched:$row_ref->[0])!\n";
-
-    $cursor_a->finish;
-
-    print "\nCursor tests done (scoped objects will be destroyed now)\n";
-}
-
-sub mem_test{
-    my($dbh) = @_;
-
 	system("echo $count; $ps$$") if (($count++ % 1000) == 0);
-
     my $cursor_a = $dbh->prepare("select mode,ino,name from ?");
     $cursor_a->execute('/usr');
     my @row_a = $cursor_a->fetchrow;
