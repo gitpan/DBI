@@ -1,4 +1,4 @@
-# $Id: DBD.pm,v 1.6 1997/09/05 19:16:40 timbo Exp $
+# $Id: DBD.pm,v 1.7 1997/12/10 16:50:14 timbo Exp $
 #
 # Copyright (c) 1997 Jonathan Leffler and Tim Bunce
 #
@@ -21,8 +21,8 @@ DBI::DBD - DBD Driver Writer's Guide (draft)
 
 =head1 VERSION and VOLATILITY
 
-	$Revision: 1.6 $
-	$Date: 1997/09/05 19:16:40 $
+	$Revision: 1.7 $
+	$Date: 1997/12/10 16:50:14 $
 
 This document is very much a minimal draft which will need to be revised
 frequently (and extensively).
@@ -364,6 +364,25 @@ whether the connection to the database is still alive.
 Many drivers will accept the default, do-nothing implementation.
 
 =back
+
+=head1 WRITING AN EMULATION LAYER FOR AN OLD PERL INTERFACE
+
+Study Oraperl.pm (supplied with DBD::Oracle) and Ingperl.pm (supplied
+with DBD::Ingres) and the corresponding dbdimp.c files for ideas.
+
+=head2 Setting emulation perl variables
+
+For example, ingperl has a $sql_rowcount variable. Rather than try
+to manually update this in Ingperl.pm it can be done faster in C code.
+In dbd_init():
+
+  sql_rowcount = perl_get_sv("Ingperl::sql_rowcount", GV_ADDMULTI);
+
+In the relevant places do:
+
+  if (DBIc_COMPAT(imp_sth))	/* only do this for compatibility mode handles */
+      sv_setiv(sql_rowcount, the_row_count);
+
 
 =head1 OTHER MISCELLANEOUS INFORMATION
 

@@ -1,4 +1,4 @@
-/* $Id: dbi_sql.h,v 1.2 1997/09/05 19:16:40 timbo Exp $
+/* $Id: dbi_sql.h,v 1.3 1997/12/10 16:50:14 timbo Exp $
  *
  * Copyright (c) 1997  Tim Bunce  England
  *
@@ -10,27 +10,27 @@
 #ifndef SQL_SUCCESS	/* don't clash with ODBC based drivers	*/
 
 /* Standard SQL datatypes (ANSI/ODBC type numbering)		*/
-#define	SQL_CHAR		1	/*	DBI_CHAR 	*/
+#define	SQL_CHAR		1
 #define	SQL_NUMERIC		2
 #define	SQL_DECIMAL		3
-#define	SQL_INTEGER		4	/*	DBI_INTEGER	*/
+#define	SQL_INTEGER		4
 #define	SQL_SMALLINT		5
-#define	SQL_FLOAT		6	/*	DBI_FLOAT	*/
+#define	SQL_FLOAT		6
 #define	SQL_REAL		7
 #define	SQL_DOUBLE		8
-#define	SQL_VARCHAR		12	/*	DBI_VARCHAR	*/
+#define SQL_DATE		9
+#define SQL_TIME		10
+#define SQL_TIMESTAMP		11
+#define	SQL_VARCHAR		12
 
-#ifdef just_for_pondering /* not used yet, just here for pondering */
-#define SQL_DATE           9
-#define SQL_TIME           10
-#define SQL_TIMESTAMP      11
-#define SQL_LONGVARCHAR    (-1)
-#define SQL_BINARY         (-2)
-#define SQL_VARBINARY      (-3)
-#define SQL_LONGVARBINARY  (-4)
-#define SQL_BIGINT         (-5)
-#define SQL_TINYINT        (-6)
-#endif
+/* Other SQL datatypes (ODBC type numbering)			*/
+#define SQL_LONGVARCHAR		(-1)
+#define SQL_BINARY		(-2)
+#define SQL_VARBINARY		(-3)
+#define SQL_LONGVARBINARY	(-4)
+#define SQL_BIGINT		(-5)	/* too big for IV	*/
+#define SQL_TINYINT		(-6)
+
 
 /* Main return codes						*/
 #define	SQL_ERROR			(-1)

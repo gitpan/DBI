@@ -1,6 +1,7 @@
-package DBI;
+package
+  DBI;	# hide this non-DBI package from simple indexers
 
-# $Id: W32ODBC.pm,v 1.3 1997/06/11 23:03:50 timbo Exp $
+# $Id: W32ODBC.pm,v 1.4 1997/12/10 16:50:14 timbo Exp $
 #
 # Copyright (c) 1997, Tim Bunce
 #
@@ -53,10 +54,12 @@ experimental.
 
 =cut
 
-$VERSION = $VERSION = '0.01';
-my $Revision = substr(q$Revision: 1.3 $, 10);
+${'DBI::VERSION'}	# hide version from PAUSE indexer
+   = "0.01";
 
-sub DBI::W32ODBC::import { }		# must trick here since we're called DBI/W32ODBC.pm
+my $Revision = substr(q$Revision: 1.4 $, 10);
+
+sub DBI::W32ODBC::import { }	# must trick here since we're called DBI/W32ODBC.pm
 
 
 use Carp;
@@ -68,7 +71,8 @@ use Win32::ODBC;
 use strict;
 
 $DBI::dbi_debug = $ENV{PERL_DBI_DEBUG} || 0;
-carp "Loaded DBI.pm (debug $DBI::dbi_debug)" if $DBI::dbi_debug;
+carp "Loaded (W32ODBC) DBI.pm ${'DBI::VERSION'} (debug $DBI::dbi_debug)"
+	if $DBI::dbi_debug;
 
 
 

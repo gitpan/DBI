@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: ExampleP.pm,v 1.6 1997/07/22 23:17:50 timbo Exp $
+#   $Id: ExampleP.pm,v 1.7 1997/12/10 16:50:14 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -28,7 +28,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'ExampleP',
-	    'Version' => '$Revision: 1.6 $',
+	    'Version' => '$Revision: 1.7 $',
 	    'Attribution' => 'DBD Example Perl stub by Tim Bunce',
 	    }, ['example implementors private data']);
 	$drh;
@@ -107,7 +107,7 @@
 	# or fetch and cache attribute values too expensive to prefetch.
 	return 1 if $attrib eq 'AutoCommit';
 	# else pass up to DBI to handle
-	return $dbh->DBD::_::st::FETCH($attrib);
+	return $dbh->DBD::_::db::FETCH($attrib);
     }
 
     sub STORE {
@@ -118,7 +118,7 @@
 	    return 1 if $value;	# is already set
 	    croak("Can't disable AutoCommit");
 	}
-	return $dbh->DBD::_::st::STORE($attrib, $value);
+	return $dbh->DBD::_::db::STORE($attrib, $value);
     }
     sub DESTROY { undef }
 }
@@ -162,6 +162,7 @@
 	# return just what fields the query asks for
 	[ @s{ @{$sth->{'fields'}} } ];
     }
+    *fetchrow_arrayref = \&fetch;
 
     sub finish {
 	my($sth) = @_;

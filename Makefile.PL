@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.64 1997/09/05 19:16:40 timbo Exp $
+# $Id: Makefile.PL,v 1.65 1997/12/10 16:50:14 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -14,11 +14,12 @@ my $osvers = $Config{osvers};
 $osvers =~ s/^\s*(\d+\.\d+).*/$1/;  # drop sub-sub-version: 2.5.1 -> 2.5
 
 if ($] < 5.004) {
-	print "\n*** You are using an old version of Perl. ***\n";
+	print "\n*** You are using an old version of Perl. ***\n\a";
 	print "Perl 5.004 fixes many bugs in older versions and is highly recommended.\n";
     print "You may see warnings from 'pod2man' due to the old version you have.\n";
     print "You can ignore them, or, better still, upgrade to the latest release\n";
 	print "of Perl (5.004_03 at the time this was written).\n\n";
+	sleep 5;
 }
 
 %opts = (

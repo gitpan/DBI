@@ -5,7 +5,7 @@
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
 
-#   $Id: NullP.pm,v 1.1 1995/10/24 01:45:52 timbo Exp $
+#   $Id: NullP.pm,v 1.2 1997/12/10 16:50:14 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -21,7 +21,7 @@
 	$class .= "::dr";
 	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'NullP',
-	    'Version' => '$Revision: 1.1 $',
+	    'Version' => '$Revision: 1.2 $',
 	    'Attribution' => 'DBD Example Null Perl stub by Tim Bunce',
 	    }, [ qw'example implementors private data']);
 	$drh;
@@ -55,6 +55,27 @@
 	$outer;
     }
 
+    sub FETCH {
+	my ($dbh, $attrib) = @_;
+	# In reality this would interrogate the database engine to
+	# either return dynamic values that cannot be precomputed
+	# or fetch and cache attribute values too expensive to prefetch.
+	return 1 if $attrib eq 'AutoCommit';
+	# else pass up to DBI to handle
+	return $dbh->DBD::_::db::FETCH($attrib);
+	}
+
+    sub STORE {
+	my ($dbh, $attrib, $value) = @_;
+	# would normally validate and only store known attributes
+	# else pass up to DBI to handle
+	if ($attrib eq 'AutoCommit') {
+	    return 1 if $value; # is already set
+	    croak("Can't disable AutoCommit");
+	}
+	return $dbh->DBD::_::db::STORE($attrib, $value);
+    }
+
     sub DESTROY { undef }
 }
 
@@ -82,14 +103,14 @@
 	my ($sth, $attrib) = @_;
 	# would normally validate and only fetch known attributes
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::FETCH($attrib);
+	return $sth->DBD::_::st::FETCH($attrib);
     }
 
     sub STORE {
 	my ($sth, $attrib, $value) = @_;
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
-	return $sth->DBD::_::dr::STORE($attrib, $value);
+	return $sth->DBD::_::st::STORE($attrib, $value);
     }
 
     sub DESTROY { undef }

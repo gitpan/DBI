@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 1.43 1997/09/05 19:16:40 timbo Exp $
+/* $Id: DBIXS.h,v 1.44 1997/12/10 16:50:14 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England
  *
@@ -7,12 +7,26 @@
 
 /* DBI Interface Definitions for DBD Modules */
 
+
 /* first pull in the standard Perl header files for extensions */
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
 
+
+/* Perl backwards compatibility definitions */
+#ifndef boolSV	/* added in perl5.004		*/
+#define boolSV(bool) ((bool) ? &sv_yes : &sv_no) 
+#endif
+
+#ifndef dTHR	/* added in perl5.004_50	*/
+#define dTHR typedef int _thr_DBI_dummy
+#endif
+
+
+/* DBI SQL_* type definitions */
 #include "dbi_sql.h"
+
 
 /* The DBIXS_VERSION value will be incremented whenever new code is
  * added to the interface (this file) or significant changes are made.
@@ -26,7 +40,7 @@
 
 #ifdef NEED_DBIXS_VERSION
 #if NEED_DBIXS_VERSION > DBIXS_VERSION
-error You_need_to_upgrade_your_DBI_module_before_building_this_driver.
+error You_need_to_upgrade_your_DBI_module_before_building_this_driver
 #endif
 #else
 #define NEED_DBIXS_VERSION DBIXS_VERSION
@@ -58,7 +72,7 @@ typedef struct dbih_com_std_st {
     U32  flags;		/* XXX will change to U32 at some point		*/
     int  call_depth;/* used by DBI to track nested calls (int)	*/
     U16  type;		/* DBIt_DR, DBIt_DB, DBIt_ST			*/
-    SV   *my_h;		/* copy of owner inner handle (NO r.c.inc)	*/
+    SV   *my_h_obj;	/* copy of own SvRV(inner handle) (NO r.c.inc)	*/
     SV   *parent_h;	/* parent inner handle (RV(HV)) (r.c.inc)	*/
     imp_xxh_t *parent_com;	/* parent com struct shortcut		*/
 
@@ -138,7 +152,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_FLAGS(imp)		_imp2com(imp, std.flags)
 #define DBIc_TYPE(imp)		_imp2com(imp, std.type)
 #define DBIc_CALL_DEPTH(imp)	_imp2com(imp, std.call_depth)
-#define DBIc_MY_H(imp)  	_imp2com(imp, std.my_h)
+#define DBIc_MY_H_OBJ(imp)  	_imp2com(imp, std.my_h_obj)
 #define DBIc_PARENT_H(imp)  	_imp2com(imp, std.parent_h)
 #define DBIc_PARENT_COM(imp)  	_imp2com(imp, std.parent_com)
 #define DBIc_IMP_STASH(imp)  	_imp2com(imp, std.imp_stash)
@@ -161,7 +175,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
 #define DBIc_FIELDS_AV(imp)  	_imp2com(imp, fields_svav)
 #define DBIc_FDESC_AV(imp)  	_imp2com(imp, fields_fdav)
-#define DBIc_FDESC(imp, i)  	((imp_fdh_t*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
+#define DBIc_FDESC(imp, i)  	((imp_fdh_t*)(void*)SvPVX(AvARRAY(DBIc_FDESC_AV(imp))[i]))
 
 #define DBIcf_COMSET	  0x0001	/* needs to be clear'd before free'd	*/
 #define DBIcf_IMPSET	  0x0002	/* has implementor data to be clear'd	*/
@@ -202,15 +216,18 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 	imp_xxh_t *ph_com = DBIc_PARENT_COM(imp);			\
 	if (!DBIc_ACTIVE(imp) && ph_com && !dirty			\
 		&& ++DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com))	\
-	    croak("panic: DBI active kids > kids");			\
+	    croak("panic: DBI active kids (%d) > kids (%d)",		\
+		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
 	DBIc_FLAGS(imp) |=  DBIcf_ACTIVE;				\
     } while(0)
 #define DBIc_ACTIVE_off(imp)	/* adjust parent's active kid count */	\
     do {								\
 	imp_xxh_t *ph_com = DBIc_PARENT_COM(imp);			\
 	if (DBIc_ACTIVE(imp) && ph_com && !dirty			\
-		&& --DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com))	\
-	    croak("panic: DBI active kids < 0");			\
+		&& (--DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com)	\
+		   || DBIc_ACTIVE_KIDS(ph_com) < 0) )			\
+	    croak("panic: DBI active kids (%d) < 0 or > kids (%d)",	\
+		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
 	DBIc_FLAGS(imp) &= ~DBIcf_ACTIVE;				\
     } while(0)
 
@@ -301,7 +318,7 @@ typedef struct {
     SV        * (*get_attr_k)	_((SV *h, SV *keysv, int dbikey));
     AV        * (*get_fbav)	_((imp_sth_t *imp_sth));
     SV        * (*make_fdsv)	_((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
-    int         (*bind_as_num)	_((int sql_type, int p, int s));
+    int         (*bind_as_num)	_((int sql_type, int p, int s, int *t, void *v));
     int         (*hash)		_((char *string, long i));
     AV        * (*preparse)	_((SV *sth, char *statement, U32 flags, U32 spare));
 
@@ -332,29 +349,30 @@ typedef struct {
 
 /* --- Assorted Utility Macros	--- */
 
-#define DBI_INTERNAL_ERROR(msg)	\
-	croak("%s: file \"%s\", line %d", msg, __FILE__, __LINE__);
+#define DBD_ATTRIB_OK(attribs)	/* is this a usable attrib value */	\
+	(attribs && SvROK(attribs) && SvTYPE(SvRV(attribs))==SVt_PVHV)
 
+/* If attribs value supplied then croak if it's not a hash ref.		*/
+/* Also map undef to Null. Should always be called to pre-process the	*/
+/* attribs value. One day we may add some extra magic in here.		*/
 #define DBD_ATTRIBS_CHECK(func, h, attribs)	\
     if ((attribs) && SvOK(attribs)) {		\
 	if (!SvROK(attribs) || SvTYPE(SvRV(attribs))!=SVt_PVHV)		\
-	    croak("%s->%s(...): attribute parameter is not a hash ref",	\
-		    SvPV(h,na), func);		\
+	    croak("%s->%s(...): attribute parameter '%s' is not a hash ref",	\
+		    SvPV(h,na), func, SvPV(attribs,na));		\
     } else (attribs) = Nullsv
 
-#define DBD_ATTRIB_GET_SVP(attribs, key, klen)	\
-        hv_fetch((HV*)SvRV(attribs), key, klen, 0)
+#define DBD_ATTRIB_GET_SVP(attribs, key,klen)			\
+	(DBD_ATTRIB_OK(attribs)					\
+	    ? hv_fetch((HV*)SvRV(attribs), key,klen, 0)		\
+	    : (void*)Nullsv)
 	
 #define DBD_ATTRIB_GET_BOOL(attribs, key,klen, svp, var)		\
-	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
+	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvTRUE(*svp)
 
 #define DBD_ATTRIB_GET_IV(attribs, key,klen, svp, var)			\
-	if ( (svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
+	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvIV(*svp)
-
-#ifndef boolSV	/* added in Perl5.004 */
-#define boolSV(bool) ((bool) ? &sv_yes : &sv_no) 
-#endif
 
 /* end of DBIXS.h */

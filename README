@@ -38,7 +38,7 @@ use the web you can subscribe by sending a message to
 dbi-users-request@fugue.com, it may take a few days to be processed).
 
 Much useful information and online archives of the mailing lists can be
-found at http://www.hermetica.com/technologia/DBI
+found at http://www.arcana.co.uk/technologia/DBI
 
 See also ftp://ftp.demon.co.uk/pub/perl/db/ and "CPAN" ftp sites.
 
@@ -72,6 +72,9 @@ error: symbol not found: main ..." it means that you are using the GNU
 as and/or GNU ld commands. Delete or rename them, they are just bad
 news on Solaris.
 
+If you get warnings like "value computed is not used" and "unused
+variable" you can ignore them.
+
 If you can't fix it your self please post details to
 dbi-users@fugue.com. You can CC them to me at Tim.Bunce@ig.co.uk but
 please don't send them just to me.  Please include:
@@ -90,7 +93,7 @@ please don't send them just to me.  Please include:
    If the stack trace mentions XS_DynaLoader_dl_load_file then rerun
    make test after setting the environment variable PERL_DL_DEBUG to 2.
 
-Please don't post problems to comp.lang.perl.misc or perl5-porters.
+Please don't post problems to comp.lang.perl.* or perl5-porters.
 This software is supported via the dbi-users mailing list.  For more
 information and to keep informed about progress you can join the a
 mailing list via http://www.fugue.com/dbi (if you are unable to use the
@@ -109,7 +112,7 @@ Tim Bunce.
 
 =======================================================================
 
-If you get an error like "fatal: relocation error: symbol not found: main"
+If you get an error like "fatal: relocation error: symbol not found: ..."
 Do not use GNU as or GNU ld on Solaris. Delete or rename them, they are
 just bad news.  In the words of John D Groenveld <groenvel@cse.psu.edu>:
 Run, dont walk, to your console and 'mv /opt/gnu/bin/as /opt/gnu/bin/gas;

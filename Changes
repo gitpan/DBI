@@ -1,9 +1,25 @@
 
+Changes in DBI 0.91,	10th December 1997
+
+  NOTE: This fix may break some existing scripts:
+  DBI->connect("dbi:...",$user,$pass) was not setting AutoCommit and PrintError!
+  DBI->connect(..., { ... }) no longer sets AutoCommit or PrintError twice.
+  DBI->connect(..., { RaiseError=>1 }) now croaks if connect fails.
+  Fixed $fh parameter of $sth->dump_results;
+  Added default statement DESTROY method which carps.
+  Added default driver DESTROY method to silence AUTOLOAD/__DIE__/CGI::Carp
+  Added more SQL_* types to %EXPORT_TAGS and @EXPORT_OK.
+  Assorted documentation updates (mainly clarifications).
+  Added workaround for perl's 'sticky lvalue' bug.
+  Added better warning for bind_col(umns) where fields==0.
+  Fixed to build okay with 5.004_54 with or without USE_THREADS.
+  Note that the DBI has not been tested for thread safety yet.
+
 Changes in DBI 0.90,	6th September 1997
 
+  Can once again be built with Perl 5.003.
   The DBI class can be subclassed more easily now.
   InactiveDestroy fixed for drivers using the *.xst template.
-  Can once again be built with Perl 5.003.
   Slightly faster handle creation.
   Changed prototype for dbd_*_*_attrib() to add extra param.
   Note: 0.90, 0.89 and possibly some other recent versions have

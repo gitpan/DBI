@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 1.2.1.1 1997/09/05 19:16:40 timbo Exp $
+#  $Id: Driver.xst,v 1.4 1997/12/10 16:50:14 timbo Exp $
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -194,15 +194,14 @@ bind_param(sth, param, value, attribs=Nullsv)
     IV sql_type = 0;
     D_imp_sth(sth);
     if (attribs) {
-	if (SvIOK(attribs)) {
+	if (SvNIOK(attribs)) {
 	    sql_type = SvIV(attribs);
 	    attribs = Nullsv;
 	}
 	else {
 	    SV **svp;
 	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL)
-		sql_type = SvIV(*svp);
+	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
 	}
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, FALSE, 0)
@@ -226,15 +225,14 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
     if (SvREADONLY(SvRV(value_ref)))
 	croak(no_modify);
     if (attribs) {
-	if (SvIOK(attribs)) {
+	if (SvNIOK(attribs)) {
 	    sql_type = SvIV(attribs);
 	    attribs = Nullsv;
 	}
 	else {
 	    SV **svp;
 	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL)
-		sql_type = SvIV(*svp);
+	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
 	}
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, SvRV(value_ref), sql_type, attribs, TRUE, maxlen)

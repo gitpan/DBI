@@ -1,6 +1,8 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.22 1997/09/05 19:16:40 timbo Exp $
+use blib;
+
+# $Id: test.pl,v 1.23 1997/12/10 16:50:14 timbo Exp $
 #
 # Copyright (c) 1994, Tim Bunce
 #
@@ -11,7 +13,7 @@
 
 BEGIN {
 	print "$0 @ARGV\n";
-	print q{DBI test application $Revision: 1.22 $}."\n";
+	print q{DBI test application $Revision: 1.23 $}."\n";
 	$| = 1;
 }
 
@@ -59,10 +61,22 @@ if ($::opt_m) {
 
 	# new experimental connect_test_perf method
     DBI->connect_test_perf("dbi:$driver:", '', '', {
-	    dbi_loops=>2, dbi_par=>5, dbi_verb=>1
+	    dbi_loops=>10, dbi_par=>10, dbi_verb=>1
     });
+
+	print "Testing handle creation speed...\n";
+	my $null_dbh = DBI->connect('dbi:NullP:');
+	my $null_sth = $null_dbh->prepare('');	# create one to warm up
+	$count = 5000;
+	my $i = $count;
+	my $t1 = time;
+	$null_sth = $null_dbh->prepare('') while $i--;
+	my $dur = time - $t1 or 1;
+	printf "$count NullP statement handles cycled in %d secs. Approx %d per second.\n\n",
+		$dur, $count / $dur;
 }
 
+#DBI->trace(4);
 print "$0 done\n";
 exit 0;
 

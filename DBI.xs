@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 1.78 1997/09/05 19:16:40 timbo Exp $
+/* $Id: DBI.xs,v 1.79 1997/12/10 16:50:14 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -12,7 +12,9 @@
 static int xsbypass = 1;	/* enable XSUB->XSUB shortcut		*/
 
 #ifndef _WIN32
+#ifndef MULTIPLICITY
 extern int perl_destruct_level;
+#endif
 #endif
 
 #define DBI_MAGIC '~'
@@ -38,7 +40,7 @@ static SV	 *dbi_last_h;
 static int        dbih_set_attr_k  _((SV *h, SV *keysv, int dbikey, SV *valuesv));
 static SV        *dbih_get_attr_k  _((SV *h, SV *keysv, int dbikey));
 static AV        *dbih_get_fbav _((imp_sth_t *imp_sth));
-static int	  bind_as_num _((int sql_type, int p, int s));
+static int	  quote_type _((int sql_type, int p, int s, int *base_type, void *v));
 static int	  dbi_hash _((char *string, long i));
 static SV *dbih_make_com _((SV *parent_h, char *imp_class, STRLEN imp_size, STRLEN extra));
 static SV *dbih_make_fdsv _((SV *sth, char *imp_class, STRLEN imp_size, char *col_name));
@@ -127,7 +129,7 @@ dbi_bootinit()
     dbis->get_fbav  = dbih_get_fbav;
     dbis->make_fdsv = dbih_make_fdsv;
     dbis->neat_svpv = neatsvpv;
-    dbis->bind_as_num = bind_as_num;
+    dbis->bind_as_num= quote_type;
     dbis->hash      = dbi_hash;
 
     /* Remember the last handle used. BEWARE! Sneaky stuff here!	*/
@@ -173,6 +175,9 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 	return "undef";
     if (SvNIOK(sv)) {
 	char buf[48];
+	if (SvPOK(sv))	/* already has a string version of the value, so use it	*/
+	    return SvPV(sv,na);
+	/* we don't use SvPV here since we don't want to alter sv in _any_ way	*/
 	if (SvIOK(sv))
 	     sprintf(buf, "%ld", (long)SvIV(sv));
 	else sprintf(buf, "%g",  (double)SvNV(sv));
@@ -187,20 +192,28 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     }
     else	/* handles all else, including non AMAGIC refs	*/
 	v = SvPV(sv,len);
-    /* numbers and (un-amagic'd) refs get no special treatment */
-    if (SvNIOK(sv) || SvROK(sv))
+    /* (un-amagic'd) refs get no special treatment */
+    if (SvROK(sv))
 	return v;
 
-    /* for strings we limit the length and translate codes */
-    nsv = sv_2mortal(newSVpv("'",1));
+    /* for strings we limit the length and translate codes	*/
+    nsv = sv_newmortal();
+    sv_upgrade(nsv, SVt_PV);
     if (maxlen == 0)
 	maxlen = dbis->debugpvlen;
+    if (maxlen < 6 && maxlen >= 0)	/* handle daft values	*/
+	maxlen = 6;
+    maxlen -= 2;			/* account for quotes	*/
     if (len > maxlen) {
-	sv_catpvn(nsv, v, maxlen);
-	sv_catpv( nsv, "...");
+	SvGROW(nsv, (int)(1+maxlen+4+1));
+	sv_catpvn(nsv, "'", 1);
+	sv_catpvn(nsv, v, maxlen-3);	/* account for three dots */
+	sv_catpvn(nsv, "...'", 4);
     }else{
+	SvGROW(nsv, (int)(1+len+1+1));
+	sv_catpvn(nsv, "'", 1);
 	sv_catpvn(nsv, v, len);
-	sv_catpv( nsv, "'");
+	sv_catpvn(nsv, "'", 1);
     }
     v = SvPV(nsv, len);
     while(len-- > 0) { /* cleanup string (map control chars to ascii etc) */
@@ -347,25 +360,29 @@ dbih_getcom(hrv)	/* Get com struct for handle. Must be fast.	*/
 
 
 static SV *
-dbih_setup_attrib(h, attrib, parent)
+dbih_setup_attrib(h, attrib, parent, read_only)
     SV *h;
     char *attrib;
     SV *parent;
+    int read_only;
 {
     STRLEN len = strlen(attrib);
     SV *asv = *hv_fetch((HV*)SvRV(h), attrib, len, 1);
-    SV *psv;
-    if (SvOK(asv))	/* attribute already exists */
-	return asv;
-    if (!parent || !SvTRUE(parent))
-	croak("dbih_setup_attrib(%s): '%s' not set and no parent supplied",
-		SvPV(h,na), attrib);
-    psv = *hv_fetch((HV*)SvRV(parent), attrib, len, 0);
-    if (!SvOK(psv)) {	/* not defined in parent */
-	croak("dbih_setup_attrib(%s): '%s' not set and not in parent",
-		SvPV(h,na), attrib);
+    /* we assume that we won't have any existing 'undef' attribures here */
+    /* (or, alternately, we take undef to mean 'copy from parent')	 */
+    if (!SvOK(asv)) {	/* attribute doesn't already exists (the common case) */
+	SV **psv;
+	if (!parent || !SvROK(parent))
+	    croak("dbih_setup_attrib(%s): '%s' not set and no parent supplied",
+		    SvPV(h,na), attrib);
+	psv = hv_fetch((HV*)SvRV(parent), attrib, len, 0);
+	if (!psv)
+	    croak("dbih_setup_attrib(%s): '%s' not set and not in parent",
+		    SvPV(h,na), attrib);
+	sv_setsv(asv, *psv); /* copy attribute from parent to handle */
     }
-    sv_setsv(asv, psv); /* copy attribute from parent to handle */
+    if (read_only)
+	SvREADONLY_on(asv);
     return asv;
 }
 
@@ -384,10 +401,10 @@ dbih_make_fdsv(sth, imp_class, imp_size, col_name)
 	croak("panic: dbih_makefdsv %s '%s' imp_size %d invalid",
 		imp_class, col_name, imp_size);
     if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"    dbih_make_com(%s, %d, '%s')\n",
-		imp_class,imp_size,col_name);
+	fprintf(DBILOGFP,"    dbih_make_fdsv(%s, %s, %d, '%s')\n",
+		neatsvpv(sth,0), imp_class, imp_size, col_name);
     fdsv = dbih_make_com(sth, imp_class, imp_size, cn_len+2);
-    imp_fdh = (imp_fdh_t*)SvPVX(fdsv);
+    imp_fdh = (imp_fdh_t*)(void*)SvPVX(fdsv);
     imp_fdh->com.col_name = ((char*)imp_fdh) + imp_size;
     strcpy(imp_fdh->com.col_name, col_name);
     return fdsv;
@@ -496,21 +513,21 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
     sv_bless(dbih_imp_rv, imp_mem_stash);
     sv_free(dbih_imp_rv);
 
-    DBIc_MY_H(imp) = h;		/* take copy of pointer, not new ref	*/
+    DBIc_MY_H_OBJ(imp) = SvRV(h);	/* take _copy_ of pointer, not new ref	*/
     DBIc_IMP_DATA(imp) = (imp_datasv) ? newSVsv(imp_datasv) : &sv_undef;
 
     if (DBIc_TYPE(imp) <= DBIt_ST) {
 	/* Copy some attributes from parent if not defined locally and	*/
 	/* also take address of attributes for speed of direct access.	*/
 	/* parent is null for drh, in which case h must hold the values	*/
-#define COPY_PARENT(name) SvREFCNT_inc(dbih_setup_attrib(h, (name), parent))
+#define COPY_PARENT(name,ro) SvREFCNT_inc(dbih_setup_attrib(h, (name), parent, ro))
 #define DBIc_ATTR(imp, f) _imp2com(imp, attr.f)
 	/* XXX we should validate that these are the right type (refs etc)	*/
-	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err");	/* scalar ref	*/
-	DBIc_ATTR(imp, State)    = COPY_PARENT("State");	/* scalar ref	*/
-	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr");	/* scalar ref	*/
-	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers");	/* array ref	*/
-	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug");	/* scalar (int)	*/
+	DBIc_ATTR(imp, Err)      = COPY_PARENT("Err",1);	/* scalar ref	*/
+	DBIc_ATTR(imp, State)    = COPY_PARENT("State",1);	/* scalar ref	*/
+	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1);	/* scalar ref	*/
+	DBIc_ATTR(imp, Handlers) = COPY_PARENT("Handlers",1);	/* array ref	*/
+	DBIc_ATTR(imp, Debug)    = COPY_PARENT("Debug",0);	/* scalar (int)	*/
 	if (parent)
 	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(DBIh_COM(parent));
 	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
@@ -531,11 +548,11 @@ dbih_dumpcom(imp_xxh, msg)
     char *msg;
 {
     SV *flags = newSVpv("",0);
+	char *pad = "      ";
     if (!msg)
 	msg = "dbih_dumpcom";
-#define x fprintf(DBILOGFP,
-    fprintf(DBILOGFP,"%s 0x%lx (com 0x%lx)\n", msg,
-	(IV)imp_xxh->com.std.my_h, (IV)imp_xxh);
+    fprintf(DBILOGFP,"    %s 0x%lx (com 0x%lx):\n", msg,
+	    (IV)DBIc_MY_H_OBJ(imp_xxh), (IV)imp_xxh);
     if (DBIc_COMSET(imp_xxh))			sv_catpv(flags,"COMSET ");
     if (DBIc_IMPSET(imp_xxh))			sv_catpv(flags,"IMPSET ");
     if (DBIc_ACTIVE(imp_xxh))			sv_catpv(flags,"ACTIVE ");
@@ -546,20 +563,20 @@ dbih_dumpcom(imp_xxh, msg)
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
     if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
     if (DBIc_is(imp_xxh, DBIcf_LongTruncOk))	sv_catpv(flags,"LongTruncOk ");
-    fprintf(DBILOGFP,"    FLAGS 0x%lx: %s\n", (long)DBIc_FLAGS(imp_xxh), SvPV(flags,na));
-    fprintf(DBILOGFP,"    TYPE %d\n",	DBIc_TYPE(imp_xxh));
-    fprintf(DBILOGFP,"    PARENT %s\n",	neatsvpv(DBIc_PARENT_H(imp_xxh),0));
-    fprintf(DBILOGFP,"    KIDS %ld (%ld active)\n",
+    fprintf(DBILOGFP,"%s FLAGS 0x%lx: %s\n", pad, (long)DBIc_FLAGS(imp_xxh), SvPV(flags,na));
+    fprintf(DBILOGFP,"%s TYPE %d\n",	pad, DBIc_TYPE(imp_xxh));
+    fprintf(DBILOGFP,"%s PARENT %s\n",	pad, neatsvpv(DBIc_PARENT_H(imp_xxh),0));
+    fprintf(DBILOGFP,"%s KIDS %ld (%ld active)\n", pad,
 		    (long)DBIc_KIDS(imp_xxh), (long)DBIc_ACTIVE_KIDS(imp_xxh));
-    fprintf(DBILOGFP,"    IMP_DATA %s in '%s'\n",
+    fprintf(DBILOGFP,"%s IMP_DATA %s in '%s'\n", pad,
 	    neatsvpv(DBIc_IMP_DATA(imp_xxh),0), HvNAME(DBIc_IMP_STASH(imp_xxh)));
     if (DBIc_LongReadLen(imp_xxh) != DBIc_LongReadLen_init)
-	fprintf(DBILOGFP,"    LongReadLen %ld\n", DBIc_LongReadLen(imp_xxh));
+	fprintf(DBILOGFP,"%s LongReadLen %ld\n", pad, DBIc_LongReadLen(imp_xxh));
 
     if (DBIc_TYPE(imp_xxh) == DBIt_ST) {
 	imp_sth_t *imp_sth = (imp_sth_t*)imp_xxh;
-	fprintf(DBILOGFP,"    NUM_OF_FIELDS %d\n", DBIc_NUM_FIELDS(imp_sth));
-	fprintf(DBILOGFP,"    NUM_OF_PARAMS %d\n", DBIc_NUM_PARAMS(imp_sth));
+	fprintf(DBILOGFP,"%s NUM_OF_FIELDS %d\n", pad, DBIc_NUM_FIELDS(imp_sth));
+	fprintf(DBILOGFP,"%s NUM_OF_PARAMS %d\n", pad, DBIc_NUM_PARAMS(imp_sth));
     }
 }
 
@@ -568,15 +585,16 @@ static void
 dbih_clearcom(imp_xxh)
     imp_xxh_t *imp_xxh;
 {
+	dTHR;
     int dump = FALSE;
 
-    /* Note that we're very much on our own here. imp_xxh->my_h almost	*/
+    /* Note that we're very much on our own here. DBIc_MY_H_OBJ(imp_xxh) almost	*/
     /* certainly points to memory which has been freed. Don't use it!	*/
 
     /* --- pre-clearing sanity checks --- */
 
     if (!DBIc_COMSET(imp_xxh)) {	/* should never happen	*/
-	dbih_dumpcom(imp_xxh, "dbih_clearcom: DBI Handle %s already cleared");
+	dbih_dumpcom(imp_xxh, "dbih_clearcom: DBI handle already cleared");
 	return;
     }
 
@@ -633,8 +651,8 @@ dbih_clearcom(imp_xxh)
     DBIc_COMSET_off(imp_xxh);
 
     if (dbis->debug >= 2)
-	fprintf(DBILOGFP,"    dbih_clearcom 0x%lx (type %d) done\n",
-		(long)imp_xxh, DBIc_TYPE(imp_xxh));
+	fprintf(DBILOGFP,"    dbih_clearcom 0x%lx (com 0x%lx, type %d) done.\n\n",
+		(IV)DBIc_MY_H_OBJ(imp_xxh), (IV)imp_xxh, DBIc_TYPE(imp_xxh));
 }
 
 
@@ -692,10 +710,14 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     dbih_stc_t *stc = (dbih_stc_t*)imp_sth;
     AV *av;
     int idx = SvIV(col);
+    int fields = DBIc_NUM_FIELDS(imp_sth);
 
     attribs = attribs;	/* avoid 'unused variable' warning	*/
 
-    if (!SvROK(ref) || SvTYPE(SvRV(ref)) >= SVt_PVBM)
+    if (fields <= 0 && !DBIc_ACTIVE(imp_sth))
+	croak("Statement has no columns to bind (perhaps you need to call execute first)");
+
+    if (!SvROK(ref) || SvTYPE(SvRV(ref)) >= SVt_PVBM)	/* XXX LV */
 	croak("Can't bind_col(%s, %s, %s,...) without a scalar reference",
 		neatsvpv(sth,0), neatsvpv(col,0), neatsvpv(ref,0));
 
@@ -706,9 +728,9 @@ dbih_sth_bind_col(sth, col, ref, attribs)
     if ( (av = stc->fields_svav) == Nullav)
 	av = dbih_setup_fbav(stc);
 
-    if (idx < 1 || idx > DBIc_NUM_FIELDS(imp_sth))
+    if (idx < 1 || idx > fields)
 	croak("bind_col: column %s is not a valid column (1..%d)",
-			SvPV(col,na), DBIc_NUM_FIELDS(imp_sth));
+			SvPV(col,na), fields);
 
     /* use supplied scalar as storage for this column */
     av_store(av, idx-1, SvREFCNT_inc(SvRV(ref)) );
@@ -717,27 +739,31 @@ dbih_sth_bind_col(sth, col, ref, attribs)
 
 
 static int
-bind_as_num(sql_type, p, s)
+quote_type(sql_type, p, s, t, v)	/* don't use - in a state of flux	*/
     int sql_type;
     int p, s;		/* not used (yet?), pass as zero */
+	int *t;
+    void *v;
 {
     /* Returns true if type should be bound as a number else	*/
     /* false implying that binding as a string should be okay.	*/
     /* The true value is either SQL_INTEGER or SQL_DOUBLE which	*/
-    /* can be used as a hint is desired.			*/
+    /* can be used as a hint if desired.			*/
     switch(sql_type) {
     case SQL_INTEGER:
     case SQL_SMALLINT:
-	return SQL_INTEGER;
+    case SQL_TINYINT:
+    case SQL_BIGINT:
+	return 0;
     case SQL_FLOAT:
     case SQL_REAL:
     case SQL_DOUBLE:
-	return SQL_DOUBLE;
+	return 0;
     case SQL_NUMERIC:
     case SQL_DECIMAL:
 	return 0;	/* bind as string to attempt to retain precision */
     }
-    return 0;
+    return 1;
 }
 
 
@@ -804,10 +830,14 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
 	DBIc_NUM_PARAMS(imp_sth) = SvIV(valuesv);
 	cacheit = 1;
     }
-    else {	/* XXX should really be an event	*/
-	if (isUPPER(*key))
-	    croak("Can't set %s->{%s}: unrecognised attribute",
-		    SvPV(h,na), key);
+    else {	/* XXX should really be an event ? */
+	if (isUPPER(*key)) {
+	    char *hint = "";
+	    if (strEQ(key, "NUM_FIELDS"))
+		hint = " (perhaps you meant NUM_OF_FIELDS)";
+	    croak("Can't set %s->{%s}: unrecognised attribute%s",
+		    SvPV(h,na), key, hint);
+	}
 	return FALSE;
     }
     if (cacheit) {
@@ -844,11 +874,11 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     /* once I've worked out a better scheme for this.			*/
     if (     htype==DBIt_ST && keylen==4 && strEQ(key, "TYPE")) {
 	D_imp_sth(h);
-        AV *av = newAV();
-        i = AvFILL(DBIc_FDESC_AV(imp_sth))+1;
-        while(--i >= 0)
-            av_store(av, i, newSViv(DBIc_FDESC(imp_sth,i)->com.col_sql_type));
-        valuesv = newRV(sv_2mortal((SV*)av));
+	AV *av = newAV();
+	i = AvFILL(DBIc_FDESC_AV(imp_sth))+1;
+	while(--i >= 0)
+	    av_store(av, i, newSViv(DBIc_FDESC(imp_sth,i)->com.col_sql_type));
+	valuesv = newRV(sv_2mortal((SV*)av));
 	cacheit = TRUE;	/* can't change */
     }
     else if (     htype==DBIt_ST && keylen==13 && strEQ(key, "NUM_OF_FIELDS")) {
@@ -969,7 +999,7 @@ dbih_event(hrv, evtype, a1, a2)
     if (SvTYPE(handlers_av) != SVt_PVAV) {	/* must be \@ or undef	*/
 	if (SvOK(handlers_av))
 	    warn("%s->{Handlers} (%s) is not an array reference or undef",
-		neatsvpv(DBIc_MY_H(imp_xxh),0), neatsvpv((SV*)handlers_av,0));
+		neatsvpv(hrv,0), neatsvpv((SV*)handlers_av,0));
 	return &sv_undef;
     }
 
@@ -992,7 +1022,7 @@ dbih_event(hrv, evtype, a1, a2)
 	PUTBACK;
 	if (dbis->debug >= 2)
 	    fprintf(DBILOGFP, "    %s handler%d %s returned %s\n",
-		    neatsvpv(DBIc_MY_H(imp_xxh),0), i,
+		    neatsvpv(hrv,0), i,
 		    neatsvpv(sv,0), neatsvpv(status,0));
 	if (SvTRUE(status))	/* event was handled so		*/
 	    break;		/* don't call any more handlers	*/
@@ -1072,9 +1102,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 
 
     if (debug >= 3) {
-        fprintf(DBILOGFP,"    >> %-11s DISPATCH (%s @%ld g%x a%lx r%d)\n",
-			    meth_name, neatsvpv(h,0), items,
-			    (int)gimme, (long)ima, (int)runlevel);
+        fprintf(DBILOGFP,"    >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x a%lx)\n",
+			    meth_name, neatsvpv(h,0),
+				(long)SvREFCNT(h), (SvROK(h) ? (long)SvREFCNT(SvRV(h)) : (long)-1),
+				items, (int)gimme, (long)ima);
     }
 
     if (*meth_name=='D' && strEQ(meth_name,"DESTROY")) {
@@ -1195,9 +1226,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     else {
 	if (!imp_msv) {
 	    imp_msv = (SV*)gv_fetchmethod(DBIc_IMP_STASH(imp_xxh), meth_name);
-	    if (!imp_msv)
+	    if (!imp_msv) {
+		if (dirty && is_destroy) {
+		    XSRETURN(0);
+		}
 		croak("Can't locate DBI object method \"%s\" via package \"%s\"",
 		    meth_name, HvNAME(DBIc_IMP_STASH(imp_xxh)));
+	    }
 	}
 
 	if (debug >= 2) {
@@ -1320,7 +1355,7 @@ BOOT:
 
 
 I32
-constant(...)
+constant()
     ALIAS:
 	SQL_CHAR	= SQL_CHAR
 	SQL_NUMERIC	= SQL_NUMERIC
@@ -1330,7 +1365,16 @@ constant(...)
 	SQL_FLOAT	= SQL_FLOAT
 	SQL_REAL	= SQL_REAL
 	SQL_DOUBLE	= SQL_DOUBLE
+	SQL_DATE	= SQL_DATE
+	SQL_TIME	= SQL_TIME
+	SQL_TIMESTAMP	= SQL_TIMESTAMP
 	SQL_VARCHAR	= SQL_VARCHAR
+	SQL_LONGVARCHAR = SQL_LONGVARCHAR
+	SQL_BINARY	= SQL_BINARY
+	SQL_VARBINARY	= SQL_VARBINARY
+	SQL_LONGVARBINARY = SQL_LONGVARBINARY
+	SQL_TINYINT	= SQL_TINYINT
+	SQL_BIGINT	= SQL_BIGINT
     CODE:
     RETVAL = ix;
     OUTPUT:
@@ -1425,7 +1469,7 @@ _install_method(class, meth_name, file, attribs=Nullsv)
 
     if (attribs && SvROK(attribs)) {
 	/* convert and store method attributes in a fast access form	*/
-	svtype atype = SvTYPE(SvRV(attribs));
+	int atype = SvTYPE(SvRV(attribs));
 	/* ima = (dbi_ima_t*)safemalloc(sizeof(*ima)); */
 	Newz(0, ima, 1, dbi_ima_t);
 
@@ -1605,10 +1649,12 @@ bind_columns(sth, attribs, ...)
     CODE:
     D_imp_sth(sth);
     SV *colsv;
+    int fields = DBIc_NUM_FIELDS(imp_sth);
     int i;
-    if (items-2 != DBIc_NUM_FIELDS(imp_sth))
-	croak("bind_columns called with %ld refs when %d needed.",
-		items-2, DBIc_NUM_FIELDS(imp_sth));
+    if (fields <= 0 && !DBIc_ACTIVE(imp_sth))
+	croak("Statement has no columns to bind (perhaps you need to call execute first)");
+    if (items-2 != fields)
+	croak("bind_columns called with %ld refs when %d needed.", items-2, fields);
     ST(0) = &sv_yes;
     DBD_ATTRIBS_CHECK("bind_columns", sth, attribs);
     colsv = sv_2mortal(newSViv(0));
