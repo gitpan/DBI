@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 11.14 2002/06/13 12:25:54 timbo Exp $
+# $Id: DBI.pm,v 11.15 2002/06/13 15:16:31 timbo Exp $
 #
 # Copyright (c) 1994-2002  Tim Bunce  Ireland
 #
@@ -8,7 +8,7 @@
 require 5.005_03;
 
 BEGIN {
-$DBI::VERSION = 1.26; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = 1.27; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -107,8 +107,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.26
-(C<$Date: 2002/06/13 12:25:54 $>).
+This is the DBI specification that corresponds to the DBI version 1.27
+(C<$Date: 2002/06/13 15:16:31 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy.
@@ -135,7 +135,7 @@ See L</Naming Conventions and Name Space> and:
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 11.14 $, 10);
+my $Revision = substr(q$Revision: 11.15 $, 10);
 
 use Carp;
 use DynaLoader ();
@@ -2947,7 +2947,11 @@ afterwards (or use the C<RaiseError> attribute) to discover if the data is
 complete or was truncated due to an error.
 
 The L</fetchall_arrayref> method called by C<selectall_arrayref>
-supports a $slice parameter. You can specify a value for $slice by
+supports a $max_rows parameter. You can specify a value for $max_rows
+by including a 'C<MaxRows>' attribute in \%attr.
+
+The L</fetchall_arrayref> method called by C<selectall_arrayref>
+also supports a $slice parameter. You can specify a value for $slice by
 including a 'C<Slice>' or 'C<Columns>' attribute in \%attr. The only
 difference between the two is that if C<Slice> is not defined and
 C<Columns> is an array ref, then the array is assumed to contain column

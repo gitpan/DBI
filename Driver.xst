@@ -1,4 +1,4 @@
-#  $Id: Driver.xst,v 11.5 2002/06/13 12:25:54 timbo Exp $
+#  $Id: Driver.xst,v 11.6 2002/06/13 15:16:31 timbo Exp $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -402,7 +402,9 @@ fetchall_arrayref(sth, slice=&sv_undef, batch_row_count=&sv_undef)
 	PUTBACK;
 	/* XXX using SUPER:: here doesn't work for $dbh->selectall_arrayref */
 	/* probably needs PUSHBLOCK & PUSHSUB perl internals magic stuff */
-	perl_call_method("DBD::_::st::fetchall_arrayref", G_SCALAR) ;
+	/*perl_call_method("DBD::_::st::fetchall_arrayref", G_SCALAR) ;*/
+	perl_call_method("DBD::~DRIVER~::st::SUPER::fetchall_arrayref", G_SCALAR) ;
+	/*perl_call_method("SUPER::fetchall_arrayref", G_SCALAR) ;*/
 	SPAGAIN;
 	ST(0) = POPs;
 	PUTBACK;
@@ -416,7 +418,7 @@ fetchall_arrayref(sth, slice=&sv_undef, batch_row_count=&sv_undef)
 	while ( (maxrows < 0 || maxrows-- > 0)
 	    && (fetched_av = dbd_st_fetch(sth, imp_sth))
 	) {
-	    AV *copy_row_av = av_make(AvFILL(fetched_av), AvARRAY(fetched_av));
+	    AV *copy_row_av = av_make(AvFILL(fetched_av)+1, AvARRAY(fetched_av));
 	    av_push(rows_av, newRV_noinc((SV*)copy_row_av));
 	}
 	ST(0) = sv_2mortal(newRV_noinc((SV *)rows_av));

@@ -32,7 +32,12 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
 
 =head1 CHANGES
 
-=head2 Changes in DBI 1.26,    XXXth June 2002
+=head2 Changes in DBI 1.27,    13th June 2002
+
+  Fixed missing column in C implementation of fetchall_arrayref()
+    thanks to Philip Molter for the prompt reporting of the problem.
+
+=head2 Changes in DBI 1.26,    13th June 2002
 
   Fixed t/40profile.t to work on Windows thanks to Smejkal Petr.
   Fixed $h->{Profile} to return undef, not error, if not set.
@@ -43,7 +48,7 @@ Also $dbh->{ParamValues} would be the same as $dbh->{LastSth}->{ParamValues}.
     faster making those calls. Most noticable with fetchall_arrayref for
     many rows or selectrow_arrayref with a fast query. For example, using
     DBD::mysql a selectrow_arrayref for a single row using a primary key
-    is ~20% faster, and fetchall_arrayref or 20000 rows is twice as fast!
+    is ~20% faster, and fetchall_arrayref for 20000 rows is twice as fast!
     Drivers just need to be recompiled and reinstalled to enable it.
     The fetchall_arrayref speed up only applies if $slice parameter is not used.
   Added $max_rows parameter to fetchall_arrayref() to optionally limit
