@@ -1,4 +1,4 @@
-# $Id: DBI.pm,v 10.32 2000/06/14 20:04:03 timbo Exp $
+# $Id: DBI.pm,v 10.34 2001/03/30 14:35:41 timbo Exp $
 #
 # Copyright (c) 1994-2000  Tim Bunce  England
 #
@@ -8,7 +8,7 @@
 require 5.004;
 
 BEGIN {
-$DBI::VERSION = "1.14"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.15"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -29,8 +29,12 @@ DBI - Database independent interface for Perl
   $rv  = $dbh->do($statement, \%attr, @bind_values);
 
   $ary_ref = $dbh->selectall_arrayref($statement);
-  @row_ary = $dbh->selectrow_array($statement);
+  $ary_ref = $dbh->selectall_hashref($statement);
+
   $ary_ref = $dbh->selectcol_arrayref($statement);
+
+  $ary_ref = $dbh->selectrow_arrayref($statement);
+  @row_ary = $dbh->selectrow_array($statement);
 
   $sth = $dbh->prepare($statement);
   $sth = $dbh->prepare_cached($statement);
@@ -64,20 +68,20 @@ DBI - Database independent interface for Perl
 
   $rc  = $dbh->disconnect;
 
-I<The synopsis above only lists the major methods.>
+I<This synopsis above only lists the major methods.>
 
 
 =head2 GETTING HELP
 
 If you have questions about DBI, you can get help from
-the I<dbi-users@isc.org> mailing list.
-You can subscribe to the list by visiting:
+the I<dbi-users@perl.org> mailing list.
+You can subscribe to the list by emailing:
 
-  http://www.isc.org/dbi-lists.html
+  dbi-users-help@perl.org
 
 Also worth a visit is the DBI home page at:
 
-  http://www.symbolstone.org/technology/perl/DBI
+  http://dbi.perl.org/
 
 Before asking any questions, reread this document, consult the
 archives and read the DBI FAQ. The archives are listed
@@ -93,8 +97,8 @@ people who should be able to help you if you need it.
 
 =head2 NOTE
 
-This is the DBI specification that corresponds to the DBI version 1.14
-(C<$Date: 2000/06/14 20:04:03 $>).
+This is the DBI specification that corresponds to the DBI version 1.15
+(C<$Date: 2001/03/30 14:35:41 $>).
 
 The DBI specification is evolving at a steady pace, so it's
 important to check that you have the latest copy. The RECENT CHANGES
@@ -119,15 +123,9 @@ significant user-visible changes in that version.)
 
 =over 4 
 
-=item Between DBI 1.00 and DBI 1.09:
+=item DBI 1.15
 
-  Added $dbh->selectcol_arrayref($statement) method.
-
-  Connect now allows you to specify attribute settings within the DSN.
-  For example: 
-	dbi:Driver(RaiseError=>1,Taint=>1,AutoCommit=>0):dbname"
-
-  Added $h->{Taint}, $sth->{NAME_uc}, and $sth->{NAME_lc} attributes.
+Added selectall_hashref, selectrow_hashref, selectrow_arrayref methods.
 
 =back 
 
@@ -142,7 +140,7 @@ my %installed_rootclass;
 {
 package DBI;
 
-my $Revision = substr(q$Revision: 10.32 $, 10);
+my $Revision = substr(q$Revision: 10.34 $, 10);
 
 
 use Carp;
@@ -275,7 +273,9 @@ my %DBI_IF = (	# Define the DBI Interface:
 	prepare    	=> { U =>[2,3,'$statement [, \%attr]'] },
 	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $allow_active ] ]'] },
 	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectall_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
+	selectall_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'] },
 	handler    	=> { U =>[2,2,'\&handler'] },
 	ping       	=> { U =>[1,1] },
@@ -346,18 +346,22 @@ END {
 
 sub connect_cached {
     # XXX we expect Apache::DBI users to still call connect()
-    return shift->connect(@_[0..4], 'connect_cached');
+    my ($class, $dsn, $user, $pass, $attr) = @_;
+    ($attr ||= {})->{dbi_connect_method} = 'connect_cached';
+    return $class->connect($dsn, $user, $pass, $attr);
 }
 
 sub connect {
     my $class = shift;
-    my($dsn, $user, $pass, $attr, $old_driver, $connect_meth) = @_;
-    $connect_meth ||= $connect_via; # $connect_meth not user visible
+    my($dsn, $user, $pass, $attr, $old_driver) = @_;
     my $driver;
     my $dbh;
 
     # switch $old_driver<->$attr if called in old style
     ($old_driver, $attr) = ($attr, $old_driver) if $attr and !ref($attr);
+
+    my $connect_meth = (ref $attr) ? $attr->{dbi_connect_method} : undef;
+    $connect_meth ||= $connect_via;	# fallback to default
 
     $dsn ||= $ENV{DBI_DSN} || $ENV{DBI_DBNAME} || '' unless $old_driver;
 
@@ -449,6 +453,11 @@ sub disconnect_all {
 	next unless ref $drh;	# avoid problems on premature death
 	$drh->disconnect_all();
     }
+}
+
+
+sub disconnect {	# a regular beginners bug
+    Carp::croak("DBI->disconnect is not a DBI method. Read the DBI manual.");
 }
 
 
@@ -866,9 +875,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
 	my $key = join "~", $dsn, $user||'', $auth||'', $attr ? %$attr : ();
 	my $dbh = $cache->{$key};
-	return $dbh if $dbh && $dbh->FETCH('Active') && $dbh->ping;
+	return $dbh if $dbh && $dbh->FETCH('Active') && eval { $dbh->ping };
 	$dbh = $drh->connect(@_);
-	$cache->{$key} = $dbh;	# replace, even if it failed
+	$cache->{$key} = $dbh;	# replace prev entry, even if connect failed
 	return $dbh;
     }
 
@@ -933,6 +942,20 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	($rows == 0) ? "0E0" : $rows;
     }
 
+    sub _do_selectrow {
+	my ($method, $dbh, $stmt, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt
+			      : $dbh->prepare($stmt, $attr);
+	return unless $sth;
+	$sth->execute(@bind) || return;
+	my $row = $sth->$method();
+	$sth->finish if $row;
+	return $row;
+    }
+
+    sub selectrow_arrayref { return _do_selectrow('fetchrow_arrayref', @_); }
+    sub selectrow_hashref {  return _do_selectrow('fetchrow_hashref',  @_); }
+
     sub selectrow_array {
 	my ($dbh, $stmt, $attr, @bind) = @_;
 	my $sth = (ref $stmt) ? $stmt
@@ -940,7 +963,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return unless $sth;
 	$sth->execute(@bind) || return;
 	my @row = $sth->fetchrow_array;
-	$sth->finish;
+	$sth->finish if @row;
 	return $row[0] unless wantarray;
 	return @row;
     }
@@ -953,6 +976,17 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	$sth->execute(@bind) || return;
 	my $slice = $attr->{dbi_fetchall_arrayref_attr}; # typically undef
 	return $sth->fetchall_arrayref($slice);
+    }
+
+    sub selectall_hashref {
+	my ($dbh, $stmt, $attr, @bind) = @_;
+	my $sth = (ref $stmt) ? $stmt
+			      : $dbh->prepare($stmt, $attr);
+	return unless $sth;
+	$sth->execute(@bind) || return;
+	my ($row, @rows);
+	push @rows, $row while ($row = $sth->fetchrow_hashref());
+	return \@rows;
     }
 
     sub selectcol_arrayref {
@@ -1041,8 +1075,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $tia = $dbh->type_info_all;
 	return unless @$tia;
 	my $idx_hash = shift @$tia;
-	my $dt_idx   = $idx_hash->{DATA_TYPE}
-		or Carp::croak("No DATA_TYPE field in type_info_all result");
+
+	my $dt_idx   = $idx_hash->{DATA_TYPE} || $idx_hash->{data_type};
+	Carp::croak("type_info_all returned non-standard DATA_TYPE index value ($dt_idx != 1)")
+	    if $dt_idx && $dt_idx != 1;
 
 	# --- simple DATA_TYPE match filter
 	my @ti;
@@ -1058,13 +1094,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	}
 
 	# --- format results into list of hash refs
-	my $idx_fields =   keys %$idx_hash;
-	my @idx_names  =   keys %$idx_hash;
+	my $idx_fields = keys %$idx_hash;
+	my @idx_names  = map { uc($_) } keys %$idx_hash;
 	my @idx_values = values %$idx_hash;
+	Carp::croak "type_info_all result has $idx_fields keys but ".(@{$ti[0]})." fields"
+		if @ti && @{$ti[0]} != $idx_fields;
 	my @out = map {
-	    Carp::croak
-		"type_info_all result has $idx_fields keys but ".(@$_)." fields"
-		if @$_ != $idx_fields;
 	    my %h; @h{@idx_names} = @{$_}[ @idx_values ]; \%h;
 	} @ti;
 	return $out[0] unless wantarray;
@@ -1322,9 +1357,9 @@ returned as C<undef>.)  This allows arbitrary precision numeric data to be
 handled without loss of accuracy.  Beware that Perl may not preserve
 the same accuracy when the string is used as a number.
 
-Dates and times are returned as character strings in the native format
-of the corresponding database engine.  Time zone effects are
-database/driver dependent.
+Dates and times are returned as character strings in the current
+default format of the corresponding database engine.  Time zone effects
+are database/driver dependent.
 
 Perl supports binary data in Perl strings, and the DBI will pass binary
 data to and from the driver without change. It is up to the driver
@@ -1389,6 +1424,7 @@ abbreviation (e.g., "C<ora_>" for Oracle, "C<ing_>" for Ingres, etc).
 
 Driver Specific Prefix Registry:
 
+  ad_      DBD::AnyData
   ado_     DBD::ADO
   best_    DBD::BestWins
   csv_     DBD::CSV
@@ -1404,9 +1440,13 @@ Driver Specific Prefix Registry:
   ora_     DBD::Oracle
   pg_      DBD::Pg
   proxy_   DBD::Proxy
+  rdb_     DBD::RDB
+  sapdb_   DBD::SAP_DB
   solid_   DBD::Solid
   syb_     DBD::Sybase
+  tdat_    DBD::Teradata
   tuber_   DBD::Tuber
+  uni_     DBD::Unify
   xbase_   DBD::XBase
 
 
@@ -1507,10 +1547,27 @@ See L<perlop/"Quote and Quote-like Operators"> for more details.
 See also the L</bind_column> method, which is used to associate Perl
 variables with the output columns of a C<SELECT> statement.
 
-=head1 THE DBI CLASS
+=head1 THE DBI PACKAGE AND CLASS
 
 In this section, we cover the DBI class methods, utility functions,
 and the dynamic attributes associated with generic DBI handles.
+
+=head2 DBI Constants
+
+The following SQL standard type constants can be imported individually
+or, by importing the special C<:sql_types> tag, all together:
+
+  SQL_CHAR SQL_NUMERIC SQL_DECIMAL SQL_INTEGER SQL_SMALLINT
+  SQL_FLOAT SQL_REAL SQL_DOUBLE SQL_VARCHAR
+  SQL_DATE SQL_TIME SQL_TIMESTAMP
+  SQL_LONGVARCHAR SQL_BINARY SQL_VARBINARY SQL_LONGVARBINARY
+  SQL_BIGINT SQL_TINYINT
+  SQL_WCHAR SQL_WVARCHAR SQL_WLONGVARCHAR
+  SQL_BIT
+  SQL_ALL_TYPES
+
+See the L</type_info>, L</type_info_all>, and L</bind_param> methods
+for possible uses.
 
 =head2 DBI Class Methods
 
@@ -1617,6 +1674,12 @@ parameter. For example:
 Individual attributes values specified in this way take precedence over
 any conflicting values specified via the C<\%attr> parameter to C<connect>.
 
+The C<dbi_connect_method> attribute can be used to specify which driver
+method should be called to establish the connection. The only useful
+values are 'connect', 'connect_cached', or some specialized case like
+'Apache::DBI::connect' (which is automatically the default when running
+within Apache).
+
 Where possible, each session (C<$dbh>) is independent from the transactions
 in other sessions. This is useful when you need to hold cursors open
 across transactions--for example, if you use one session for your long lifespan
@@ -1688,7 +1751,8 @@ Data sources are returned in a form suitable for passing to the
 L</connect> method (that is, they will include the "C<dbi:$driver:>" prefix).
 
 Note that many drivers have no way of knowing what data sources might
-be available for it. These drivers return an empty or incomplete list.
+be available for it. These drivers return an empty or incomplete list
+or may require driver-specific attributes to be supplied.
 
 
 =item C<trace>
@@ -1721,11 +1785,13 @@ trace output is formatted using the L</neat> function, so strings
 in the trace output may be edited and truncated.
 
 Initially trace output is written to C<STDERR>.  If C<$trace_filename> is
-specified, then the file is opened in append mode and all trace
+specified and can be opened in append mode then all trace
 output (including that from other handles) is redirected to that file.
+A warning is generated is the file can't be opened.
 Further calls to C<trace> without a C<$trace_filename> do not alter where
 the trace output is sent. If C<$trace_filename> is undefined, then
 trace output is sent to C<STDERR> and the previous trace file is closed.
+The C<trace> method returns the I<previous> tracelevel.
 
 See also the C<$h->E<gt>C<trace> and C<$h->E<gt>C<trace_msg> methods and the
 L</DEBUGGING> section
@@ -1816,6 +1882,12 @@ Equivalent to C<$h->E<gt>C<state>.
 Equivalent to C<$h->E<gt>C<rows>. Please refer to the documentation 
 for the L</rows> method.
 
+=item C<$DBI::lasth>
+
+Returns the DBI object handle used for the most recent DBI method call.
+If the last DBI method call was a DESTROY then $DBI::lasth will return
+the handle of the parent of the destroyed handle, if there is one.
+
 =back
 
 
@@ -1857,9 +1929,13 @@ described above.
   $str = $h->state;
 
 Returns an error code in the standard SQLSTATE five character format.
-Note that the specific success code C<00000> is translated to C<0>
+Note that the specific success code C<00000> is translated to 'C<>'
 (false). If the driver does not support SQLSTATE (and most don't),
 then state will return C<S1000> (General Error) for all errors.
+
+The driver is free to return any value via C<state>, e.g., warning
+codes, even if it has not declared an error by returning a true value
+via the L</err> method described above.
 
 =item C<trace>
 
@@ -2042,6 +2118,14 @@ The same logic applies to other attributes, including C<PrintError>.
 
 Sadly, this doesn't work for Perl versions up to and including 5.004_04.
 For backwards compatibility, you could just use C<eval { ... }> instead.
+
+
+=item C<ShowErrorStatement> (boolean, inherited) I<NEW>
+
+This attribute can be used to cause the relevant Statement text to be
+appended to the error messages generated by the C<RaiseError> and
+C<PrintError> attributes. Only applies to errors on statement handles
+plus the prepare() and do() database handle methods.
 
 
 =item C<ChopBlanks> (boolean, inherited)
@@ -2231,8 +2315,29 @@ The C<$statement> parameter can be a previously prepared statement handle,
 in which case the C<prepare> is skipped. This is recommended if the
 statement is going to be executed many times.
 
-If any method except C<fetch> fails, and L</RaiseError> is not set,
-C<selectall_arrayref> will return C<undef>.  If C<fetch> fails and
+If L</RaiseError> is not set and any method except C<fetchall_arrayref>
+fails then C<selectall_arrayref> will return C<undef>; if
+C<fetchall_arrayref> fails then it will return with whatever data it
+has been fetched thus far.
+
+
+=item C<selectall_hashref>
+
+  $ary_ref = $dbh->selectall_hashref($statement);
+  $ary_ref = $dbh->selectall_hashref($statement, \%attr);
+  $ary_ref = $dbh->selectall_hashref($statement, \%attr, @bind_values);
+
+This utility method combines L</prepare>, L</execute> and
+L</fetchrow_hashref> into a single call. It returns a reference to an
+array containing, for each row of data fetched, a reference to a hash
+containing field name and value pairs for that row.
+
+The C<$statement> parameter can be a previously prepared statement handle,
+in which case the C<prepare> is skipped. This is recommended if the
+statement is going to be executed many times.
+
+If any method except C<fetchrow_hashref> fails, and L</RaiseError> is not set,
+C<selectall_hashref> will return C<undef>.  If C<fetchrow_hashref> fails and
 L</RaiseError> is not set, then it will return with whatever data it
 has fetched thus far.
 
@@ -2397,7 +2502,7 @@ true but zero. That way you can tell if the return value is genuine or
 just the default. Drivers should override this method with one that
 does the right thing for their type of database.
 
-Few applications would have use for this method. See the specialized
+Few applications would have direct use for this method. See the specialized
 Apache::DBI module for one example usage.
 
 
@@ -2406,6 +2511,7 @@ Apache::DBI module for one example usage.
 B<Warning:> This method is experimental and may change.
 
   $sth = $dbh->table_info;
+  $sth = $dbh->table_info( \%attr );
 
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
@@ -2452,6 +2558,7 @@ be part of the Data Access SDK.
 B<Warning:> This method is experimental and may change.
 
   @names = $dbh->tables;
+  @names = $dbh->tables( \%attr );
 
 Returns a list of table and view names, possibly including a schema prefix.
 This list should include all
@@ -2473,10 +2580,11 @@ Returns a reference to an array which holds information about each data
 type variant supported by the database and driver. The array and its
 contents should be treated as read-only.
 
-The first item is a reference to a hash of C<Name =>E<gt> C<Index> pairs. The
-following items are references to arrays, one per supported data type
-variant. The leading hash defines the names and order of the fields
-within the following list of arrays. For example:
+The first item is a reference to an 'index' hash of C<Name =>E<gt> C<Index> pairs.
+The items following that are references to arrays, one per supported data
+type variant. The leading index hash defines the names and order of the
+fields within the arrays that follow it.
+For example:
 
   $type_info_all = [
     {   TYPE_NAME         => 0,
@@ -2519,6 +2627,17 @@ fields with a different order.
 
 This method is not normally used directly. The L</type_info> method
 provides a more useful interface to the data.
+
+Even though an 'index' hash is provided, all the field names in the
+index hash defined above will always have the index values defined
+above.  This is defined behaviour so that you don't need to rely on the
+index hash, which is handy because the lettercase of the keys is not
+defined. It is usually uppercase, as show here, but drivers are free to
+return names with any lettercase. Drivers are also free to return extra
+driver-specific columns of information - though it's recommended that
+they start at column index 50 to leave room for expansion of the
+DBI/ODBC specification.
+
 
 =item C<type_info> I<NEW>
 
@@ -2672,6 +2791,11 @@ cannot report this information.
 
 =back
 
+For example, to find the type name for the fields in a select statement
+you can do:
+
+  @names = map { scalar $dbh->type_info($_)->{TYPE_NAME} } @{ $sth->{TYPE} }
+
 Since DBI and ODBC drivers vary in how they map their types into the
 ISO standard types you may need to search for more than one type.
 Here's an example looking for a usable type to store a date:
@@ -2817,7 +2941,8 @@ automatically begin another transaction after a L</commit> or L</rollback>.
 In this way, the application does not have to treat these databases as a
 special case.
 
-See L</disconnect> for other important notes about transactions.
+See L</commit>, L</disconnect> and L</Transactions> for other important
+notes about transactions.
 
 
 =item C<Driver>  (handle)
@@ -2835,7 +2960,15 @@ same as the "C<dbi:DriverName:...>" string used to connect to the database,
 but with the leading "C<dbi:DriverName:>" removed.
 
 
-=item C<RowCacheSize>  (integer) I<NEW>
+=item C<Statement>  (string, read-only)
+
+Returns the statement string passed to the most recent L</prepare> method
+called in this database handle, even if that method failed. This is especially
+useful where C<RaiseError> is enabled and the exception handler checks $@
+and sees that a 'prepare' method call failed.
+
+
+=item C<RowCacheSize>  (integer)
 
 A hint to the driver indicating the size of the local row cache that the
 application would like the driver to use for future C<SELECT> statements.
@@ -3025,8 +3158,10 @@ returns an C<undef>. You should check C<$sth->E<gt>C<err> afterwards (or use the
 C<RaiseError> attribute) to discover if the C<undef> returned was due to an
 error.
 
-Note that the same array reference will currently be returned for each
-fetch, so don't store the reference and then use it after a later fetch.
+Note that the same array reference is returned for each fetch, so don't
+store the reference and then use it after a later fetch.  Also, the
+elements of the array are also reused for each row, so take care if you
+want to take a reference to an element. See also L</bind_columns>.
 
 =item C<fetchrow_array>
 
@@ -3100,10 +3235,14 @@ then it is used as a slice to select individual columns by index number.
 With no parameters, C<fetchall_arrayref> acts as if passed an empty array ref.
 
 When passed a hash reference, C<fetchall_arrayref> uses L</fetchrow_hashref>
-to fetch each row as a hash reference. If the parameter hash is not empty,
-then it is used as a slice to select individual columns by name. The
-names should be lower case regardless of the letter case in C<$sth->E<gt>C<{NAME}>.
-The values of the hash should be set to 1.
+to fetch each row as a hash reference. If the parameter hash is empty then
+fetchrow_hashref is simply called in a tight loop and the keys in the hashes
+have whatever name lettercase is returned by default from fetchrow_hashref.
+
+If the parameter hash is not empty, then it is used as a slice to
+select individual columns by name. The names should be lower case
+regardless of the letter case in C<$sth->E<gt>C<{NAME}>.  The values of
+the hash should be set to 1.
 
 For example, to fetch just the first column of every row:
 
@@ -3125,16 +3264,31 @@ The first two examples return a reference to an array of array refs. The last
 returns a reference to an array of hash refs.
 
 
+=item C<fetchall_hashref>
+
+  $tbl_ary_ref = $sth->fetchall_hashref;
+
+The C<fetchall_hashref> method can be used to fetch all the data to be
+returned from a prepared and executed statement handle. It returns a
+reference to an array that contains one hash of field name and value
+pairs per row.
+
+If there are no rows to return, C<fetchall_hashref> returns a reference
+to an empty array. If an error occurs, C<fetchall_hashref> returns the
+data fetched thus far, which may be none.  You should check C<$sth->E<gt>C<err>
+afterwards (or use the C<RaiseError> attribute) to discover if the data is
+complete or was truncated due to an error.
+
+
 =item C<finish>
 
   $rc  = $sth->finish;
 
 Indicates that no more data will be fetched from this statement handle
 before it is either executed again or destroyed.  The C<finish> method
-is rarely needed,
-but can sometimes be helpful in very specific situations to
-allow the server to free up resources (such as
-sort buffers).
+is rarely needed, but can sometimes be helpful in very specific
+situations to allow the server to free up resources (such as sort
+buffers).
 
 When all the data has been fetched from a C<SELECT> statement, the driver
 should automatically call C<finish> for you. So you should not normally
@@ -3160,6 +3314,8 @@ database connection.  It has nothing to do with transactions. It's mostly an
 internal "housekeeping" method that is rarely needed. There's no need
 to call C<finish> if you're about to destroy or re-execute the statement
 handle.  See also L</disconnect> and the L</Active> attribute.
+
+The C<finish> method should have been called C<cancel_select>.
 
 
 =item C<rows>
@@ -3237,8 +3393,17 @@ For example:
   }
 
 For compatibility with old scripts, the first parameter will be
-ignored if it is C<undef> or
-a hash reference.
+ignored if it is C<undef> or a hash reference.
+
+Here's a more fancy example that binds columns to the values I<inside>
+a hash:
+
+  $sth->execute;
+  my %row;
+  $sth->bind_columns( \( @row{ @{$sth->{NAME_lc} } } ));
+  while ($sth->fetch) {
+      print "$row{region}: $row{sales}\n";
+  }
 
 
 =item C<dump_results>
@@ -3311,7 +3476,7 @@ Like L</NAME> but always returns lowercase names.
 
 Like L</NAME> but always returns uppercase names.
 
-=item C<TYPE>  (array-ref, read-only) I<NEW>
+=item C<TYPE>  (array-ref, read-only)
 
 Returns a reference to an array of integer values for each
 column. The value indicates the data type of the corresponding column.
@@ -3321,7 +3486,7 @@ and ISO/IEC 9075) which, in general terms, means ODBC. Driver-specific
 types that don't exactly match standard types should generally return
 the same values as an ODBC driver supplied by the makers of the
 database. That might include private type numbers in ranges the vendor
-has officially registered. See:
+has officially registered with the ISO working group:
 
   ftp://jerry.ece.umassd.edu/isowg3/dbl/SQL_Registry
 
@@ -3332,7 +3497,7 @@ for use by the DBI: -9999 to -9000.
 All possible values for C<TYPE> should have at least one entry in the
 output of the C<type_info_all> method (see L</type_info_all>).
 
-=item C<PRECISION>  (array-ref, read-only) I<NEW>
+=item C<PRECISION>  (array-ref, read-only)
 
 Returns a reference to an array of integer values for each
 column.  For non-numeric columns, the value generally refers to either
@@ -3343,7 +3508,7 @@ point).  Note that for floating point types (REAL, FLOAT, DOUBLE), the
 "display size" can be up to 7 characters greater than the precision.
 (for the sign + decimal point + the letter E + a sign + 2 or 3 digits).
 
-=item C<SCALE>  (array-ref, read-only) I<NEW>
+=item C<SCALE>  (array-ref, read-only)
 
 Returns a reference to an array of integer values for each column.
 NULL (C<undef>) values indicate columns where scale is not applicable.
@@ -3351,7 +3516,8 @@ NULL (C<undef>) values indicate columns where scale is not applicable.
 =item C<NULLABLE>  (array-ref, read-only)
 
 Returns a reference to an array indicating the possibility of each
-column returning a null.  Possible values are C<0> = no, C<1> = yes, C<2> = unknown.
+column returning a null.  Possible values are C<0>
+(or an empty string) = no, C<1> = yes, C<2> = unknown.
 
   print "First column may return NULL\n" if $sth->{NULLABLE}->[0];
 
@@ -3363,7 +3529,7 @@ available. If not available or if the database driver does not support the
 C<"where current of ..."> SQL syntax, then it returns C<undef>.
 
 
-=item C<Statement>  (string, read-only) I<NEW>
+=item C<Statement>  (string, read-only)
 
 Returns the statement string passed to the L</prepare> method.
 
@@ -3426,6 +3592,11 @@ properly rolled back if I<any> code (not just DBI calls) in the inner
 application dies for any reason. The major advantage of using the
 C<$h->E<gt>C<{RaiseError}> attribute is that all DBI calls will be checked
 automatically. Both techniques are strongly recommended.
+
+After calling C<commit> or C<rollback> many drivers will not let you
+fetch from a previously active C<SELECT> statement handle that's a child
+of the same database handle. A typical way round this is to connect the
+the database twice and use one connection for C<SELECT> statements.
 
 
 =head2 Handling BLOB / LONG / Memo Fields
@@ -3572,6 +3743,13 @@ level. For example:
 
 See also the L</trace> method.
 
+It can sometimes be handy to compare trace files from two different
+runs of the same script. However using a tool like C<diff> doesn't work
+well because the trace file is full of object addresses that may
+differ each run. Here's a handy little command to strip those out:
+
+ perl -pe 's/\b0x[\da-f]{6,}/0xNNNN/gi; s/\b[\da-f]{6,}/<long number>/gi'
+
 
 =head1 WARNING AND ERROR MESSAGES
 
@@ -3670,9 +3848,9 @@ L<perl(1)>, L<perlmod(1)>, L<perlbook(1)>
 =head2 Mailing List
 
 The I<dbi-users> mailing list is the primary means of communication among
-users of the DBI and its related modules. Subscribe and unsubscribe via:
+users of the DBI and its related modules. For details send email to:
 
- http://www.isc.org/dbi-lists.html
+ dbi-users-help@perl.org
 
 There are typically between 700 and 900 messages per month.  You have
 to subscribe in order to be able to post. However you can opt for a
@@ -3681,14 +3859,17 @@ to subscribe in order to be able to post. However you can opt for a
 Mailing list archives are held at:
 
  http://www.xray.mpe.mpg.de/mailing-lists/dbi/
- http://www.egroups.com/list/dbi-users/info.html
+ http://groups.yahoo.com/group/dbi-users
  http://www.bitmechanic.com/mail-archives/dbi-users/
+ http://marc.theaimsgroup.com/?l=perl-dbi&r=1&w=2
+ http://www.mail-archive.com/dbi-users%40perl.org/
+ http://www.mail-archive.com/dbi-users%40perl.org/
 
 =head2 Assorted Related WWW Links
 
 The DBI "Home Page":
 
- http://www.symbolstone.org/technology/perl/DBI
+ http://dbi.perl.org/
 
 Other DBI related links:
 
@@ -3758,10 +3939,10 @@ DBI" book and letting me jump on board.
 
 =head1 TRANSLATIONS
 
-A German translation of this manual and other Perl module docs (all
-probably slightly out of date) is available, thanks to O'Reilly, at:
+A German translation of this manual (possibly slightly out of date) is
+available, thanks to O'Reilly, at:
 
-  http://www.oreilly.de/catalog/perlmodger/
+  http://www.oreilly.de/catalog/perldbiger/
 
 Some other translations:
 

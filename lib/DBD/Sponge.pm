@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = substr(q$Revision: 10.5 $, 9,-1);
+    $VERSION = substr(q$Revision: 10.6 $, 9,-1);
 
-#   $Id: Sponge.pm,v 10.5 1999/06/17 13:08:26 timbo Exp $
+#   $Id: Sponge.pm,v 10.6 2001/03/30 14:35:41 timbo Exp $
 #
 #   Copyright (c) 1994, Tim Bunce
 #
@@ -75,6 +75,8 @@
 		|| [ map { "col$_" } 1..$numFields ];
 	$sth->{TYPE} = $attribs->{TYPE}
 		|| [ (DBI::SQL_VARCHAR()) x $numFields ];
+	$sth->{PRECISION} = $attribs->{PRECISION}
+		|| [ map { length($sth->{NAME}->[$_]) } 0..$numFields -1 ];
 
 	$outer;
     }

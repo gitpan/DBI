@@ -177,7 +177,6 @@ use vars qw(%ATTR $AUTOLOAD);
 
 sub AUTOLOAD {
     my $method = $AUTOLOAD;
-    print "Autoloading method: $method\n";
     $method =~ s/(.*::(.*)):://;
     my $class = $1;
     my $type = $2;
@@ -205,7 +204,6 @@ sub AUTOLOAD {
           }
          /;
     $method_code =~ s/\~(\w+)\~/$expand{$1}/eg;
-    print "$method_code\n";
     eval $method_code;
     die $@ if $@;
     goto &$AUTOLOAD;
@@ -268,7 +266,8 @@ sub prepare ($$;$) {
     my $sth = DBI::_new_sth($dbh, {
 	    'Statement' => $stmt,
 	    'proxy_attr' => $attr,
-	    'proxy_params' => []
+	    'proxy_params' => [],
+    	'proxy_cache_only' => 0,
     });
     $sth;
 }
@@ -307,7 +306,13 @@ sub table_info {
         'Statement' => "SHOW TABLES",
 	'proxy_params' => [],
 	'proxy_data' => \@rows,
-	'proxy_attr_cache' => { 'NAME' => $names, 'TYPE' => $types }
+	'proxy_attr_cache' => { 
+		'NUM_OF_PARAMS' => 0, 
+		'NUM_OF_FIELDS' => $numFields, 
+		'NAME' => $names, 
+		'TYPE' => $types
+		},
+    	'proxy_cache_only' => 1,
     });
     $sth->SUPER::STORE('NUM_OF_FIELDS' => $numFields);
     return $sth;
@@ -351,6 +356,7 @@ sub execute ($@) {
     my $sth = shift;
     my $params = @_ ? \@_ : $sth->{'proxy_params'};
 
+    # new execute, so delete any cached rows from previous execute
     undef $sth->{'proxy_data'};
 
     my $dbh = $sth->{'Database'};
@@ -358,6 +364,15 @@ sub execute ($@) {
     my $rsth = $sth->{proxy_sth};
 
     my ($numFields, $numParams, $numRows, $names, $types, @outParams);
+
+    if ($sth->{'proxy_data'}) {
+	my $attrCache = $sth->{'proxy_attr_cache'};
+	$numFields = $attrCache->{'NUM_OF_FIELDS'};
+	$numParams = $attrCache->{'NUM_OF_PARAMS'};
+	$names = $attrCache->{'NAME'};
+	$types = $attrCache->{'TYPE'};
+	$numRows = scalar @{$sth->{'proxy_data'}};
+    } else {
 
     if (!$rsth) {
 	my $rdbh = $dbh->{'proxy_dbh'};
@@ -384,12 +399,14 @@ sub execute ($@) {
 	($numRows, @outParams) = eval { $rsth->execute($params) };
 	return DBI::set_err($sth, 1, $@) if $@;
     }
+    }
     $sth->{'proxy_rows'} = $numRows;
     $sth->{'proxy_attr_cache'} = {
 	    'NUM_OF_FIELDS' => $numFields,
 	    'NUM_OF_PARAMS' => $numParams,
 	    'NAME'          => $names
     };
+
     $sth->SUPER::STORE('Active' => 1) if $numFields; # is SELECT
 
     if (@outParams) {
@@ -428,6 +445,8 @@ sub fetch ($) {
 	$sth->{'proxy_data'} = $data = [@rows];
     }
     my $row = shift @$data;
+
+	$sth->SUPER::STORE(Active => 0) if ( $sth->{proxy_cache_only} and !@$data );
     return $sth->_set_fbav($row);
 }
 *fetchrow_arrayref = \&fetch;
@@ -699,6 +718,58 @@ to quote has only one parameter, then the local default DBI quote
 method will be used (which will be faster but may be wrong).
 
 =back
+
+=head1 KNOWN ISSUES
+
+=head2 Complex handle attributes
+
+Sometimes handles are having complex attributes like hash refs or
+array refs and not simple strings or integers. For example, with
+DBD::CSV, you would like to write something like
+
+  $dbh->{"csv_tables"}->{"passwd"} =
+        { "sep_char" => ":", "eol" => "\n";
+
+The above example would advice the CSV driver to assume the file
+"passwd" to be in the format of the /etc/passwd file: Colons as
+separators and a line feed without carriage return as line
+terminator.
+
+Surprisingly this example doesn't work with the proxy driver. To understand
+the reasons, you should consider the following: The Perl compiler is
+executing the above example in two steps:
+
+=over
+
+=item 1.)
+ 
+The first step is fetching the value of the key "csv_tables" in the
+handle $dbh. The value returned is complex, a hash ref.
+ 
+=item 2.)
+ 
+The second step is storing some value (the right hand side of the
+assignment) as the key "passwd" in the hash ref from step 1.
+
+=back
+
+This becomes a little bit clearer, if we rewrite the above code:
+
+  $tables = $dbh->{"csv_tables"};
+  $tables->{"passwd"} = { "sep_char" => ":", "eol" => "\n";
+
+While the examples work fine without the proxy, the fail due to a
+subtile difference in step 1: By DBI magic, the hash ref
+$dbh->{'csv_tables'} is returned from the server to the client.
+The client creates a local copy. This local copy is the result of
+step 1. In other words, step 2 modifies a local copy of the hash ref,
+but not the server's hash ref.
+
+The workaround is storing the modified local copy back to the server:
+
+  $tables = $dbh->{"csv_tables"};
+  $tables->{"passwd"} = { "sep_char" => ":", "eol" => "\n";
+  $dbh->{"csv_tables"} = $tables;
 
 
 =head1 AUTHOR AND COPYRIGHT

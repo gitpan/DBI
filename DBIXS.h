@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h,v 10.15 2000/06/11 02:27:27 timbo Exp $
+/* $Id: DBIXS.h,v 10.16 2001/03/30 14:35:41 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999  Tim Bunce  England
  *
@@ -227,6 +227,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIcf_LongTruncOk 0x0400	/* truncation to LongReadLen is okay	*/
 #define DBIcf_MultiThread 0x0800	/* allow multiple threads to enter	*/
 #define DBIcf_Taint       0x1000	/* taint fetched data			*/
+#define DBIcf_ShowErrorStatement  0x0200	/* include Statement in error	*/
 
 #define DBIcf_INHERITMASK			/* what NOT to pass on to children */	\
 	(U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY		\

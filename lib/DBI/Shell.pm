@@ -37,7 +37,7 @@ use Carp;
 
 @ISA = qw(Exporter);
 @EXPORT = qw(shell);
-$VERSION = substr(q$Revision: 10.7 $, 10)+0;
+$VERSION = substr(q$Revision: 10.9 $, 10)+0;
 
 my $warning = <<'EOM';
 
@@ -117,7 +117,7 @@ sub load_plugins {
     my ($sh) = @_;
     my @pi;
     foreach my $where (qw(DBI/Shell DBI_Shell)) {
-	my $mod = $where; $mod =~ s!/!::!g;
+	my $mod = $where; $mod =~ s!/!::!g; #/ so vim see the syn correctly
 	my @dir = map { -d "$_/$where" ? ("$_/$where") : () } @INC;
 	foreach my $dir (@dir) {
 	    opendir DIR, $dir or warn "Unable to read $dir: $!\n";
@@ -157,6 +157,7 @@ sub new {
 	 [ 'editor|ed=s'	=> ($ENV{VISUAL} || $ENV{EDITOR} || 'vi') ],
 	 [ 'batch'		=> 0 ],
 	 [ 'displaymode|display'=> 'neat' ],
+	 [ 'columnseparator=s' => ',' ],
 	# defaults for each new database connect:
 	 [ 'init_trace|trace=i' => 0 ],
 	 [ 'init_autocommit|autocommit=i' => 1 ],
@@ -247,6 +248,9 @@ sub new {
     },
     'option' => {
 	    hint => "display or set an option value",
+    },
+    'describe' => {
+	    hint => "display information about a table",
     },
 
     };
@@ -583,6 +587,7 @@ sub do_help {
 sub do_format {
     my ($sh, @args) = @_;
     my $mode = $args[0] || '';
+    my $col_sep = $args[1];
     my $class = eval { DBI::Format->formatter($mode) };
     unless ($class) {
 	$sh->alert("Unable to select '$mode': $@");
@@ -590,6 +595,7 @@ sub do_format {
     }
     $sh->log("Using formatter class '$class'") if $sh->{debug};
     $sh->{display} = $class->new($sh);
+    $sh->do_option("columnseparator=$col_sep") if $col_sep;
 }
 
 
@@ -662,7 +668,7 @@ sub sth_go {
     my @rtail;
     my $i = 0;
     my $display = $sh->{display} || die "panic: no display set";
-    $display->header($sth, \*STDOUT);
+    $display->header($sth, \*STDOUT, $sh->{columnseparator});
     while (my $rowref = $sth->fetchrow_arrayref()) {
 	$i++;
 
@@ -731,7 +737,7 @@ sub do_connect {
     $sh->do_disconnect if $sh->{dbh};
 
     $sh->{data_source} = $dsn;
-    if (length $user) {
+    if (defined $user and length $user) {
 	$sh->{user}     = $user;
 	$sh->{password} = undef;	# force prompt below
     }
@@ -862,7 +868,7 @@ sub do_edit {
     close(FH) || $sh->err("Can't write $tmp_file: $!\n", 1);
 
     my $command = "$sh->{editor} $tmp_file";
-    system($command) || print "Edit command '$command' failed ($?).\n";
+    system($command);
 
     # Read changes back in (editor may have deleted and rewritten file)
     open(FH, "<$tmp_file") || $sh->err("Can't open $tmp_file: $!\n");
@@ -892,6 +898,45 @@ sub do_type_info {
     my @names = sort { $ti_cols->{$a} <=> $ti_cols->{$b} } keys %$ti_cols;
     my $sth = $sh->prepare_from_data("type_info", $ti, \@names);
     $sh->sth_go($sth, 0);
+}
+
+sub do_describe {
+    my ($sh, $tab, @argv) = @_;
+	$sh->log( "Describle: $tab" );
+	my $dbh = $sh->{dbh};
+	my $sql = qq{select * from $tab where 1 = 0};
+	my $sth = $dbh->prepare( $sql );
+	$sth->execute;
+	my $cnt = $#{$sth->{NAME}};  #
+    	my @names = qw{NAME TYPE NULLABLE};
+	my @ti;
+	#push( @j, join( "\t", qw{NAME TYPE PRECISION SCALE NULLABLE}));
+	for ( my $c = 0; $c <= $cnt; $c++ ) {
+		push( my @j, $sth->{NAME}->[$c] || 0 );
+		my $m = $dbh->type_info($sth->{TYPE}->[$c]);
+		my $s;
+		if (ref $m eq 'HASH') {
+			$s = $m->{TYPE_NAME};
+		} elsif (not defined $m) {
+			 $s = q{undef } . $sth->{TYPE}->[$c];
+		} else {
+			warn "describe: can't parse data ($m) from type_info!";
+		}
+
+		if (defined $sth->{PRECISION}->[$c]) {
+			$s .= "(" . $sth->{PRECISION}->[$c] || '';
+			$s .= "," . $sth->{SCALE}->[$c] 
+			if ( defined $sth->{SCALE}->[$c] 
+				and $sth->{SCALE}->[$c] ne 0);
+			$s .= ")";
+		}
+		push(@j, $s,
+			 $sth->{NULLABLE}->[$c] ne 1? qq{N}: qq{Y} );
+		push(@ti,\@j);
+	}
+	$sth->finish;
+	$sth = $sh->prepare_from_data("describe", \@ti, \@names);
+	$sh->sth_go($sth, 0);
 }
 
 
@@ -1115,7 +1160,7 @@ For this to be useful, turn the autocommit off. /option autocommit=0
 
   /trace              (set DBI trace level for current database)
 
-Adjust the trace level for DBI 0 - 4.  0 off.  4 lots of information.
+Adjust the trace level for DBI 0 - 4.  0 off.  4 is lots of information.
 Useful for determining what is really happening in DBI.  See DBI.
 
 =item type_info

@@ -1,7 +1,7 @@
 package			# hide this package from CPAN indexer
 	Win32::ODBC;
 
-use strict;
+#use strict;
 
 use DBI;
 
@@ -83,6 +83,8 @@ sub Sql
 		$self->{'DBI_NAME'} = $sth->{NAME};
 	}
 
+	# provide compatibility with Win32::ODBC's way of identifying erraneous SQL statements
+ 	return ($self->{'DBI_ERR'})?1:undef;
 }
  
 
@@ -94,7 +96,7 @@ sub FetchRow
  	my $sth=$self->{'DBI_STH'};
  	if ($sth)
 	{
-	 	my @row=$sth->fetchrow;
+	 	my @row=$sth->fetchrow_array;
 	 	$self->{'DBI_ROW'}=\@row;
 
 	 	if (scalar(@row)>0)
@@ -105,6 +107,19 @@ sub FetchRow
 	 	} 	
 	}
 } 
+
+# provide compatibility with Win32::ODBC's Data() method.
+sub Data
+{
+	my $self=shift;
+	my @array=@{$self->{'DBI_ROW'}};
+	foreach my $element (@array)
+	{
+		# remove padding of spaces by DBI
+		$element=~s/(\s*$)//;
+	};
+	return @array;
+};
  
 #EMU --- %record = $db->DataHash;
 sub DataHash
@@ -118,23 +133,33 @@ sub DataHash
  	my @row=@$p_row;
 
  	my %DataHash;
- 	my $name;
- 	my $row;
-
-	foreach $name (@name)
+#print @name; print "\n"; print @row;
+	while (@name)
 	{
-		my @arr=@$name;
-		foreach (@arr)
-		{
-			#print "lot $name  name  col $_   or ROW= 0 $row[0]  1 $row[1] 2 $row[2] \n ";
-			$DataHash{$_}=shift(@row);
-		}
-		
-		
-	}
+		my $name=shift(@name);
+		my $value=shift(@row);
+
+		# remove padding of spaces by DBI
+		$name=~s/(\s*$)//;
+		$value=~s/(\s*$)//;
+
+		$DataHash{$name}=$value;
+	};
+
+# old code that didn't appear to work
+#	foreach my $name (@name)
+#	{
+#		$name=~s/(^\s*)|(\s*$)//;
+#		my @arr=@$name;
+#		foreach (@arr)
+#		{
+#			print "lot $name  name  col $_   or ROW= 0 $row[0]  1 $row[1] 2 $row[2] \n ";
+#			$DataHash{$name}=shift(@row);
+#		}
+#	}
 
  	#--- Return Hash
- 	%DataHash; 	
+ 	return %DataHash; 	
 } 
 
 
@@ -151,7 +176,16 @@ sub Error
 
  	#-- else good no error message 	
  	
-} 
+}
+
+# provide compatibility with Win32::ODBC's Close() method.
+sub Close
+{
+	my $self=shift;
+
+	my $dbh=$self->{'DBI_DBH'};
+	$dbh->disconnect;
+}
 
  
 1;

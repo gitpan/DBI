@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 10.4 2000/06/02 16:31:37 timbo Exp $
+# $Id: test.pl,v 10.5 2001/03/30 14:35:41 timbo Exp $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,10 +14,10 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 10.4 $}."\n";
+    print q{DBI test application $Revision: 10.5 $}."\n";
     $| = 1;
     eval "require blib; import blib;";	# wasn't in 5.003, hence the eval
-	warn $@ if $@;
+    warn $@ if $@;
 }
 
 use DBI;
@@ -68,6 +68,7 @@ if (0) {	# only works after 5.004_04
 }
 
 if ($::opt_m) {
+    #$dbh->trace(9);
     mem_test($dbh) while 1;
 }
 elsif ($::opt_t) {
@@ -100,10 +101,16 @@ else {
 print "$0 done\n";
 exit 0;
 
+{ package Foo;
+use Tie::Hash;
+BEGIN { @Foo::ISA = qw(Tie::StdHash); }
+sub STORE { warn "STORE @_" if 0; shift->SUPER::STORE(@_) }
+sub FETCH { warn "FETCH @_" if 0; shift->SUPER::FETCH(@_) }
+}
 
 sub mem_test {	# harness to help find basic leaks
-    my($dbh) = @_;
-	system("echo $count; $ps$$") if (($count++ % 1000) == 0);
+    my ($dbh) = @_;
+    system("echo $count; $ps$$") if (($count++ % 1000) == 0);
     my $cursor_a = $dbh->prepare("select mode,ino,name from ?");
     $cursor_a->execute('/usr');
     my @row_a = $cursor_a->fetchrow;

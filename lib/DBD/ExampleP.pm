@@ -4,9 +4,9 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 10.11 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("%d.%02d", q$Revision: 10.13 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm,v 10.11 2000/06/11 00:06:02 timbo Exp $
+#   $Id: ExampleP.pm,v 10.13 2001/03/30 14:35:41 timbo Exp $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -84,6 +84,10 @@
 	return $dbh->DBI::set_err(1, "Syntax error in select statement (\"$statement\")")
 		unless defined $fields and defined $dir;
 
+	my ($outer, $inner) = DBI::_new_sth($dbh, {
+	    'Statement'     => $statement,
+	}, ['example implementors private data']);
+
 	my @fields = ($fields eq '*')
 			? keys %DBD::ExampleP::statnames
 			: split(/\s*,\s*/, $fields);
@@ -94,16 +98,15 @@
 	return $dbh->DBI::set_err(1, "Unknown field names: @bad")
 		if @bad;
 
-	my ($outer, $inner) = DBI::_new_sth($dbh, {
-	    'Statement'     => $statement,
-	}, ['example implementors private data']);
-
 	$inner->{'dbd_param'}->[1] = $dir if $dir !~ /\?/;
 
 	$outer->STORE('NAME' => \@fields);
 	$outer->STORE('NULLABLE' => [ (0) x @fields ]);
 	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
 	$outer->STORE('NUM_OF_PARAMS' => ($dir !~ /\?/) ? 0 : 1);
+	# should do better here:
+	$outer->STORE('SCALE'     => undef);
+	$outer->STORE('PRECISION' => undef);
 
 	$outer;
     }
@@ -124,7 +127,7 @@
 					"Failed to open directory $dir: $!");
 	    while (defined(my $file = readdir($dh))) {
 		next unless -d $file;
-		my($dev, $ino, $mode, $nlink, $uid) = stat(_);
+		my($dev, $ino, $mode, $nlink, $uid) = lstat(_);
 		my $pwnam = undef; # eval { scalar(getpwnam($uid)) } || $uid;
 		push(@list, [ $dir, $pwnam, $file, 'TABLE']);
 	    }
@@ -302,7 +305,7 @@
 	    my $file = $haveFileSpec
 		? File::Spec->catfile($dir, $f) : "$dir/$f";
 	    # put in all the data fields
-	    @s{ @DBD::ExampleP::statnames } = (stat($file), $f);
+	    @s{ @DBD::ExampleP::statnames } = (lstat($file), $f);
 	}
 
 	# return just what fields the query asks for
@@ -342,7 +345,7 @@
 	# would normally validate and only store known attributes
 	# else pass up to DBI to handle
 	return $sth->{$attrib} = $value
-	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE';
+	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE' or $attrib eq 'SCALE' or $attrib eq 'PRECISION';
 	return $sth->SUPER::STORE($attrib, $value);
     }
 

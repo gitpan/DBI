@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL,v 10.14 2000/06/11 02:27:27 timbo Exp $
+# $Id: Makefile.PL,v 10.15 2001/03/28 14:52:07 timbo Exp $
 #
 #  Copyright (c) 1994,1995,1996,1997  Tim Bunce  England
 #
@@ -14,6 +14,8 @@ BEGIN {
 use ExtUtils::MakeMaker 5.16, qw(WriteMakefile $Verbose);
 use Getopt::Long;
 use Config;
+use File::Find;
+use strict;
 
 use Test::Harness;	# tests use it so check it's loadable early
 
@@ -76,13 +78,13 @@ MSG
 }
 
  
-%opts = (
+my %opts = (
     NAME=> 'DBI',
     VERSION_FROM=> 'DBI.pm',
     EXE_FILES => [ "dbish$ext_pl", "dbiproxy$ext_pl" ],
     DIR => [],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
-    clean => { FILES=> "\$(DISTVNAME)/ Perl.xsi "
+    clean => { FILES=> "\$(DISTVNAME) Perl.xsi "
 			."dbish$ext_pl dbiproxy$ext_pl ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest ci tardist',
@@ -93,7 +95,7 @@ MSG
 
 if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
     $opts{ABSTRACT_FROM} = 'DBI.pm';
-    $opts{AUTHOR} = 'Tim Bunce (dbi-users@isc.org)';
+    $opts{AUTHOR} = 'Tim Bunce (dbi-users@perl.org)';
     $opts{CAPI} = 'TRUE' if $Config{archname} =~ /-object\b/i;
 }
 
@@ -127,6 +129,11 @@ if ($ENV{S_ARCH_SW} && $ENV{LOGNAME} eq 'timbo'){	# a reasonable guess
 warn "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
 	if ($Config{gccversion} and $Config{gccversion} =~ m/^(1|2\.[1-5])/);
 
+# Set aside some values for post_initialize() in package MY
+my ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
+     $cfg_man3direxp ) =
+     @Config{qw( privlibexp archlibexp sitelibexp sitearchexp man3direxp ) };
+
 $Verbose = $::opt_v;
 WriteMakefile( %opts );
 
@@ -145,8 +152,6 @@ warn <<EOT if $os eq 'MSWin32';
     If using the Win32 ActiveState build then it is recommended that you
     use the ppm utility to fetch and install a prebuilt DBI instead.
 EOT
-
-exit 0;
 
 
 # =====================================================================
@@ -173,40 +178,39 @@ sub const_cccmd {
 sub post_initialize {
     my($self) = shift;
 
-    if ($Config{privlibexp} ne $Config{sitelibexp}) {
+    if ($cfg_privlibexp ne $cfg_sitelibexp) {
+	# this block could probably be removed now
+	my %old;
+	File::Find::find( sub {
+	    local $_ = $File::Find::name;
+	    s:\\:/:g if $os eq 'MSWin32';
+	    $File::Find::prune = 1, return
+		if -d $_ && ( $_ eq $cfg_sitelibexp ||
+			      $_ eq $cfg_sitearchexp ||
+			      $_ eq $cfg_man3direxp );
+	    ++$old{$_} if m:\bDB(I|D$):; # DBI files, but just DBD dirs
+	}, $cfg_privlibexp, $cfg_archlibexp );
+	if ( %old ) {
 	warn "
 Warning: By default new modules are installed into your 'site_lib'
-directories. Since site_lib directories come after the normal library
-directories you must delete old DBI files and directories from your
-'privlib' and 'archlib' directories and their auto subdirectories.
-If you don't have an old version of the DBI installed you can ignore this.
-";
-	my $find = "find $Config{privlibexp} $Config{archlibexp} ";
-	$find .= "-name 'DB*' -print | sort | uniq";
-	if (open(FIND, "$find |")) {
-	    my @old;
-	    while(<FIND>) {
-		next unless m:\bDB(I|D$):;
-		next if m:^\Q$Config{sitelibexp}/:;
-		next if m:^\Q$Config{sitearchexp}/:;
-		next if m:^\Q$Config{man3direxp}/:;
-		chop;
-		push @old, $_;
-	    }
-	    close(FIND);
-	    warn "Here's a list of probable old files and directories:\n ",
-		    join("\n ",@old),"\n" if @old;
-	    warn "Reinstall DBD::* drivers after deleting the listed DBD directories.\n"
-		if "@old" =~ /\bDBD$/m;
-	    warn "\n";
+         directories. Since site_lib directories come after the normal library
+         directories you must delete old DBI files and directories from your
+         'privlib' and 'archlib' directories and their auto subdirectories.
+
+Reinstall DBI and your DBD::* drivers after deleting the old directories.
+
+Here's a list of probable old files and directories:
+
+ " . join( "\n ", ( sort keys %old ), "\n" );
 	}
     }
 
     # install files that DBD's may need
-    my $file;
-    foreach $file (qw(DBIXS.h dbi_sql.h dbd_xsh.h dbipport.h), <*.xst>) {
-	$self->{PM}->{$file} = '$(INST_ARCHAUTODIR)/'.$file;
-    }
+    File::Find::find( sub {
+	$File::Find::prune = 1, return if -d $_ && '.' ne $_;
+	$self->{PM}->{$_} = '$(INST_ARCHAUTODIR)/' . $_
+	    if '.h' eq substr( $_, -2 ) || '.xst' eq substr( $_, -4 );
+        }, '.' );
 
     return '';
 }

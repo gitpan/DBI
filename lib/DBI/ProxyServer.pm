@@ -30,6 +30,13 @@ require Config;
 package DBI::ProxyServer;
 
 
+my $haveFileSpec = eval { require File::Spec };
+my $tmpDir = $haveFileSpec ? File::Spec->tmpdir() :
+    ($ENV{'TMP'} || $ENV{'TEMP'} || '/tmp');
+my $defaultPidFile = $haveFileSpec ?
+    File::Spec->catdir($tmpDir, "dbiproxy.pid") : "/tmp/dbiproxy.pid";
+
+
 ############################################################################
 #
 #   Constants
@@ -95,7 +102,7 @@ my %DEFAULT_SERVER_OPTIONS;
     } else {
 	$o->{'mode'} = 'single';
     }
-    $o->{'pidfile'}    = '/tmp/dbiproxy.pid';
+    $o->{'pidfile'}    = $defaultPidFile;
     $o->{'user'}       = undef;
 };
 

@@ -1,6 +1,17 @@
 
 *** Assorted to-do items and random thoughts *** in no particular order ***
 
+Rename finish to cancel_select :-) [or just add an alias and docs :-]
+
+Document $DBI::lasth re after catching RaiseError
+Reference $DBI::lasth->{Type} and $DBI::lasth->{Statement}
+
+Add option to include {Statement} and/or {Name} in RaiseError/PrintError
+messages. Perhaps {VerboseError} = N (0,1,2,3,4 or bits 0,1,2,4,8)
+
+Add to docs & tutorial re wrong bind type on a param may cause
+index to not be used!
+
 begin_work
 add details of the DBI book to the docs
 test shell /connect user etc

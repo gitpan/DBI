@@ -1,4 +1,4 @@
-/* $Id: DBI.xs,v 10.28 2000/06/11 02:27:27 timbo Exp $
+/* $Id: DBI.xs,v 10.30 2001/03/30 14:35:41 timbo Exp $
  *
  * Copyright (c) 1994, 1995, 1996, 1997  Tim Bunce  England.
  *
@@ -426,7 +426,7 @@ va_dcl
 }
 
 
-static void
+static int
 set_trace_file(file)
     SV *file;
 {
@@ -435,22 +435,27 @@ set_trace_file(file)
     char *filename;
     PerlIO *fp;
     if (!file)			/* no arg == no change			*/
-	return;
+	return 0;
     if (!SvOK(file)) {		/* undef arg == reset back to stderr	*/
 	if (DBILOGFP != PerlIO_stderr())
 	    PerlIO_close(DBILOGFP);
 	DBILOGFP = PerlIO_stderr();
-	return;
+	return 1;
     }
     filename = SvPV(file, lna);
     fp = PerlIO_open(filename, "a+");
-    if (fp == Nullfp)
-	PerlIO_printf(DBILOGFP,"Can't open trace file %s: %s", filename, Strerror(errno));
+    if (fp == Nullfp) {
+	warn("Can't open trace file %s: %s", filename, Strerror(errno));
+	return 0;
+    }
     else {
 	if (DBILOGFP != PerlIO_stderr())
 	    PerlIO_close(DBILOGFP);
 	DBILOGFP = fp;
+	/* if this line causes your compiler or linker to choke	*/
+	/* then just comment it out, it's not essential.	*/
 	PerlIO_setlinebuf(fp);	/* force line buffered output */
+	return 1;
     }
 }
 
@@ -765,6 +770,11 @@ dbih_setup_handle(orv, imp_class, parent, imp_datasv)
 	if (parent)
 	     DBIc_LongReadLen(imp) = DBIc_LongReadLen(DBIh_COM(parent));
 	else DBIc_LongReadLen(imp) = DBIc_LongReadLen_init;
+	if (DBIc_TYPE(imp) == DBIt_ST) {
+	    SV **Statement = hv_fetch((HV*)SvRV(h), "Statement", 9, 0);
+	    if (SvOK(*Statement))
+		hv_store((HV*)SvRV(parent), "Statement", 9, SvREFCNT_inc(*Statement), 0);
+	}
     }
 
     /* Use DBI magic on inner handle to carry handle attributes 	*/
@@ -799,6 +809,7 @@ dbih_dumpcom(imp_xxh, msg)
     if (DBIc_is(imp_xxh, DBIcf_ChopBlanks))	sv_catpv(flags,"ChopBlanks ");
     if (DBIc_is(imp_xxh, DBIcf_RaiseError))	sv_catpv(flags,"RaiseError ");
     if (DBIc_is(imp_xxh, DBIcf_PrintError))	sv_catpv(flags,"PrintError ");
+    if (DBIc_is(imp_xxh, DBIcf_ShowErrorStatement))	sv_catpv(flags,"ShowErrorStatement ");
     if (DBIc_is(imp_xxh, DBIcf_AutoCommit))	sv_catpv(flags,"AutoCommit ");
     if (DBIc_is(imp_xxh, DBIcf_LongTruncOk))	sv_catpv(flags,"LongTruncOk ");
     if (DBIc_is(imp_xxh, DBIcf_MultiThread))	sv_catpv(flags,"MultiThread ");
@@ -1125,6 +1136,9 @@ dbih_set_attr_k(h, keysv, dbikey, valuesv)	/* XXX split into dr/db/st funcs */
     else if (strEQ(key, "PrintError")) {
 	DBIc_set(imp_xxh,DBIcf_PrintError, on);
     }
+    else if (strEQ(key, "ShowErrorStatement")) {
+	DBIc_set(imp_xxh,DBIcf_ShowErrorStatement, on);
+    }
     else if (strEQ(key, "MultiThread") && internal) {
 	/* here to allow pure-perl drivers to set MultiThread */
 	DBIc_set(imp_xxh,DBIcf_MultiThread, on);
@@ -1301,6 +1315,9 @@ dbih_get_attr_k(h, keysv, dbikey)			/* XXX split into dr/db/st funcs */
     }
     else if (keylen==10 && strEQ(key, "PrintError")) {
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_PrintError));
+    }
+    else if (keylen==18 && strEQ(key, "ShowErrorStatement")) {
+	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_ShowErrorStatement));
     }
     else if (keylen==10 && strEQ(key, "MultiThread")) {
 	valuesv = boolSV(DBIc_has(imp_xxh,DBIcf_MultiThread));
@@ -1481,20 +1498,15 @@ log_where(logfp, trace_level)
     dTHR;
     char *file, *sep;
     STRLEN len;
-    if (dirty) {
-	PerlIO_printf(logfp," during global destruction.");
-	return;
+    if (CopLINE(curcop)) {
+	file = SvPV(GvSV(CopFILEGV(curcop)), len);
+	if (trace_level<=4) {
+	    if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
+		file = sep+1;
+	}
+        PerlIO_printf(logfp," at %s line %ld", file, (long)CopLINE(curcop));
     }
-    if (!CopLINE(curcop)) {
-	PerlIO_printf(logfp," at unknown location!");
-	return;
-    }
-    file = SvPV(GvSV(CopFILEGV(curcop)), len);
-    if (trace_level<=4) {
-	if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
-	    file = sep+1;
-    }
-    PerlIO_printf(logfp," at %s line %ld.", file, (long)CopLINE(curcop));
+    PerlIO_printf(logfp,"%s.", dirty ? " during global destruction" : "");
 }
 
 
@@ -1881,10 +1893,21 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     ) {
 	int raise_error = DBIc_has(imp_xxh, DBIcf_RaiseError);
 	SV *msg;
+	SV **statement;
 	char intro[200];
 	sprintf(intro,"%s %s failed: ", HvNAME(DBIc_IMP_STASH(imp_xxh)), meth_name);
 	msg = sv_2mortal(newSVpv(intro,0));
 	sv_catsv(msg, DBIc_ERRSTR(imp_xxh));
+
+	if (    DBIc_has(imp_xxh, DBIcf_ShowErrorStatement)
+	    && (DBIc_TYPE(imp_xxh) == DBIt_ST || strEQ(meth_name,"prepare"))
+	    && (statement = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
+	    &&  SvOK(*statement)
+	) {
+	    sv_catpv(msg, " {");
+	    sv_catsv(msg, *statement);
+	    sv_catpv(msg, "}");
+	}
 
 	/* PrintError = report errors via warn()	*/
 	if (DBIc_has(imp_xxh, DBIcf_PrintError)) {
@@ -2047,6 +2070,8 @@ set_err(sv, errval, errstr=&sv_no, state=&sv_undef)
     }
     sv = dbih_inner(sv,"set_err");
     DBI_SET_LAST_HANDLE(sv);
+    /* We don't check RaiseError and call die here because that must be	*/
+    /* done by returning theough dispatch and letting the DBI handle it	*/
     ST(0) = &sv_undef;
     }
 

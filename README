@@ -34,12 +34,10 @@ PLEASE READ IT. It'll save you asking questions on the mailing list
 which you will be told are already answered in the documentation.
 
 For more information and to keep informed about progress you can join
-the a mailing list via http://www.isc.org/dbi-lists.html (if you are
-unable to use the web you can subscribe by sending a message to
-dbi-users-request@isc.org, it may take a few days to be processed).
+the a mailing list via mailto:dbi-users-help@perl.org
 
 Much useful information and online archives of the mailing lists can be
-found at http://www.symbolstone.org/technology/perl/DBI
+found at http://dbi.perl.org/
 
 See also http://www.perl.com/CPAN/
 
@@ -63,7 +61,7 @@ IF YOU HAVE PROBLEMS:
 
 First, carefully read the notes at the bottom of this file.
 
-If you can't fix it your self please post details to dbi-users@isc.org.
+If you can't fix it your self please post details to dbi-users@perl.org.
 You can CC them to me at Tim.Bunce@ig.co.uk BUT please DON'T send them
 just to me (I'm likely to ignore it).  Please include:
 
@@ -90,10 +88,8 @@ just to me (I'm likely to ignore it).  Please include:
 Please don't post problems to comp.lang.perl.* or perl5-porters.
 This software is supported via the dbi-users mailing list.  For more
 information and to keep informed about progress you can join the
-mailing list via http://www.isc.org/dbi-lists.html (if you are unable
-to use the web you can subscribe by sending a message to
-dbi-request@isc.org, it may take a few days to be processed by hand.
-Please note that I do not run or manage the mailing list).
+mailing list via mailto:dbi-users-help@perl.org
+(please note that I do not run or manage the mailing list).
 
 It is important to check that you are using the latest version before
 posting. If you're not then I'm *very* likely to simply say "upgrade to

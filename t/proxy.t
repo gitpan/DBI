@@ -157,6 +157,8 @@ print "Trying fetchrow_hashref.\n";
 Test($csr_b->execute());
 my $row_b = $csr_b->fetchrow_hashref;
 Test($row_b);
+print "row_a: @{[ @row_a  ]}\n";
+print "row_b: @{[ %$row_b ]}\n";
 Test($row_b->{mode} == $row_a[0]);
 Test($row_b->{size} == $row_a[1]);
 Test($row_b->{name} eq $row_a[2]);

@@ -1,6 +1,6 @@
-#!perl -Tw
+#!perl -w
 
-use lib qw(blib/arch blib/lib);	# needed sin -T ignores PERL5LIB
+use lib qw(blib/arch blib/lib);	# needed since -T ignores PERL5LIB
 use DBI qw(:sql_types);
 use Config;
 use Cwd;
@@ -73,7 +73,7 @@ ok(0, $dbh->ping);
 my $cursor_e = $dbh->prepare("select unknown_field_name from ?");
 ok(0, !defined $cursor_e);
 ok(0, $DBI::err);
-ok(0, $DBI::errstr =~ m/unknown_field_name/);
+ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name/);
 ok(0, $DBI::err    == $dbh->err);
 ok(0, $DBI::errstr eq $dbh->errstr);
 
@@ -139,6 +139,7 @@ if (is_tainted($^X)) {
 	ok(0, $@ =~ /Insecure dependency/, $@);
 	eval { $csr_a->execute($^X); 1; };
 	ok(0, $@ =~ /Insecure dependency/, $@);
+undef $@;
 }
 else {
     print "Taint attribute tests skipped\n";
@@ -188,9 +189,17 @@ ok(0, $r && @$r);
 ok(0, $r->[0]->{Size} == $row_a[1]);
 ok(0, $r->[0]->{NAME} eq $row_a[2]);
 
+ok(0, $csr_b->execute());
+$r = $csr_b->fetchall_arrayref({});
+ok(0, $r);
+ok(0, keys %{$r->[0]} == 3);
+ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a");
+
 $rows = $csr_b->rows;
 ok(0, $rows > 0, "row count $rows");
 ok(0, $rows == @$r, "$rows vs ".@$r);
+
+# ---
 
 @row_b = $dbh->selectrow_array($std_sql, undef, $dir);
 ok(0, @row_b == 3);
@@ -200,6 +209,12 @@ $r = $dbh->selectall_arrayref($std_sql, undef, $dir);
 ok(0, $r);
 ok(0, @{$r->[0]} == 3);
 ok(0, "@{$r->[0]}" eq "@row_a");
+ok(0, @$r == $rows);
+
+$r = $dbh->selectall_hashref($std_sql, undef, $dir);
+ok(0, $r);
+ok(0, keys %{$r->[0]} == 3);
+ok(0, "@{$r->[0]}{qw(mode size name)}" eq "@row_a");
 ok(0, @$r == $rows);
 
 $r = $dbh->selectcol_arrayref($std_sql, undef, $dir);
@@ -214,13 +229,19 @@ $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
 ok(0, !defined $csr_c);
 ok(0, $DBI::errstr =~ m/Unknown field names: unknown_field_name1/);
 
+print "RaiseError & PrintError & ShowErrorStatement\n";
 $dbh->{RaiseError} = 1;
+$dbh->{ShowErrorStatement} = 1;
 ok(0, $dbh->{RaiseError});
+ok(0, $dbh->{ShowErrorStatement});
 ok(0, ! eval { $csr_c = $dbh->prepare("select unknown_field_name2 from ?"); 1; });
 #print "$@\n";
 ok(0, $@ =~ m/Unknown field names: unknown_field_name2/);
+ok(0, $@ =~ m/{select unknown_field_name2 from/); # ShowErrorStatement
 $dbh->{RaiseError} = 0;
 ok(0, !$dbh->{RaiseError});
+$dbh->{ShowErrorStatement} = 0;
+ok(0, !$dbh->{ShowErrorStatement});
 
 {
   my @warn;
@@ -233,6 +254,7 @@ ok(0, !$dbh->{RaiseError});
   ok(0, !$dbh->{PrintError});
 }
 
+print "dump_results\n";
 ok(0, $csr_a = $dbh->prepare($std_sql));
 if ($haveFileSpec && length(File::Spec->rootdir))
 {
@@ -247,7 +269,7 @@ my $dump_file = ($haveFileSpec)
     : "$dump_dir/dumpcsr.tst";
 ($dump_file) = ($dump_file =~ m/^(.*)$/);	# untaint
 if (open(DUMP_RESULTS, ">$dump_file")) {
-	ok(0, $csr_a->dump_results("4", "\n", ",\t", \*DUMP_RESULTS));
+	ok(0, $csr_a->dump_results("10", "\n", ",\t", \*DUMP_RESULTS));
 	close(DUMP_RESULTS);
 	ok(0, -s $dump_file > 0);
 } else {
@@ -258,7 +280,7 @@ if (open(DUMP_RESULTS, ">$dump_file")) {
 unlink $dump_file;
 
 
-# Test the table_info method
+print "table_info\n";
 # First generate a list of all subdirectories
 $dir = $haveFileSpec ? File::Spec->curdir() : ".";
 ok(0, opendir(DIR, $dir));
@@ -327,4 +349,4 @@ foreach my $t ($dbh->func('lib', 'examplep_tables')) {
 }
 ok(0, (%tables == 0));
 
-BEGIN { $tests = 118; }
+BEGIN { $tests = 122; }
