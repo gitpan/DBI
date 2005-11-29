@@ -335,6 +335,8 @@ DESTROY(dbh)
 	}
         if (DBIc_IADESTROY(imp_dbh)) {		  /* want's ineffective destroy	*/
             DBIc_ACTIVE_off(imp_dbh);
+	    if (DBIc_DBISTATE(imp_dbh)->debug)
+		 PerlIO_printf(DBIc_LOGPIO(imp_dbh), "         DESTROY %s skipped due to InactiveDestroy\n", SvPV_nolen(dbh));
         }
 	if (DBIc_ACTIVE(imp_dbh)) {
 	    /* The application has not explicitly disconnected. That's bad.	*/
@@ -366,9 +368,15 @@ take_imp_data(h)
     SV * h
     CODE:
     D_imp_xxh(h);
-    ST(0) = (dbd_take_imp_data(h, imp_xxh, NULL))
+    /* dbd_take_imp_data() returns &sv_no (or other defined but false value)
+     * to indicate "preparations complete, now call SUPER::take_imp_data" for me.
+     * Anything else is returned to the caller via sv_2mortal(sv), typically that
+     * would be &sv_undef for error or an SV holding the imp_data.
+     */
+    SV *sv = dbd_take_imp_data(h, imp_xxh, NULL);
+    ST(0) = (SvOK(sv) && !SvTRUE(sv))
 	? dbixst_bounce_method("DBD::~DRIVER~::db::SUPER::take_imp_data", items)
-	: &sv_undef;
+	: sv_2mortal(sv);
 
 #endif
 
@@ -405,13 +413,17 @@ MODULE = DBD::~DRIVER~    PACKAGE = DBD::~DRIVER~::st
 void
 _prepare(sth, statement, attribs=Nullsv)
     SV *	sth
-    char *	statement
+    SV *	statement
     SV *	attribs
     CODE:
     {
     D_imp_sth(sth);
     DBD_ATTRIBS_CHECK("_prepare", sth, attribs);
-    ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
+#ifdef dbd_st_prepare_sv
+    ST(0) = dbd_st_prepare_sv(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
+#else
+    ST(0) = dbd_st_prepare(sth, imp_sth, SvPV_nolen(statement), attribs) ? &sv_yes : &sv_no;
+#endif
     }
 
 
@@ -709,6 +721,8 @@ DESTROY(sth)
     else {
         if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
             DBIc_ACTIVE_off(imp_sth);
+	    if (DBIc_DBISTATE(imp_sth)->debug)
+		 PerlIO_printf(DBIc_LOGPIO(imp_sth), "         DESTROY %s skipped due to InactiveDestroy\n", SvPV_nolen(sth));
         }
 	if (DBIc_ACTIVE(imp_sth)) {
 	    D_imp_dbh_from_sth;
