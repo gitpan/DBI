@@ -164,6 +164,7 @@ cmp_ok($DBI::err,    'eq', $dbh->err   , "\$DBI::err should match \$dbh->err");
 like($DBI::errstr, qr/Unknown field names: unknown_field_name/, "\$DBI::errstr should contain error string");
 cmp_ok($DBI::errstr, 'eq', $dbh->errstr, "\$DBI::errstr should match \$dbh->errstr");
 
+
 # --- func
 ok($dbh->errstr eq $dbh->func('errstr'));
 
