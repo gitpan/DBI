@@ -33,6 +33,12 @@ require Config;
 package DBI::ProxyServer;
 
 
+my $haveFileSpec = eval { require File::Spec };
+my $tmpDir = $haveFileSpec ? File::Spec->tmpdir() :
+    ($ENV{'TMP'} || $ENV{'TEMP'} || '/tmp');
+my $defaultPidFile = $haveFileSpec ?
+    File::Spec->catdir($tmpDir, "dbiproxy.pid") : "/tmp/dbiproxy.pid";
+
 
 ############################################################################
 #
@@ -103,8 +109,7 @@ my %DEFAULT_SERVER_OPTIONS;
     } else {
 	$o->{'mode'} = 'single';
     }
-    # No pidfile by default, configuration must provide one if needed
-    $o->{'pidfile'}    = 'none';
+    $o->{'pidfile'}    = $defaultPidFile;
     $o->{'user'}       = undef;
 };
 
@@ -370,10 +375,12 @@ __END__
 
 DBI::ProxyServer - a server for the DBD::Proxy driver
 
+
 =head1 SYNOPSIS
 
     use DBI::ProxyServer;
     DBI::ProxyServer::main(@ARGV);
+
 
 =head1 DESCRIPTION
 
@@ -395,17 +402,18 @@ query restrictions: You can define a set of queries that a client may
 execute and restrict access to those. (Requires a DBI driver that supports
 parameter binding.) See L</CONFIGURATION FILE>.
 
-The provided driver script, L<dbiproxy>, may either be used as it is or
+The provided driver script, L<dbiproxy(1)>, may either be used as it is or
 used as the basis for a local version modified to meet your needs.
 
 =head1 OPTIONS
 
 When calling the DBI::ProxyServer::main() function, you supply an
-array of options. These options are parsed by the Getopt::Long module.
+array of options. (@ARGV, the array of command line options is used,
+if you don't.) These options are parsed by the Getopt::Long module.
 The ProxyServer inherits all of RPC::PlServer's and hence Net::Daemon's
 options and option handling, in particular the ability to read
 options from either the command line or a config file. See
-L<RPC::PlServer>. See L<Net::Daemon>. Available options include
+L<RPC::PlServer(3)>. See L<Net::Daemon(3)>. Available options include
 
 =over 4
 
@@ -441,7 +449,8 @@ certain directory tree only after logging in. See also the --group and
 
 An array ref with a list of clients. Clients are hash refs, the attributes
 I<accept> (0 for denying access and 1 for permitting) and I<mask>, a Perl
-regular expression for the clients IP number or its host name.
+regular expression for the clients IP number or its host name. See
+L<"Access control"> below.
 
 =item I<configfile> (B<--configfile=file>)
 
@@ -457,7 +466,7 @@ level "debug" are created.
 
 =item I<facility> (B<--facility=mode>)
 
-(UNIX only) Facility to use for L<Sys::Syslog>. The default is
+(UNIX only) Facility to use for L<Sys::Syslog (3)>. The default is
 B<daemon>.
 
 =item I<group> (B<--group=gid>)
@@ -485,7 +494,7 @@ must be given somehow, as there's no default.
 Be default logging messages will be written to the syslog (Unix) or
 to the event log (Windows NT). On other operating systems you need to
 specify a log file. The special value "STDERR" forces logging to
-stderr. See L<Net::Daemon::Log> for details.
+stderr. See L<Net::Daemon::Log(3)> for details.
 
 =item I<mode> (B<--mode=modename>)
 
@@ -511,7 +520,7 @@ mode with "--mode=single".
 =item I<pidfile> (B<--pidfile=file>)
 
 (UNIX only) If this option is present, a PID file will be created at the
-given location. Default is to not create a pidfile.
+given location.
 
 =item I<user> (B<--user=uid>)
 
@@ -603,7 +612,7 @@ Create a configuration file "proxy_oracle.cfg" at the dbproxy-server:
     {
 	# This shall run in a shell or a DOS-window 
 	# facility => 'daemon',
-	pidfile => 'your_dbiproxy.pid',
+	pidfile => 'dbiproxy.pid',
 	logfile => 1,
 	debug => 0,
 	mode => 'single',
@@ -616,7 +625,7 @@ Create a configuration file "proxy_oracle.cfg" at the dbproxy-server:
 		# the most specialized rules for single machines/users are 1st
 		# then the denying rules
 		# the the rules about whole networks
-
+		
 		# rule: internal_webserver
 		# desc: to get statistical information
 		{
@@ -634,7 +643,7 @@ Create a configuration file "proxy_oracle.cfg" at the dbproxy-server:
 				statistic_area => 'select count(*) from e01admin.e01e203 where geb_bezei like ?',
 			}
 		},
-
+		
 		# rule: internal_bad_guy_1
 		{
 			mask => '^10\.95\.81\.1$',
@@ -876,6 +885,6 @@ the DBI.
 
 =head1 SEE ALSO
 
-L<dbiproxy>, L<DBD::Proxy>, L<DBI>, L<RPC::PlServer>,
-L<RPC::PlClient>, L<Net::Daemon>, L<Net::Daemon::Log>,
-L<Sys::Syslog>, L<Win32::EventLog>, L<syslog>
+L<dbiproxy(1)>, L<DBD::Proxy(3)>, L<DBI(3)>, L<RPC::PlServer(3)>,
+L<RPC::PlClient(3)>, L<Net::Daemon(3)>, L<Net::Daemon::Log(3)>,
+L<Sys::Syslog(3)>, L<Win32::EventLog(3)>, L<syslog(2)>

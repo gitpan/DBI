@@ -21,30 +21,17 @@
 #
 
 use strict;
-use Carp;
 
 require DBI;
 DBI->require_version(1.0201);
 
 use RPC::PlClient 0.2000; # XXX change to 0.2017 once it's released
 
-{	package DBD::Proxy::RPC::PlClient;
-    	@DBD::Proxy::RPC::PlClient::ISA = qw(RPC::PlClient);
-	sub Call {
-	    my $self = shift;
-	    if ($self->{debug}) {
-		my ($rpcmeth, $obj, $method, @args) = @_;
-		local $^W; # silence undefs
-		Carp::carp("Server $rpcmeth $method(@args)");
-	    }
-	    return $self->SUPER::Call(@_);
-	}
-}
 
 
 package DBD::Proxy;
 
-use vars qw($VERSION $drh %ATTR);
+use vars qw($VERSION $err $errstr $drh %ATTR);
 
 $VERSION = "0.2004";
 
@@ -58,8 +45,6 @@ $drh = undef;		# holds driver handle once initialised
     'PrintError' => 'local',
     'RaiseError' => 'local',
     'HandleError' => 'local',
-    'TraceLevel' => 'cached',
-    'CompatMode' => 'local',
 );
 
 sub driver ($$) {
@@ -72,8 +57,7 @@ sub driver ($$) {
 	    'Name' => 'Proxy',
 	    'Version' => $VERSION,
 	    'Attribution' => 'DBD::Proxy by Jochen Wiedmann',
-	});
-	$drh->STORE(CompatMode => 1); # disable DBI dispatcher attribute cache (for FETCH)
+	    });
     }
     $drh;
 }
@@ -160,7 +144,7 @@ sub connect ($$;$$) {
 	}
     }
     # Create an RPC::PlClient object.
-    my($client, $msg) = eval { DBD::Proxy::RPC::PlClient->new(%client_opts) };
+    my($client, $msg) = eval { RPC::PlClient->new(%client_opts) };
 
     return DBD::Proxy::proxy_set_err($drh, "Cannot log in to DBI::ProxyServer: $@")
 	if $@; # Returns undef
@@ -219,12 +203,8 @@ package DBD::Proxy::db; # ====== DATABASE ======
 
 $DBD::Proxy::db::imp_data_size = 0;
 
-# XXX probably many more methods need to be added here.
-# See notes in ToDo about method metadata
 sub commit;
-sub connected;
 sub rollback;
-sub ping;
 
 use vars qw(%ATTR $AUTOLOAD);
 
@@ -238,12 +218,10 @@ use vars qw(%ATTR $AUTOLOAD);
 %ATTR = (	# see also %ATTR in DBD::Proxy::st
     %DBD::Proxy::ATTR,
     RowCacheSize => 'inherited',
-    #AutoCommit => 'cached',
-    'FetchHashKeyName' => 'cached',
+    AutoCommit => 'cached',
     Statement => 'local',
     Driver => 'local',
     dbi_connect_closure => 'local',
-    Username => 'local',
 );
 
 sub AUTOLOAD {
@@ -258,6 +236,7 @@ sub AUTOLOAD {
 	  'type' => $type,
 	  'h' => "DBI::_::$type"
 	);
+    local $SIG{__DIE__} = 'DEFAULT';
     my $method_code = UNIVERSAL::can($expand{'h'}, $method) ?
 	q/package ~class~;
           sub ~method~ {
@@ -280,9 +259,8 @@ sub AUTOLOAD {
           }
          /;
     $method_code =~ s/\~(\w+)\~/$expand{$1}/eg;
-    local $SIG{__DIE__} = 'DEFAULT';
-    my $err = do { local $@; eval $method_code.2; $@ };
-    die $err if $err;
+    eval $method_code;
+    die $@ if $@;
     goto &$AUTOLOAD;
 }
 
@@ -321,25 +299,16 @@ sub STORE ($$$) {
     my($dbh, $attr, $val) = @_;
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr eq 'TraceLevel') {
-	warn("TraceLevel $val");
-	my $pc = $dbh->{proxy_client} || die;
-	$pc->{logfile} ||= 1; # XXX hack
-	$pc->{debug} = ($val && $val >= 4);
-	$pc->Debug("$pc debug enabled") if $pc->{debug};
-    }
-
     if ($attr =~ /^proxy_/  ||  $type eq 'inherited') {
 	$dbh->{$attr} = $val;
 	return 1;
     }
 
-    if ($type eq 'remote' ||  $type eq 'cached') {
+    if ($type eq 'remote'  ||  $type eq 'cached') {
         local $SIG{__DIE__} = 'DEFAULT';
-	local $@;
 	my $result = eval { $dbh->{'proxy_dbh'}->STORE($attr => $val) };
 	return DBD::Proxy::proxy_set_err($dbh, $@) if $@; # returns undef
-	$dbh->SUPER::STORE($attr => $val) if $type eq 'cached';
+	$dbh->{$attr} = $val if $type eq 'cached';
 	return $result;
     }
     return $dbh->SUPER::STORE($attr => $val);
@@ -347,18 +316,16 @@ sub STORE ($$$) {
 
 sub FETCH ($$) {
     my($dbh, $attr) = @_;
-    # we only get here for cached attribute values if the handle is in CompatMode
-    # otherwise the DBI dispatcher handles the FETCH itself from the attribute cache.
     my $type = $ATTR{$attr} || 'remote';
 
-    if ($attr =~ /^proxy_/  ||  $type eq 'inherited'  || $type eq 'cached') {
+    if ($attr =~ /^proxy_/  ||  $type eq 'inherited'  ||
+	$type eq 'cached') {
 	return $dbh->{$attr};
     }
 
     return $dbh->SUPER::FETCH($attr) unless $type eq 'remote';
 
     local $SIG{__DIE__} = 'DEFAULT';
-    local $@;
     my $result = eval { $dbh->{'proxy_dbh'}->FETCH($attr) };
     return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
@@ -378,7 +345,6 @@ sub prepare ($$;$) {
       $sth->{'proxy_attr_cache'} = {cache_filled => 0};
       my $rdbh = $dbh->{'proxy_dbh'};
       local $SIG{__DIE__} = 'DEFAULT';
-      local $@;
       my $rsth = eval { $rdbh->prepare($sth->{'Statement'}, $sth->{'proxy_attr'}, undef, $proto_ver) };
       return DBD::Proxy::proxy_set_err($sth, $@) if $@;
       return DBD::Proxy::proxy_set_err($sth, "Constructor didn't return a handle: $rsth")
@@ -417,7 +383,6 @@ sub quote {
     # for example.
     # Jochen
     local $SIG{__DIE__} = 'DEFAULT';
-    local $@;
     my $result = eval { $dbh->{'proxy_dbh'}->quote(@_) };
     return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
@@ -428,7 +393,6 @@ sub table_info {
     my $rdbh = $dbh->{'proxy_dbh'};
     #warn "table_info(@_)";
     local $SIG{__DIE__} = 'DEFAULT';
-    local $@;
     my($numFields, $names, $types, @rows) = eval { $rdbh->table_info(@_) };
     return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     my ($sth, $inner) = DBI::_new_sth($dbh, {
@@ -462,7 +426,6 @@ sub tables {
 sub type_info_all {
     my $dbh = shift;
     local $SIG{__DIE__} = 'DEFAULT';
-    local $@;
     my $result = eval { $dbh->{'proxy_dbh'}->type_info_all(@_) };
     return DBD::Proxy::proxy_set_err($dbh, $@) if $@;
     return $result;
@@ -514,7 +477,6 @@ sub execute ($@) {
     my ($numRows, @outData);
 
     local $SIG{__DIE__} = 'DEFAULT';
-    local $@;
     if ( $proto_ver > 1 ) {
       ($numRows, @outData) = eval { $rsth->execute($params, $proto_ver) };
       return DBD::Proxy::proxy_set_err($sth, $@) if $@;
@@ -595,7 +557,6 @@ sub fetch ($) {
 	}
 	my $num_rows = $sth->FETCH('RowCacheSize') || 20;
 	local $SIG{__DIE__} = 'DEFAULT';
-	local $@;
 	my @rows = eval { $rsth->fetch($num_rows) };
 	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	unless (@rows == $num_rows) {
@@ -629,7 +590,6 @@ sub finish ($) {
 	: $sth->FETCH('Database')->{'proxy_no_finish'};
     unless ($no_finish) {
         local $SIG{__DIE__} = 'DEFAULT';
-	local $@;
 	my $result = eval { $rsth->finish() };
 	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	return $result;
@@ -650,13 +610,12 @@ sub STORE ($$$) {
 	return 0;
     }
 
-    if ($type eq 'remote' || $type eq 'cached') {
+    if ($type eq 'remote') {
 	my $rsth = $sth->{'proxy_sth'}  or  return undef;
         local $SIG{__DIE__} = 'DEFAULT';
-	local $@;
 	my $result = eval { $rsth->STORE($attr => $val) };
 	return DBD::Proxy::proxy_set_err($sth, $@) if ($@);
-	return $result if $type eq 'remote'; # else fall through to cache locally
+	return $result;
     }
     return $sth->SUPER::STORE($attr => $val);
 }
@@ -684,7 +643,6 @@ sub FETCH ($$) {
     if ($type ne 'local') {
 	my $rsth = $sth->{'proxy_sth'}  or  return undef;
         local $SIG{__DIE__} = 'DEFAULT';
-	local $@;
 	my $result = eval { $rsth->FETCH($attr) };
 	return DBD::Proxy::proxy_set_err($sth, $@) if $@;
 	return $result;
@@ -705,8 +663,7 @@ sub bind_param ($$$@) {
 *bind_param_inout = \&bind_param;
 
 sub DESTROY {
-    my $sth = shift;
-    $sth->finish if $sth->SUPER::FETCH('Active');
+    # Just to avoid autoloading DESTROY ...
 }
 
 
@@ -756,7 +713,7 @@ I<Note that the connect_cached method is new and still experimental.>
 Before connecting to a remote database, you must ensure, that a Proxy
 server is running on the remote machine. There's no default port, so
 you have to ask your system administrator for the port number. See
-L<DBI::ProxyServer> for details.
+L<DBI::ProxyServer(3)> for details.
 
 Say, your Proxy server is running on machine "alpha", port 3334, and
 you'd like to connect to an ODBC database called "mydb" as user "joe"
@@ -773,7 +730,7 @@ You see, this is mainly the same. The DBD::Proxy module will create a
 connection to the Proxy server on "alpha" which in turn will connect
 to the ODBC database.
 
-Refer to the L<DBI> documentation on the C<connect> method for a way
+Refer to the L<DBI(3)> documentation on the C<connect> method for a way
 to automatically use DBD::Proxy without having to change your code.
 
 DBD::Proxy's DSN string has the format
@@ -823,7 +780,7 @@ by executing
     $cipherRef = $class->new(pack("H*", $key));
 
 and pass this object to the RPC::PlClient module when creating a
-client. See L<RPC::PlClient>. Example:
+client. See L<RPC::PlClient(3)>. Example:
 
     cipher=IDEA;key=97cd2375efa329aceef2098babdc9721
 
@@ -835,7 +792,7 @@ less secure than the usercipher/userkey secret and readable by anyone.
 The usercipher/userkey secret is B<your> private secret.
 
 Of course encryption requires an appropriately configured server. See
-<DBD::ProxyServer/CONFIGURATION FILE>.
+<DBD::ProxyServer(3)/CONFIGURATION FILE>.
 
 =item debug
 
@@ -882,7 +839,7 @@ and fast CGI applications.
 This attribute can be used to reduce network traffic: By default calls
 to $dbh->quote() are passed to the remote driver.  Of course this slows
 down things quite a lot, but is the safest default behaviour.
-
+  
 However, if you set the I<proxy_quote> attribute to the value 'C<local>'
 either in the database handle or in the statement handle, and the call
 to quote has only one parameter, then the local default DBI quote
@@ -912,13 +869,13 @@ executing the above example in two steps:
 
 =over
 
-=item 1
-
+=item 1.)
+ 
 The first step is fetching the value of the key "csv_tables" in the
 handle $dbh. The value returned is complex, a hash ref.
-
-=item 2
-
+ 
+=item 2.)
+ 
 The second step is storing some value (the right hand side of the
 assignment) as the key "passwd" in the hash ref from step 1.
 
@@ -962,6 +919,6 @@ is granted to Tim Bunce for distributing this as a part of the DBI.
 
 =head1 SEE ALSO
 
-L<DBI>, L<RPC::PlClient>, L<Storable>
+L<DBI(3)>, L<RPC::PlClient(3)>, L<Storable(3)>
 
 =cut

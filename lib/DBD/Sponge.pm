@@ -15,6 +15,7 @@
 #   License or the Artistic License, as specified in the Perl README file.
 
     $drh = undef;	# holds driver handle once initialised
+    $err = 0;		# The $DBI::err value
     my $methods_already_installed;
 
     sub driver{
@@ -253,7 +254,7 @@ No username and password are needed.
 
 =over 4
 
-=item *
+=item o
 
 The C<$statement> here is an arbitrary statement or name you want
 to provide as identity of your data. If you're using DBI::Profile
@@ -262,16 +263,16 @@ it will appear in the profile data.
 Generally it's expected that you are preparing a statement handle
 as if a C<select> statement happened.
 
-=item *
+=item o
 
 C<$data> is a reference to the data you are providing, given as an array of arrays.
 
-=item *
+=item o
 
 C<$names> is a reference an array of column names for the C<$data> you are providing.
 The number and order should match the number and ordering of the C<$data> columns. 
 
-=item *
+=item o
 
 C<%attr> is a hash of other standard DBI attributes that you might pass to a prepare statement.
 
@@ -295,6 +296,6 @@ is granted to Tim Bunce for distributing this as a part of the DBI.
 
 =head1 SEE ALSO
 
-L<DBI>
+L<DBI(3)>
 
 =cut

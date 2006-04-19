@@ -2,7 +2,6 @@
     package DBD::NullP;
 
     require DBI;
-    require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
     $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
@@ -15,6 +14,7 @@
 #   License or the Artistic License, as specified in the Perl README file.
 
     $drh = undef;	# holds driver handle once initialised
+    $err = 0;		# The $DBI::err value
 
     sub driver{
 	return $drh if $drh;
@@ -46,7 +46,6 @@
 {   package DBD::NullP::db; # ====== DATABASE ======
     $imp_data_size = 0;
     use strict;
-    use Carp qw(croak);
 
     sub prepare {
 	my($dbh, $statement)= @_;
@@ -74,7 +73,7 @@
 	# else pass up to DBI to handle
 	if ($attrib eq 'AutoCommit') {
 	    return 1 if $value; # is already set
-	    Carp::croak("Can't disable AutoCommit");
+	    croak("Can't disable AutoCommit");
 	}
 	return $dbh->SUPER::STORE($attrib, $value);
     }
@@ -106,6 +105,10 @@
 	}
 	$sth->finish;     # no more data so finish
 	return undef;
+    }
+
+    sub finish {
+	my($sth) = @_;
     }
 
     sub FETCH {

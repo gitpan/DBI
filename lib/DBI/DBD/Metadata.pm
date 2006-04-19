@@ -18,9 +18,10 @@ use DBI::Const::GetInfoType qw(%GetInfoType);
 @ISA = qw(Exporter);
 @EXPORT = qw(write_getinfo_pm write_typeinfo_pm);
 
-$VERSION = sprintf("%d.%02d", q$Revision: 1.5 $ =~ /(\d+)\.(\d+)/);
-
 use strict;
+
+my
+$VERSION = sprintf("%d.%02d", q$Revision: 1.5 $ =~ /(\d+)\.(\d+)/);
 
 =head1 NAME
 
@@ -185,9 +186,6 @@ PERL
         elsif ($key eq 'SQL_KEYWORDS') {
             $val = ($kw_map) ? '\&sql_keywords' : 'undef';
         }
-        elsif ($key eq 'SQL_DRIVER_NAME') {
-            $val = "\$INC{'DBD/$driver.pm'}";
-        }
         elsif ($key eq 'SQL_DRIVER_VER') {
             $val = '$sql_driver_ver';
         }
@@ -243,7 +241,7 @@ A possible implementation of DBD::Driver::type_info_all() may look like:
   sub type_info_all {
     my ($dbh) = @_;
     require DBD::Driver::TypeInfo;
-    return [ @$DBD::Driver::TypeInfo::type_info_all ];
+    return $DBD::Driver::TypeInfo::type_info_all;
   }
 
 Please replace Driver (or "<foo>") with the name of your driver.
@@ -326,7 +324,7 @@ package DBD::${driver}::db;         # This line can be removed once transferred.
     {
         my (\$dbh) = \@_;
         require DBD::${driver}::TypeInfo;
-        return [ \@\$DBD::${driver}::TypeInfo::type_info_all ];
+        return \$DBD::${driver}::TypeInfo::type_info_all;
     }
 
 # Transfer this to lib/DBD/${driver}/TypeInfo.pm.
@@ -342,7 +340,7 @@ package DBD::${driver}::TypeInfo;
     require DynaLoader;
     \@ISA = qw(Exporter DynaLoader);
     \@EXPORT = qw(type_info_all);
-    use DBI qw(:sql_types);
+    use DBI (:sql_types);
 
 PERL
 
@@ -411,7 +409,7 @@ PERL
 
     my $h = $dbh->type_info_all;
     my @tia = @$h;
-    my %odbc_map = map { uc $_ => $tia[0]->{$_} } keys %{$tia[0]};
+    my %odbc_map = %{$tia[0]};
     shift @tia;     # Remove the mapping reference.
     my $numtyp = $#tia;
 
@@ -486,7 +484,7 @@ __END__
 
 Jonathan Leffler <jleffler@us.ibm.com> (previously <jleffler@informix.com>),
 Jochen Wiedmann <joe@ispsoft.de>,
-Steffen Goeldner <sgoeldner@cpan.org>,
+Steffen Goeldner <s.goeldner@eurodata.de>,
 and Tim Bunce <dbi-users@perl.org>.
 
 =cut
