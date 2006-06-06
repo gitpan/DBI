@@ -29,15 +29,23 @@ package DBD::File;
 
 use vars qw(@ISA $VERSION $drh $valid_attrs);
 
-$VERSION = '0.31';      # bumped from 0.22 to 0.30 with inclusion in DBI
+$VERSION = '0.33';
 
-$drh = undef;		# holds driver handle once initialised
+$drh = undef;		# holds driver handle(s) once initialised
 
 sub driver ($;$) {
     my($class, $attr) = @_;
-    return $drh if $drh;
 
-    DBI->setup_driver('DBD::File');
+    # Drivers typically use a singleton object for the $drh
+    # We use a hash here to have one singleton per subclass.
+    # (Otherwise DBD::CSV and DBD::DBM, for example, would
+    # share the same driver object which would cause problems.)
+    # An alternative would be not not cache the $drh here at all
+    # and require that subclasses do that. Subclasses should do
+    # their own caching, so caching here just provides extra safety.
+    return $drh->{$class} if $drh->{$class};
+
+    DBI->setup_driver('DBD::File'); # only needed once but harmless to repeat
     $attr ||= {};
     no strict qw(refs);
     if (!$attr->{Attribution}) {
@@ -48,8 +56,10 @@ sub driver ($;$) {
     }
     $attr->{Version} ||= ${$class . '::VERSION'};
     ($attr->{Name} = $class) =~ s/^DBD\:\:// unless $attr->{Name};
-    $drh = DBI::_new_drh($class . "::dr", $attr);
-    return $drh;
+
+    $drh->{$class} = DBI::_new_drh($class . "::dr", $attr);
+    $drh->{$class}->STORE(ShowErrorStatement => 1);
+    return $drh->{$class};
 }
 
 sub CLONE {
@@ -152,6 +162,8 @@ package DBD::File::db; # ====== DATABASE ======
 
 $DBD::File::db::imp_data_size = 0;
 
+sub ping { return (shift->FETCH('Active')) ? 1 : 0 };
+
 sub prepare ($$;@) {
     my($dbh, $statement, @attribs)= @_;
 
@@ -208,7 +220,6 @@ sub csv_cache_sql_parser_object {
 }
 sub disconnect ($) {
     shift->STORE('Active',0);
-    undef $DBD::File::drh;
     1;
 }
 sub FETCH ($$) {
@@ -265,9 +276,8 @@ sub STORE ($$$) {
 }
 
 sub DESTROY ($) {
-    # for backwards compatibility only, remove eventually
-    shift->STORE('Active',0);
-    undef;
+    my $dbh = shift;
+    $dbh->disconnect if $dbh->SUPER::FETCH('Active');
 }
 
 sub type_info_all ($) {
@@ -426,20 +436,20 @@ sub execute {
 	$params = $sth->{'f_params'};
     }
 
-    # start of by finishing any previous execution if still active
-    $sth->finish if $sth->{Active};
-    $sth->{'Active'}=1;
+    $sth->finish;
     my $stmt = $sth->{'f_stmt'};
     my $result = eval { $stmt->execute($sth, $params); };
     return $sth->set_err(1,$@) if $@;
-    if ($stmt->{'NUM_OF_FIELDS'}  &&  !$sth->FETCH('NUM_OF_FIELDS')) {
-	$sth->STORE('NUM_OF_FIELDS', $stmt->{'NUM_OF_FIELDS'});
+    if ($stmt->{'NUM_OF_FIELDS'}) { # is a SELECT statement
+	$sth->STORE(Active => 1);
+	$sth->STORE('NUM_OF_FIELDS', $stmt->{'NUM_OF_FIELDS'})
+	 if !$sth->FETCH('NUM_OF_FIELDS');
     }
     return $result;
 }
 sub finish {
     my $sth = shift;
-    $sth->{Active}=0;
+    $sth->SUPER::STORE(Active => 0);
     delete $sth->{f_stmt}->{data};
     return 1;
 }
@@ -452,7 +462,7 @@ sub fetch ($) {
     }
     my $dav = shift @$data;
     if (!$dav) {
-        $sth->{Active} = 0; # mark as no longer active
+        $sth->finish;
 	return undef;
     }
     if ($sth->FETCH('ChopBlanks')) {
@@ -490,14 +500,15 @@ sub STORE ($$$) {
     my ($sth, $attrib, $value) = @_;
     if ($attrib eq (lc $attrib)) {
 	# Private driver attributes are lower cased
- 	$sth->{$attrib} = $value;
+	$sth->{$attrib} = $value;
 	return 1;
     }
     return $sth->SUPER::STORE($attrib, $value);
 }
 
 sub DESTROY ($) {
-    undef;
+    my $sth = shift;
+    $sth->finish if $sth->SUPER::FETCH('Active');
 }
 
 sub rows ($) { shift->{'f_stmt'}->{'NUM_OF_ROWS'} };
@@ -519,7 +530,7 @@ my $locking = eval { flock STDOUT, 0; 1 };
 
 my $open_table_re =
     $haveFileSpec ?
-    sprintf('(?:%s|%s¦%s)',
+    sprintf('(?:%s|%s|%s)',
 	    quotemeta(File::Spec->curdir()),
 	    quotemeta(File::Spec->updir()),
 	    quotemeta(File::Spec->rootdir()))
@@ -545,6 +556,7 @@ sub open_table ($$$$$) {
     my($self, $data, $table, $createMode, $lockMode) = @_;
     my $file;
     ($table,$file) = $self->get_file_name($data,$table);
+    require IO::File;
     my $fh;
     my $safe_drop = 1 if $self->{ignore_missing_table};
     if ($createMode) {
@@ -648,8 +660,8 @@ that these drivers work with plain files, for example CSV files or
 INI files. The module is based on the SQL::Statement module, a simple
 SQL engine.
 
-See L<DBI(3)> for details on DBI, L<SQL::Statement(3)> for details on
-SQL::Statement and L<DBD::CSV(3)> or L<DBD::IniFile(3)> for example
+See L<DBI> for details on DBI, L<SQL::Statement> for details on
+SQL::Statement and L<DBD::CSV> or L<DBD::IniFile> for example
 drivers.
 
 
@@ -744,8 +756,7 @@ Example:
     my(@list) = $dbh->func('list_tables');
 
 Note that the list includes all files contained in the directory, even
-those that have non-valid table names, from the view of SQL. See
-L<Creating and dropping tables> above.
+those that have non-valid table names, from the view of SQL.
 
 =back
 
@@ -781,7 +792,7 @@ the Perl README file.
 
 =head1 SEE ALSO
 
-L<DBI(3)>, L<Text::CSV_XS(3)>, L<SQL::Statement(3)>
+L<DBI>, L<Text::CSV_XS>, L<SQL::Statement>
 
 
 =cut

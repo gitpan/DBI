@@ -23,13 +23,28 @@ use strict;
 use Carp;
 require Symbol;
 
+require utf8;
+*utf8::is_utf8 = sub { # hack for perl 5.6
+    require bytes;
+    return unless defined $_[0];
+    return !(length($_[0]) == bytes::length($_[0]))
+} unless defined &utf8::is_utf8;
+
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
 $DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.96 $ ' =~ /(\d+)\.(\d+)/;
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
 open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
+select( (select($DBI::tfh), $| = 1)[0] );  # autoflush
 
+# check for weaken support, used by ChildHandles
+my $HAS_WEAKEN = eval { 
+    require Scalar::Util;
+    # this will croak() if this Scalar::Util doesn't have a working weaken().
+    Scalar::Util::weaken(my $test = \"foo"); 
+    1;
+};
 
 %DBI::last_method_except = map { $_=>1 } qw(DESTROY _set_fbav set_err);
 
@@ -135,6 +150,8 @@ my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
 	Attribution
 	BegunWork
 	CachedKids
+        Callbacks
+	ChildHandles
 	CursorName
 	Database
 	DebugDispatch
@@ -161,6 +178,7 @@ my %is_valid_attribute = map {$_ =>1 } (keys %is_flag_attribute, qw(
 	SCALE
 	Statement
 	TYPE
+        Type
 	TraceLevel
 	Username
 	Version
@@ -301,6 +319,10 @@ sub  _install_method {
     push @post_call_frag, q{
 	$keep_error = 0 if $keep_error && $h->{ErrCount} > $ErrCount;
 
+	$DBI::err    = $h->{err};
+	$DBI::errstr = $h->{errstr};
+	$DBI::state  = $h->{state};
+
         if ( !$keep_error
 	&& defined(my $err = $h->{err})
 	&& ($call_depth <= 1 && !$h->{_parent}{_call_depth})
@@ -329,7 +351,7 @@ sub  _install_method {
 		    }
 		    $msg .= "]";
 		}
-		if ($DBI::err eq "0") { # is 'warning' (not info)
+		if ($err eq "0") { # is 'warning' (not info)
 		    carp $msg if $pw;
 		}
 		else {
@@ -394,7 +416,7 @@ sub  _install_method {
     warn "$@\n$method_code\n" if $@;
     die "$@\n$method_code\n" if $@;
     *$method = $code_ref;
-    if (0 && $method =~ /set_err/) { # debuging tool
+    if (0 && $method =~ /do/) { # debuging tool
 	my $l=0; # show line-numbered code for method
 	warn "*$method = ".join("\n", map { ++$l.": $_" } split/\n/,$method_code);
     }
@@ -428,6 +450,18 @@ sub _setup_handle {
 	    $h_inner->{Driver} = $parent;
 	}
 	$h_inner->{_parent} = $parent;
+
+	# add to the parent's ChildHandles
+	if ($HAS_WEAKEN) {
+	    my $handles = $parent->{ChildHandles} ||= [];
+	    push @$handles, $h;
+	    Scalar::Util::weaken($handles->[-1]);
+	    # purge destroyed handles occasionally
+	    if (@$handles % 120 == 0) {
+		@$handles = grep { defined } @$handles;
+		Scalar::Util::weaken($_) for @$handles; # re-weaken after grep
+	    }
+	}   
     }
     else {	# setting up a driver handle
         $h_inner->{Warn}		= 1;
@@ -437,6 +471,7 @@ sub _setup_handle {
         $h_inner->{CompatMode}		= (1==0);
 	$h_inner->{FetchHashKeyName}	||= 'NAME';
 	$h_inner->{LongReadLen}		||= 80;
+	$h_inner->{ChildHandles}        ||= [] if $HAS_WEAKEN;
     }
     $h_inner->{"_call_depth"} = 0;
     $h_inner->{ErrCount} = 0;
@@ -551,16 +586,18 @@ sub looks_like_number {
     }
     return (@_ >1) ? @new : $new[0];
 }
+
 sub neat {
     my $v = shift;
     return "undef" unless defined $v;
     return $v if (($v & ~ $v) eq "0"); # is SvNIOK
+    my $quote = utf8::is_utf8($v) ? '"' : "'";
     my $maxlen = shift || $DBI::neat_maxlen;
     if ($maxlen && $maxlen < length($v) + 2) {
 	$v = substr($v,0,$maxlen-5);
 	$v .= '...';
     }
-    return "'$v'";
+    return "$quote$v$quote";
 }
 
 package
@@ -631,6 +668,13 @@ sub FETCH {
 	return ($h->FETCH('TaintIn') && $h->FETCH('TaintOut')) if $key eq'Taint';
 	return (1==0) if $is_flag_attribute{$key}; # return perl-style sv_no, not undef
 	return $DBI::dbi_debug if $key eq 'TraceLevel';
+        return [] if $key eq 'ChildHandles';
+        if ($key eq 'Type') {
+            return "dr" if $h->isa('DBI::dr');
+            return "db" if $h->isa('DBI::db');
+            return "st" if $h->isa('DBI::st');
+            Carp::carp( sprintf "Can't get determine Type for %s",$h );
+        }
 	if (!$is_valid_attribute{$key} and $key =~ m/^[A-Z]/) {
 	    local $^W; # hide undef warnings
 	    Carp::carp( sprintf "Can't get %s->{%s}: unrecognised attribute (@{[ %$h ]})",$h,$key )
@@ -807,11 +851,14 @@ sub _set_fbav {
 }
 sub bind_col {
     my ($h, $col, $value_ref,$from_bind_columns) = @_;
-    $col-- unless $from_bind_columns; # XXX fix later
+    my $fbav = $h->{'_fbav'} ||= dbih_setup_fbav($h); # from _get_fbav()
+    my $num_of_fields = @$fbav;
+    DBI::croak("bind_col: column $col is not a valid column (1..$num_of_fields)")
+        if $col < 1 or $col > $num_of_fields;
+    return 1 if not defined $value_ref; # ie caller is just trying to set TYPE
     DBI::croak("bind_col($col,$value_ref) needs a reference to a scalar")
 	unless ref $value_ref eq 'SCALAR';
-    my $fbav = $h->_get_fbav;
-    $h->{'_bound_cols'}->[$col] = $value_ref;
+    $h->{'_bound_cols'}->[$col-1] = $value_ref;
     return 1;
 }
 sub finish {
@@ -834,7 +881,7 @@ __END__
 
 =head1 NAME
 
- DBI::PurePerl -- a DBI emulation using pure perl (no C/XS compilation required)
+DBI::PurePerl -- a DBI emulation using pure perl (no C/XS compilation required)
 
 =head1 SYNOPSIS
 
@@ -933,7 +980,7 @@ is defined.  To enable total tracing you can set the DBI_TRACE
 environment variable as usual.  But to enable individual handle
 tracing using the trace() method you also need to set the DBI_TRACE
 environment variable, but set it to 0.
- 
+
 =head2 Parameter Usage Checking
 
 The DBI does some basic parameter count checking on method calls.

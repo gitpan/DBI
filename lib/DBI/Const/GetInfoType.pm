@@ -1,4 +1,4 @@
-# $Id: GetInfoType.pm,v 1.5 2003/02/26 17:56:01 timbo Exp $
+# $Id: GetInfoType.pm 2488 2006-02-07 22:24:43Z timbo $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #
@@ -23,7 +23,7 @@ $VERSION = sprintf "%d.%02d", '$Revision: 1.5 $ ' =~ /(\d+)\.(\d+)/;
 
 =head1 NAME
 
-  DBI::Const::GetInfoType - Data describing GetInfo type codes
+DBI::Const::GetInfoType - Data describing GetInfo type codes
 
 =head1 SYNOPSIS
 

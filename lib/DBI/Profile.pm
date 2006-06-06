@@ -21,7 +21,7 @@ Other values are possible - see L<"ENABLING A PROFILE"> below.
 
 =head1 DESCRIPTION
 
-DBI::Profile is new and experimental and subject to change.
+DBI::Profile is fairly new and subject to change.
 
 The DBI::Profile module provides a simple interface to collect and
 report performance and benchmarking data from the DBI.
@@ -175,6 +175,9 @@ values are interpreted is to show the code:
     push @Path, DBIprofile_Statement        if $path & 0x02;
     push @Path, DBIprofile_MethodName       if $path & 0x04;
     push @Path, DBIprofile_MethodClass      if $path & 0x08;
+    push @Path, DBIprofile_Caller           if $path & 0x10;
+
+(The order here is subject to change and shouldn't be relied upon.)
 
 So using the value "C<1>" causes all profile data to be merged into
 a single leaf of the tree. That's useful when you just want a total.
@@ -219,49 +222,29 @@ A reference to a hash containing the collected profile data.
 
 =head2 Path
 
-The Path value is used to control where the profile for a method
-call will be merged into the collected profile data.  Whenever
-profile data is to be stored the current value for Path is used.
+The Path value is a reference to an array. Each element controls the
+value to use at the corresponding level of the profile Data tree.
 
-The value can be one of:
-
-=over 4
-
-=item Array Reference
-
-Each element of the array defines an element of the path to use to
-store the profile data into the C<Data> hash.
-
-=item Undefined value (the default)
-
-Treated the same as C<[ $DBI::Profile::DBIprofile_Statement ]>.
-
-=item Subroutine Reference B<NOT YET IMPLEMENTED>
-
-The subroutine is passed the DBI method name and the handle it was
-called on.  It should return a list of values to uses as the path.
-If it returns an empty list then the method call is not profiled.
-
-=back
-
-The following 'magic cookie' values can be included in the Path and will be
+The elements of Path array can be one of the following types:
 
 =over 4
 
-=item DBIprofile_Statement
+=item Special Constant
 
-Replaced with the current value of the Statement attribute for the
-handle the method was called with. If that value is undefined then
-an empty string is used.
+B<DBIprofile_Statement>
 
-=item DBIprofile_MethodName
+Use the current Statement text. Typically that's the value of the Statement
+attribute for the handle the method was called with. Some methods, like
+commit() and rollback(), are unrelated to a particular statement. For those
+methods DBIprofile_Statement records an empty string.
 
-Replaced with the name of the DBI method that the profile sample
-relates to.
+B<DBIprofile_MethodName>
 
-=item DBIprofile_MethodClass
+Use the name of the DBI method that the profile sample relates to.
 
-Replaced with the fully qualified name of the DBI method, including
+B<DBIprofile_MethodClass>
+
+Use the fully qualified name of the DBI method, including
 the package, that the profile sample relates to. This shows you
 where the method was implemented. For example:
 
@@ -275,22 +258,50 @@ inherited the selectrow_arrayref method provided by the DBI.
 
 But you'll note that there is only one call to
 DBD::_::db::selectrow_arrayref but another 99 to
-DBD::mysql::db::selectrow_arrayref. That's because after the first
-call Perl has cached the method to speed up method calls.
-You may also see some names begin with an asterix ('C<*>').
-Both of these effects are subject to change in later releases.
+DBD::mysql::db::selectrow_arrayref. Currently the first
+call Pern't record the true location. That may change.
 
+B<DBIprofile_Caller>
+
+Use a string showing the filename and line number of the code calling the
+method, and the filename and line number of the code that called that.
+The content and format of the string may change.
+
+=item Code Reference
+
+Not yet implemented.
+
+The subroutine is passed the DBI method name and the handle it was called on.
+It should return a list of values to used at this point in the Path.  If it
+returns an empty list then the method call is not profiled.
+
+=item Attribute Specifier
+
+A string enclosed in braces, such as 'C<{Username}>', specifies that the current
+value of the corresponding database handle attribute should be used at that
+point in the Path.
+
+=item Other Values
+
+Any other values are stringified and used literally.
+
+(References, and values that begin with punctuation characters are reserved.)
 
 =back
 
-Other magic cookie values may be added in the future.
+Only the first 100 elements in Path are used.
+
+If the value of Path is anything other than an array reference,
+it is treated as if it was:
+
+	[ DBI::Profile::DBIprofile_Statement ]
 
 
 =head1 REPORTING
 
 =head2 Report Format
 
-The current profile data can be formatted and output using
+The current accumulated profile data can be formatted and output using
 
     print $h->{Profile}->format;
 
@@ -302,7 +313,7 @@ you can do:
 
 The default results format looks like this:
 
-  DBI::Profile: 0.001015s (5 calls) programname @ YYYY-MM-DD HH:MM:SS
+  DBI::Profile: 0.001015s 42.7% (5 calls) programname @ YYYY-MM-DD HH:MM:SS
   '' =>
       0.000024s / 2 = 0.000012s avg (first 0.000015s, min 0.000009s, max 0.000015s)
   'SELECT mode,size,name FROM table' =>
@@ -315,7 +326,8 @@ run, then a formated version of the profile data tree.
 If the results are being formated when the perl process is exiting
 (which is usually the case when the DBI_PROFILE environment variable
 is used) then the percentage of time the process spent inside the
-DBI is also shown.
+DBI is also shown. If the process is not exiting then the percentage is
+calculated using the time between the first and last call to the DBI.
 
 In the example above the paths in the tree are only one level deep and
 use the Statement text as the value (that's the default behaviour).
@@ -380,6 +392,52 @@ of their parent.  So if profiling is enabled for a database handle
 then by default the statement handles created from it all contribute
 to the same merged profile data tree.
 
+
+=head1 CUSTOM DATA MANIPULATION
+
+Recall that C<$h->{Profile}->{Data}> is a reference to the collected data.
+Either to a 'leaf' array (when the Path is empty, i.e., DBI_PROFILE env var is 1),
+or a reference to hash containing values that are either further hash
+references or leaf array references.
+
+Sometimes it's useful to be able to summarise some or all of the collected data.
+The dbi_profile_merge() function can be used to merge leaf node values.
+
+=head2 dbi_profile_merge
+
+  use DBI qw(dbi_profile_merge);
+
+  $time_in_dbi = dbi_profile_merge(my $totals=[], @$leaves);
+
+Merges profile data node. Given a reference to a destination array, and zero or
+more references to profile data, merges the profile data into the destination array.
+For example:
+
+  $time_in_dbi = dbi_profile_merge(
+      my $totals=[],
+      [ 10, 0.51, 0.11, 0.01, 0.22, 1023110000, 1023110010 ],
+      [ 15, 0.42, 0.12, 0.02, 0.23, 1023110005, 1023110009 ],
+  );        
+
+$totals will then contain
+
+  [ 25, 0.93, 0.11, 0.01, 0.23, 1023110000, 1023110010 ]
+
+and $time_in_dbi will be 0.93;
+
+For example, to get the time spent 'inside' the DBI during an http request,
+your logging code run at the end of the request (i.e. mod_perl LogHandler)
+could use:
+
+  my $time_in_dbi = 0;
+  if (my $Profile = $dbh->{Profile}) { # if DBI profiling is enabled
+      $time_in_dbi = dbi_profile_merge(my $total=[], $Profile->{Data});
+      $Profile->{Data} = {}; # reset the profile data
+  }
+
+If profiling has been enabled then $time_in_dbi will hold the time spent inside
+the DBI for that handle (and any other handles that share the same profile data)
+since the last request.
 
 =head1 CUSTOM DATA COLLECTION
 
@@ -451,6 +509,9 @@ DBI->connect is counted if the DBI_PROFILE environment variable is set.
 
 Time spent fetching tied variables, $DBI::errstr, is counted.
 
+Time spent in FETCH for $h->{Profile} is not counted, so getting the profile
+data doesn't alter it.
+
 DBI::PurePerl does not support profiling (though it could in theory).
 
 A few platforms don't support the gettimeofday() high resolution
@@ -487,6 +548,7 @@ $VERSION = sprintf "%d.%02d", '$Revision: 1.7 $ ' =~ /(\d+)\.(\d+)/;
     DBIprofile_Statement
     DBIprofile_MethodName
     DBIprofile_MethodClass
+    DBIprofile_Caller
     dbi_profile
     dbi_profile_merge
     dbi_time
@@ -498,6 +560,7 @@ $VERSION = sprintf "%d.%02d", '$Revision: 1.7 $ ' =~ /(\d+)\.(\d+)/;
 use constant DBIprofile_Statement	=> -2100000001;
 use constant DBIprofile_MethodName	=> -2100000002;
 use constant DBIprofile_MethodClass	=> -2100000003;
+use constant DBIprofile_Caller  	=> -2100000004;
 
 $ON_DESTROY_DUMP = sub { DBI->trace_msg(shift, 0) };
 
@@ -538,6 +601,7 @@ sub _auto_new {
 	push @Path, DBIprofile_Statement	if $path & 0x02;
 	push @Path, DBIprofile_MethodName	if $path & 0x04;
 	push @Path, DBIprofile_MethodClass	if $path & 0x08;
+	push @Path, DBIprofile_Caller	  	if $path & 0x10;
 	@Path = reverse @Path if $reverse;
     } else {
         # default Path
@@ -570,13 +634,12 @@ sub format {
 
     if (@$leaves) {
 	dbi_profile_merge(my $totals=[], @$leaves);
-	my ($count, $dbi_time) = @$totals;
+	my ($count, $time_in_dbi, undef, undef, undef, $t1, $t2) = @$totals;
 	(my $progname = $0) =~ s:.*/::;
 	if ($count) {
-	    $prologue .= sprintf "%fs ", $dbi_time;
-	    my $perl_time = dbi_time() - $^T;
-	    $prologue .= sprintf "%.2f%% ", $dbi_time/$perl_time*100
-		if $DBI::PERL_ENDING && $perl_time;
+	    $prologue .= sprintf "%fs ", $time_in_dbi;
+	    my $perl_time = ($DBI::PERL_ENDING) ? time_in_dbi() - $^T : $t2-$t1;
+	    $prologue .= sprintf "%.2f%% ", $time_in_dbi/$perl_time*100 if $perl_time;
 	    my @lt = localtime(time);
 	    my $ts = sprintf "%d-%02d-%02d %02d:%02d:%02d",
 		1900+$lt[5], $lt[4]+1, @lt[3,2,1,0];

@@ -1,4 +1,4 @@
-# $Id: ANSI.pm,v 1.3 2003/02/26 17:56:01 timbo Exp $
+# $Id: ANSI.pm 2488 2006-02-07 22:24:43Z timbo $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #
@@ -12,7 +12,7 @@ package DBI::Const::GetInfo::ANSI;
 
 =head1 NAME
 
- DBI::Const::GetInfo::ANSI - ISO/IEC SQL/CLI Constants for GetInfo
+DBI::Const::GetInfo::ANSI - ISO/IEC SQL/CLI Constants for GetInfo
 
 =head1 SYNOPSIS
 

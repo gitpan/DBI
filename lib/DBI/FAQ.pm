@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm,v 11.2 2001/08/24 22:10:44 timbo Exp $
+### $Id: FAQ.pm 2488 2006-02-07 22:24:43Z timbo $
 ###
 ### DBI Frequently Asked Questions POD
 ###

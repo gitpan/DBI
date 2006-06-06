@@ -1,4 +1,4 @@
-# $Id: GetInfoReturn.pm,v 1.4 2003/02/26 17:56:01 timbo Exp $
+# $Id: GetInfoReturn.pm 2488 2006-02-07 22:24:43Z timbo $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #
@@ -23,7 +23,7 @@ $VERSION = sprintf "%d.%02d", '$Revision: 1.4 $ ' =~ /(\d+)\.(\d+)/;
 
 =head1 NAME
 
- DBI::Const::GetInfoReturn - Data and functions for describing GetInfo results
+DBI::Const::GetInfoReturn - Data and functions for describing GetInfo results
 
 =head1 SYNOPSIS
 
