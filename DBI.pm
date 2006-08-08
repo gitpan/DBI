@@ -1,4 +1,4 @@
-# $Id: DBI.pm 6475 2006-06-06 09:49:10Z timbo $
+# $Id: DBI.pm 6755 2006-08-06 21:21:03Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2004  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.51"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.52"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,7 +120,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.51.
+This is the DBI specification that corresponds to the DBI version 1.52.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -280,7 +280,7 @@ if ($INC{'Apache/DBI.pm'} && $ENV{MOD_PERL}) {
 my $HAS_WEAKEN = eval { 
     require Scalar::Util;
     # this will croak() if this Scalar::Util doesn't have a working weaken().
-    Scalar::Util::weaken( \my $test ); 
+    Scalar::Util::weaken( \my $test ); # same test as in t/72childhandles.t
     1;
 };
 
@@ -343,6 +343,7 @@ my $dbd_prefix_registry = {
   tmplss_  => { class => 'DBD::TemplateSS',	},
   tuber_   => { class => 'DBD::Tuber',		},
   uni_     => { class => 'DBD::Unify',		},
+  wmi_     => { class => 'DBD::WMI',		},
   xbase_   => { class => 'DBD::XBase',		},
   xl_      => { class => 'DBD::Excel',		},
   yaswi_   => { class => 'DBD::Yaswi',		},
@@ -423,6 +424,7 @@ my $keeperr = { O=>0x0004 };
 	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200|0x0800 },
 	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200 },
 	foreign_key_info=> { U =>[7,8,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table [, \%attr ]' ], O=>0x2200|0x0800 },
+	statistics_info => { U =>[6,7,'$catalog, $schema, $table, $unique_only, $quick, [, \%attr ]' ], O=>0x2200|0x0800 },
 	type_info_all	=> { U =>[1,1], O=>0x2200|0x0800 },
 	type_info	=> { U =>[1,2,'$data_type'], O=>0x2200 },
 	get_info	=> { U =>[2,2,'$info_type'], O=>0x2200|0x0800 },
@@ -436,8 +438,8 @@ my $keeperr = { O=>0x0004 };
 
 	bind_param_array  => { U =>[3,4,'$parameter, $var [, \%attr]'] },
 	bind_param_inout_array => { U =>[4,5,'$parameter, \\@var, $maxlen, [, \%attr]'] },
-	execute_array     => { U =>[2,0,'\\%attribs [, @args]'],         O=>0x1040 },
-	execute_for_fetch => { U =>[2,3,'$fetch_sub [, $tuple_status]'], O=>0x1040 },
+	execute_array     => { U =>[2,0,'\\%attribs [, @args]'],         O=>0x1040|0x4000 },
+	execute_for_fetch => { U =>[2,3,'$fetch_sub [, $tuple_status]'], O=>0x1040|0x4000 },
 
 	fetch    	  => undef, # alias for fetchrow_arrayref
 	fetchrow_arrayref => undef,
@@ -1930,7 +1932,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		push @$tuple_status, [ $err, $errstr_cache{$err} ||= $sth->errstr, $sth->state ];
 	    }
 	}
-	return ($err_count) ? undef : scalar(@$tuple_status)||"0E0";
+        my $tuples = @$tuple_status;
+        return $sth->set_err(1, "executing $tuples generated $err_count errors")
+            if $err_count;
+	return scalar(@$tuple_status) || "0E0";
     }
 
 
@@ -2749,9 +2754,14 @@ directories. Passing a true value for C<$quiet> will inhibit the warning.
 
   %drivers = DBI->installed_drivers();
 
-Returns a list of driver name and driver handle pairs for all
-installed drivers. The driver name does not include the 'DBD::'
-prefix. Added in DBI 1.49.
+Returns a list of driver name and driver handle pairs for all drivers
+'installed' (loaded) into the current process.  The driver name does not
+include the 'DBD::' prefix.
+
+To get a list of all drivers available in your perl instalation you can use
+L</available_drivers>.
+
+Added in DBI 1.49.
 
 =item C<installed_versions>
 
@@ -3341,9 +3351,11 @@ statement handles.
 The ChildHandles attribute contains a reference to an array of all the
 handles created by this handle which are still accessible.  The
 contents of the array are weak-refs and will become undef when the
-handle goes out of scope.  C<ChildHandles> returns undef if your perl version
-does not support weak references (check the L<Scalar::Util|Scalar::Util>
-module).  The referenced array returned should be treated as read-only.
+handle goes out of scope.
+
+C<ChildHandles> returns undef if your perl version does not support weak
+references (check the L<Scalar::Util|Scalar::Util> module).  The referenced
+array returned should be treated as read-only.
 
 For example, to enumerate all driver handles, database handles and
 statement handles:
@@ -4044,6 +4056,10 @@ hash. That can be done simple using:
       print "Employee: $emp->{ename}\n";
   }
 
+Or, to fetch into an array instead of an array ref:
+
+  @result = @{ $dbh->selectall_arrayref($sql, { Slice => {} }) };
+
 See L</fetchall_arrayref> method for more details.
   
 =item C<selectall_hashref>
@@ -4720,6 +4736,99 @@ alternate) keys in the result set (as specified by SQL/CLI).
 The value of this column is UNIQUE if the foreign key references an alternate
 key and PRIMARY if the foreign key references a primary key, or it
 may be undefined if the driver doesn't have access to the information.
+
+See also L</"Catalog Methods"> and L</"Standards Reference Information">.
+
+=item C<statistics_info>
+
+B<Warning:> This method is experimental and may change.
+
+  $sth = $dbh->statistics_info( $catalog, $schema, $table, $unique_only, $quick );
+
+Returns an active statement handle that can be used to fetch statistical
+information about a table and its indexes.
+
+The arguments don't accept search patterns (unlike L</table_info>).
+
+If the boolean argument $unique_only is true, only UNIQUE indexes will be
+returned in the result set, otherwise all indexes will be returned.
+
+If the boolean argument $quick is set, the actual statistical information
+columns (CARDINALITY and PAGES) will only be returned if they are readily
+available from the server, and might not be current.  Some databases may
+return stale statistics or no statistics at all with this flag set.
+
+For example:
+
+  $sth = $dbh->statistics_info( undef, $user, 'foo', 1, 1 );
+  $data = $sth->fetchall_arrayref;
+
+The statement handle will return at most one row per column name per index,
+plus at most one row for the entire table itself, ordered by NON_UNIQUE, TYPE,
+INDEX_QUALIFIER, INDEX_NAME, and ORDINAL_POSITION.
+
+Note: The support for the selection criteria, such as $catalog, is
+driver specific.  If the driver doesn't support catalogs and/or
+schemas, it may ignore these criteria.
+
+The statement handle returned has at least the following fields in the
+order shown below. Other fields, after these, may also be present.
+
+B<TABLE_CAT>: The catalog identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+which is often the case.  This field is empty if not applicable to the
+table.
+
+B<TABLE_SCHEM>: The schema identifier.
+This field is NULL (C<undef>) if not applicable to the data source,
+and empty if not applicable to the table.
+
+B<TABLE_NAME>: The table identifier.
+
+B<NON_UNIQUE>: Unique index indicator.
+Returns 0 for unique indexes, 1 for non-unique indexes
+
+B<INDEX_QUALIFIER>: Index qualifier identifier.
+The identifier that is used to qualify the index name when doing a
+C<DROP INDEX>; NULL (C<undef>) is returned if an index qualifier is not
+supported by the data source.
+If a non-NULL (defined) value is returned in this column, it must be used
+to qualify the index name on a C<DROP INDEX> statement; otherwise,
+the TABLE_SCHEM should be used to qualify the index name.
+
+B<INDEX_NAME>: The index identifier.
+
+B<TYPE>: The type of information being returned.  Can be any of the
+following values: 'table', 'btree', 'clustered', 'content', 'hashed',
+or 'other'.
+
+In the case that this field is 'table', all fields
+other than TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TYPE,
+CARDINALITY, and PAGES will be NULL (C<undef>).
+
+B<ORDINAL_POSITION>: Column sequence number (starting with 1).
+
+B<COLUMN_NAME>: The column identifier.
+
+B<ASC_OR_DESC>: Column sort sequence.
+C<A> for Ascending, C<D> for Descending, or NULL (C<undef>) if
+not supported for this index.
+
+B<CARDINALITY>: Cardinality of the table or index.
+For indexes, this is the number of unique values in the index.
+For tables, this is the number of rows in the table.
+If not supported, the value will be NULL (C<undef>).
+
+B<PAGES>: Number of storage pages used by this table or index.
+If not supported, the value will be NULL (C<undef>).
+
+B<FILTER_CONDITION>: The index filter condition as a string.
+If the index is not a filtered index, or it cannot be determined
+whether the index is a filtered index, this value is NULL (C<undef>).
+If the index is a filtered index, but the filter condition
+cannot be determined, this value is the empty string C<''>.
+Otherwise it will be the literal filter condition as a string,
+such as C<SALARY <= 4500>.
 
 See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
@@ -6307,6 +6416,7 @@ for a small but important portion of that metadata:
   foreign_key_info
   primary_key_info
   table_info
+  statistics_info
 
 All catalog methods accept arguments in order to restrict the result sets.
 Passing C<undef> to an optional argument does not constrain the search for
@@ -7058,6 +7168,7 @@ standard:
  primary_key_info  SQLPrimaryKeys    Page 254
  table_info        SQLTables         Page 294
  type_info         SQLGetTypeInfo    Page 239
+ statistics_info   SQLStatistics
 
 For example, for ODBC information on SQLColumns you'd visit:
 

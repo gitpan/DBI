@@ -29,7 +29,7 @@ package DBD::File;
 
 use vars qw(@ISA $VERSION $drh $valid_attrs);
 
-$VERSION = '0.33';
+$VERSION = '0.35';
 
 $drh = undef;		# holds driver handle(s) once initialised
 
@@ -389,7 +389,7 @@ sub quote ($$;$) {
 	 $type == DBI::SQL_FLOAT()     ||
 	 $type == DBI::SQL_REAL()      ||
 	 $type == DBI::SQL_DOUBLE()    ||
-	 $type == DBI::TINYINT())) {
+	 $type == DBI::SQL_TINYINT())) {
 	return $str;
     }
     if (!defined($str)) { return "NULL" }

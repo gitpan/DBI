@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 6475 2006-06-06 09:49:10Z timbo $
+ * $Id: DBI.xs 6734 2006-07-30 22:42:07Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -118,6 +118,7 @@ typedef struct dbi_ima_st {
 #define IMA_NOT_FOUND_OKAY   	0x0800	/* no error if not found	*/
 #define IMA_EXECUTE	   	0x1000	/* do/execute: DBIcf_Executed	*/
 #define IMA_SHOW_ERR_STMT   	0x2000	/* dbh meth relates to Statement*/
+#define IMA_HIDE_ERR_PARAMVALUES 0x4000	/* ParamValues are not relevant */
 
 #define DBIc_STATE_adjust(imp_xxh, state)				 \
     (SvOK(state)	/* SQLSTATE is implemented by driver   */	 \
@@ -171,7 +172,7 @@ typedef struct {
 	dPERINTERP_SV; dPERINTERP_PTR(PERINTERP_t *, PERINTERP)
 #   define INIT_PERINTERP \
 	dPERINTERP;                                          \
-	Newz(0,PERINTERP,1,PERINTERP_t);                     \
+	PERINTERP = malloc_using_sv(sizeof(PERINTERP_t));    \
 	sv_setiv(perinterp_sv, PTR2IV(PERINTERP))
 
 #   undef DBIS
@@ -185,6 +186,27 @@ typedef struct {
 #endif
 
 #define g_dbi_last_h            (PERINTERP->dbi_last_h)
+
+/* --- */
+
+static void *
+malloc_using_sv(STRLEN len)
+{
+    dTHX;
+    SV *sv = newSV(len);
+    void *p = SvPVX(sv);
+    memzero(p, len);
+    return p;
+}
+
+static char *
+savepv_using_sv(char *str)
+{
+    char *buf = malloc_using_sv(strlen(str));
+    strcpy(buf, str);
+    return buf;
+}
+
 
 /* --- */
 
@@ -215,7 +237,7 @@ dbi_bootinit(dbistate_t * parent_dbis)
     dTHX;	
     INIT_PERINTERP;
 
-    Newz(dummy, DBIS, 1, dbistate_t);
+    DBIS = (struct dbistate_st*)malloc_using_sv(sizeof(struct dbistate_st));
 
     /* store version and size so we can spot DBI/DBD version mismatch	*/
     DBIS->check_version = check_version;
@@ -1046,6 +1068,7 @@ dbih_setup_handle(SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
 	DBIc_ATTR(imp, Errstr)   = COPY_PARENT("Errstr",1,0);	/* scalar ref	*/
 	DBIc_ATTR(imp, TraceLevel)=COPY_PARENT("TraceLevel",0,0);/* scalar (int)*/
 	DBIc_ATTR(imp, FetchHashKeyName) = COPY_PARENT("FetchHashKeyName",0,0);	/* scalar ref */
+
 	if (parent) {
 	    dbih_setup_attrib(h,imp,"HandleSetErr",parent,0,1);
 	    dbih_setup_attrib(h,imp,"HandleError",parent,0,1);
@@ -1058,10 +1081,13 @@ dbih_setup_handle(SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
 		AV *av;
 		/* add weakref to new (outer) handle into parents ChildHandles array */
 		tmp_svp = hv_fetch((HV*)SvRV(parent), "ChildHandles", 12, 1);
-		if (!SvROK(*tmp_svp))
-		    sv_setsv(*tmp_svp, (SV*)newRV_noinc((SV*)newAV()));
+		if (!SvROK(*tmp_svp)) {
+		    SV *ChildHandles_rvav = newRV_noinc((SV*)newAV());
+		    sv_setsv(*tmp_svp, ChildHandles_rvav);
+		    sv_free(ChildHandles_rvav);
+                }
 		av = (AV*)SvRV(*tmp_svp);
-		av_push(av, (SV*)sv_rvweaken(newRV((SV*)SvRV(orv))));
+                av_push(av, (SV*)sv_rvweaken(newRV((SV*)SvRV(orv))));
 		if (av_len(av) % 120 == 0) {
 		    /* time to do some housekeeping to remove dead handles */
 		    I32 i = av_len(av); /* 0 = 1 element */
@@ -1069,6 +1095,8 @@ dbih_setup_handle(SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
 			SV *sv = av_shift(av);
 			if (SvOK(sv))
 			    av_push(av, sv);
+			else 
+			   sv_free(sv);		/* keep it leak-free by Doru Petrescu pdoru.dbi@from.ro */
 		    }
 		}
 	    }
@@ -1540,7 +1568,7 @@ dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
         cacheit = 1; /* just save it in the hash */
     }
     else if (strEQ(key, "Profile")) {
-	static const char dbi_class[] = "DBI::Profile";
+	static const char profile_class[] = "DBI::Profile";
 	if (on && (!SvROK(valuesv) || (SvTYPE(SvRV(valuesv)) != SVt_PVHV)) ) {
 	    /* not a hash ref so use DBI::Profile to work out what to do */
 	    dTHR;
@@ -1550,17 +1578,17 @@ dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
 	    perl_require_pv("DBI/Profile.pm");
 	    if (SvTRUE(ERRSV)) {
 		STRLEN lna;
-		warn("Can't load %s: %s", dbi_class, SvPV(ERRSV,lna));
+		warn("Can't load %s: %s", profile_class, SvPV(ERRSV,lna));
 		valuesv = &sv_undef;
 	    }
 	    else {
 		PUSHMARK(SP);
-		XPUSHs(sv_2mortal(newSVpv(dbi_class,0)));
+		XPUSHs(sv_2mortal(newSVpv(profile_class,0)));
 		XPUSHs(valuesv);
 		PUTBACK;
 		returns = perl_call_method("_auto_new", G_SCALAR);
 		if (returns != 1)
-		    croak("_auto_new");
+		    croak("%s _auto_new", profile_class);
 		SPAGAIN;
 		valuesv = POPs;
 		PUTBACK;
@@ -1570,8 +1598,8 @@ dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
 	if (on && !sv_isobject(valuesv)) {
 	    /* not blessed already - so default to DBI::Profile */
 	    HV *stash;
-	    perl_require_pv(dbi_class);
-	    stash = gv_stashpv(dbi_class, GV_ADDWARN);
+	    perl_require_pv(profile_class);
+	    stash = gv_stashpv(profile_class, GV_ADDWARN);
 	    sv_bless(valuesv, stash);
 	}
 	DBIc_set(imp_xxh,DBIcf_Profile, on);
@@ -2074,8 +2102,8 @@ dbi_dopoptosub_at(PERL_CONTEXT *cxstk, I32 startingblock)
 }
 
 
-static char *
-dbi_caller(long *line)
+static COP *
+dbi_caller_cop()
 {
     dTHX;
     register I32 cxix;
@@ -2084,7 +2112,6 @@ dbi_caller(long *line)
     PERL_SI *top_si = PL_curstackinfo;
     char *stashname;
 
-    *line = -1;
     for ( cxix = dbi_dopoptosub_at(ccstack, cxstack_ix) ;; cxix = dbi_dopoptosub_at(ccstack, cxix - 1)) {
 	/* we may be in a higher stacklevel, so dig down deeper */
 	while (cxix < 0 && top_si->si_type != PERLSI_MAIN) {
@@ -2101,50 +2128,53 @@ dbi_caller(long *line)
 	stashname = CopSTASHPV(cx->blk_oldcop);
 	if (!stashname)
 	    continue;
-	if (!(stashname[0] == 'D'
-	    && stashname[1] == 'B'
-	    && strchr("DI", stashname[2])
-	    && (!stashname[3] || (stashname[3] == ':' && stashname[4] == ':')))) 
+	if (!(stashname[0] == 'D' && stashname[1] == 'B'
+                && strchr("DI", stashname[2])
+                    && (!stashname[3] || (stashname[3] == ':' && stashname[4] == ':')))) 
 	{
-	    STRLEN len;
-	    *line = (I32)CopLINE(cx->blk_oldcop);
-	    return SvPV(GvSV(CopFILEGV(cx->blk_oldcop)), len);
+            return cx->blk_oldcop;
 	}
 	cxix = dbi_dopoptosub_at(ccstack, cxix - 1);
     }
     return NULL;
 }
 
+static void
+dbi_caller_string(SV *buf, COP *cop, char *prefix, char *suffix, int show_line, int show_caller, int show_path)
+{
+    dTHX;
+    STRLEN len;
+    long  line = CopLINE(cop);
+    char *file = SvPV(GvSV(CopFILEGV(cop)), len);
+    if (!show_path) {
+        char *sep;
+        if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
+            file = sep+1;
+    }
+    if (show_line) {
+        sv_catpvf(buf, "%s%s line %ld", (prefix) ? prefix : "", file, line);
+    }
+    else {
+        sv_catpvf(buf, "%s%s",          (prefix) ? prefix : "", file);
+    }
+}
 
 static char *
-log_where(SV *buf, int append, char *prefix, char *suffix, int show_caller, int show_path)
+log_where(SV *buf, int append, char *prefix, char *suffix, int show_line, int show_caller, int show_path)
 {
     dTHX;
     dTHR;
-    if (!buf) {
-	buf = sv_2mortal(newSV(80));
-	sv_setpv(buf,"");
-    }
-    else
-    if (!append)
+    if (!buf)
+	buf = sv_2mortal(newSVpv("",0));
+    else if (!append)
 	sv_setpv(buf,"");
     if (CopLINE(curcop)) {
-	STRLEN len;
-	long  near_line = CopLINE(curcop);
-	char *near_file = SvPV(GvSV(CopFILEGV(curcop)), len);
-	char *file = near_file;
-	if (!show_path) {
-	    char *sep;
-	    if ( (sep=strrchr(file,'/')) || (sep=strrchr(file,'\\')))
-		file = sep+1;
-	}
-	sv_catpvf(buf, "%s%s line %ld", (prefix) ? prefix : "", file, near_line);
-
-	if (show_caller) {
-	    long far_line;
-	    char *far_file = dbi_caller(&far_line);
-	    if (far_file && !(far_line==near_line && strEQ(far_file,near_file)) )
-		sv_catpvf(buf, " via %s line %ld", far_file, far_line);
+        COP *cop;
+        dbi_caller_string(buf, curcop, prefix, suffix, show_line, show_caller, show_path);
+	if (show_caller && (cop = dbi_caller_cop())) {
+            SV *via = sv_2mortal(newSVpv("",0));
+            dbi_caller_string(via, cop, prefix, suffix, show_line, show_caller, show_path);
+            sv_catpvf(buf, " via %s", SvPV_nolen(via));
 	}
     }
     if (dirty)
@@ -2199,8 +2229,30 @@ dbi_time() {
 # endif
 }
 
+
+static SV *
+_profile_next_node(SV *node, const char *name)
+{
+    /* step one level down profile Data tree and auto-vivify if required */
+    dTHX;
+    SV *orig_node = node;
+    if (SvROK(node))
+        node = SvRV(node);
+    if (SvTYPE(node) != SVt_PVHV) {
+        HV *hv = newHV();
+        if (SvOK(node))
+            warn("Profile data element %s replaced with new hash ref (for %s)",
+                neatsvpv(orig_node,0), name);
+        sv_setsv(node, newRV_noinc((SV*)hv));
+        node = (SV*)hv;
+    }
+    node = *hv_fetch((HV*)node, name, strlen(name), 1);
+    return node;
+}
+
+
 static void
-dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double t1, double t2)
+dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, double t1, double t2)
 {
 #define DBIprof_MAX_PATH_ELEM	100
 #define DBIprof_COUNT		0
@@ -2213,12 +2265,13 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double
 #define DBIprof_max_index	6
     dTHX;
     double ti = t2 - t1;
-    const char *path[DBIprof_MAX_PATH_ELEM+1];
-    int idx = -1;
+    int src_idx = 0;
     HV *dbh_outer_hv = NULL;
     HV *dbh_inner_hv = NULL;
+    char *statement_pv;
     SV *profile;
     SV *tmp;
+    SV *dest_node;
     AV *av;
     HV *h_hv;
 
@@ -2244,17 +2297,20 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double
 	return;
     }
 
-    if (!statement) {
+    /* statement_sv: undef = use $h->{Statement}, "" (&sv_no) = use empty string */
+
+    if (!SvOK(statement_sv)) {
 	SV **psv = hv_fetch(h_hv, "Statement", 9, 0);
-	statement = (psv && SvOK(*psv)) ? SvPV_nolen(*psv) : "";
+	statement_sv = (psv && SvOK(*psv)) ? *psv : &sv_no;
     }
+    statement_pv = SvPV_nolen(statement_sv);
+
     if (DBIc_DBISTATE(imp_xxh)->debug >= 4)
 	PerlIO_printf(DBIc_LOGPIO(imp_xxh), "dbi_profile %s %f q{%s}\n",
 		neatsvpv((SvTYPE(method)==SVt_PVCV) ? (SV*)CvGV(method) : method, 0),
-		ti, statement);
+		ti, neatsvpv(statement_sv,0));
 
-    idx = 0;
-    path[idx++] = "Data";
+    dest_node = _profile_next_node(profile, "Data");
 
     tmp = *hv_fetch((HV*)SvRV(profile), "Path", 4, 1);
     if (SvROK(tmp) && SvTYPE(SvRV(tmp))==SVt_PVAV) {
@@ -2262,55 +2318,94 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double
 	av = (AV*)SvRV(tmp);
 	len = av_len(av); /* -1=empty, 0=one element */
 
-	for ( ;(idx-1) <= len && idx < DBIprof_MAX_PATH_ELEM; ++idx) {
-	    SV *pathsv = AvARRAY(av)[idx-1];
-	    const char *p = "?";
+	while ( src_idx <= len ) {
+	    SV *pathsv = AvARRAY(av)[src_idx++];
 
-	    if (SvROK(tmp) && SvTYPE(SvRV(tmp))==SVt_PVCV) {
+	    if (SvROK(pathsv) && SvTYPE(SvRV(pathsv))==SVt_PVCV) {
 		/* call sub, use returned list of values as path */
-		/* if no values returned then don't save data	*/
-		warn("code ref in Path");
-		p = Nullch;
-	    }
-	    else if (looks_like_number(pathsv)) {
-		/* numbers are special-cases */
-		switch(SvIV(pathsv)) {	/* see lib/DBI/Profile.pm for magic numbers */
-		case -2100000001:	/* DBIprofile_Statement */
-		    p = statement;
-		    break;
-		case -2100000002:	/* DBIprofile_MethodName */
-		    p = (SvTYPE(method)==SVt_PVCV)
-			    ? GvNAME(CvGV(method))
-			    : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
-		    break;
-		case -2100000003:	/* DBIprofile_MethodClass */
-		    if (SvTYPE(method) == SVt_PVCV) {
-			p = SvPV_nolen((SV*)CvGV(method));
-		    }
-		    else if (isGV(method)) {
-			/* just using SvPV_nolen(method) sometimes causes an error:	*/
-			/* "Can't coerce GLOB to string" so we use gv_efullname()	*/
-			SV *tmpsv = sv_2mortal(newSVpv("",0));
-			gv_efullname(tmpsv, (GV*)method);
-			p = SvPV_nolen(tmpsv);
-			if (*p == '*') ++p; /* skip past leading '*' glob sigil */
-		    }
-		    else {
-			p = SvPV_nolen(method);
-		    }
-		    break;
-		case -2100000004:	/* DBIprofile_Caller */
-		    p = log_where(0, 0, "", "", 1, 0);
-		    break;
-		default:
-		    p = SvPV_nolen(pathsv);
-		    break;
-		}
+                /* returning a ref to undef vetos this profile data */
+                dSP;
+                I32 ax;
+                SV *code_sv = SvRV(pathsv);
+                I32 items;
+                I32 item_idx;
+                char *method_pv = (SvTYPE(method)==SVt_PVCV)
+                    ? GvNAME(CvGV(method))
+                    : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
+                EXTEND(SP, 4);
+                PUSHMARK(SP);
+                PUSHs(h);   /* push inner handle, then others params */
+		PUSHs( sv_2mortal(newSVpv(method_pv,0)));
+                PUTBACK;
+                SAVE_DEFSV; /* local($_) = $statement */
+                DEFSV = statement_sv;
+                items = call_sv(code_sv, G_ARRAY);
+                SPAGAIN;
+                SP -= items ;
+                ax = (SP - PL_stack_base) + 1 ;
+                for (item_idx=0; item_idx < items; ++item_idx) {
+                    SV *item_sv = ST(item_idx);
+                    if (SvROK(item_sv)) {
+                        if (!SvOK(SvRV(item_sv)))
+                            items = -2; /* flag that we're rejecting this profile data */
+                        else /* other refs reserved */
+                            warn("Ignored ref returned by code ref in Profile Path");
+                        break;
+                    }
+                    dest_node = _profile_next_node(dest_node, SvPV_nolen(item_sv));
+                }
+                PUTBACK;
+                if (items == -2) /* this profile data was vetoed */
+                    return;
 	    }
 	    else if (SvOK(pathsv)) {
 		STRLEN len;
-		p = SvPV(pathsv,len);
-		if (p[0] == '{' && p[len-1] == '}') { /* treat as name of dbh attribute to use */
+                const char *p = SvPV(pathsv,len);
+		if (p[0] == '!') { /* special cases */
+                    if (p[1] == 'S' && strEQ(p, "!Statement")) {
+                        dest_node = _profile_next_node(dest_node, statement_pv);
+                    }
+                    else if (p[1] == 'M' && strEQ(p, "!MethodName")) {
+                        p = (SvTYPE(method)==SVt_PVCV)
+			    ? GvNAME(CvGV(method))
+			    : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
+                        dest_node = _profile_next_node(dest_node, p);
+                    }
+                    else if (p[1] == 'M' && strEQ(p, "!MethodClass")) {
+                        if (SvTYPE(method) == SVt_PVCV) {
+                            p = SvPV_nolen((SV*)CvGV(method));
+                        }
+                        else if (isGV(method)) {
+                            /* just using SvPV_nolen(method) sometimes causes an error:	*/
+                            /* "Can't coerce GLOB to string" so we use gv_efullname()	*/
+                            SV *tmpsv = sv_2mortal(newSVpv("",0));
+                            gv_efullname(tmpsv, (GV*)method);
+                            p = SvPV_nolen(tmpsv);
+                            if (*p == '*') ++p; /* skip past leading '*' glob sigil */
+                        }
+                        else {
+                            p = SvPV_nolen(method);
+                        }
+                        dest_node = _profile_next_node(dest_node, p);
+                    }
+                    else if (p[1] == 'F' && strEQ(p, "!File")) {
+                        dest_node = _profile_next_node(dest_node, log_where(0, 0, "", "", 0, 0, 0));
+                    }
+                    else if (p[1] == 'F' && strEQ(p, "!File2")) {
+                        dest_node = _profile_next_node(dest_node, log_where(0, 0, "", "", 0, 1, 0));
+                    }
+                    else if (p[1] == 'C' && strEQ(p, "!Caller")) {
+                        dest_node = _profile_next_node(dest_node, log_where(0, 0, "", "", 1, 0, 0));
+                    }
+                    else if (p[1] == 'C' && strEQ(p, "!Caller2")) {
+                        dest_node = _profile_next_node(dest_node, log_where(0, 0, "", "", 1, 1, 0));
+                    }
+                    else {
+                        warn("Unknown ! element in DBI::Profile Path: %s", p);
+                        dest_node = _profile_next_node(dest_node, p);
+                    }
+                }
+                else if (p[0] == '{' && p[len-1] == '}') { /* treat as name of dbh attribute to use */
 		    SV **attr_svp;
 		    if (!dbh_inner_hv) {	/* cache dbh handles the first time we need them */
 			imp_dbh_t *imp_dbh = (DBIc_TYPE(imp_xxh) <= DBIt_DB) ? (imp_dbh_t*)imp_xxh : (imp_dbh_t*)DBIc_PARENT_COM(imp_xxh);
@@ -2340,32 +2435,22 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double
 			p = "0"; /* catch &sv_no style special case */
 		    else
 			p = SvPV_nolen(*attr_svp);
+                    dest_node = _profile_next_node(dest_node, p);
 		}
+                else {
+                    dest_node = _profile_next_node(dest_node, p);
+                }
 	    }
-	    path[idx] = p;
+            /* else undef, so ignore */
 	}
     }
-    else { /* any bad Path value is treated as a Path of just Statement */
-	path[idx++] = statement;
+    else { /* a bad Path value is treated as a Path of just Statement */
+        dest_node = _profile_next_node(dest_node, statement_pv);
     }
-    path[idx++] = Nullch;
+
 
     /* this walk-down-the-tree code should be merged into the loop above */
-    tmp = profile;
-    for (idx=0; path[idx]; ++idx) {
-	SV *orig_tmp = tmp;
-	if (SvROK(tmp))
-	    tmp = SvRV(tmp);
-	if (SvTYPE(tmp) != SVt_PVHV) {
-	    HV *hv = newHV();
-	    if (SvOK(tmp))
-		warn("Profile data element %s replaced with new hash ref", neatsvpv(orig_tmp,0));
-	    sv_setsv(tmp, newRV_noinc((SV*)hv));
-	    tmp = (SV*)hv;
-	}
-	tmp = *hv_fetch((HV*)tmp, path[idx], strlen(path[idx]), 1);
-	/* warn("%d hv_fetch %s = %s", idx, path[idx], neatsvpv(tmp,0)); */
-    }
+    tmp = dest_node;
     if (!SvOK(tmp)) {
 	av = newAV();
 	sv_setsv(tmp, newRV_noinc((SV*)av));
@@ -2381,8 +2466,8 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, const char *statement, SV *method, double
 	if (SvROK(tmp))
 	    tmp = SvRV(tmp);
 	if (SvTYPE(tmp) != SVt_PVAV)
-	    croak("Invalid Profile data leaf element at depth %d: %s (type %d)",
-		    idx, neatsvpv(tmp,0), SvTYPE(tmp));
+	    croak("Invalid Profile data leaf element: %s (type %d)",
+		    neatsvpv(tmp,0), SvTYPE(tmp));
 	av = (AV*)tmp;
 	sv_inc( *av_fetch(av, DBIprof_COUNT, 1));
 	tmp = *av_fetch(av, DBIprof_TOTAL_TIME, 1);
@@ -2492,6 +2577,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     I32 trace_level = (trace_flags & DBIc_TRACE_LEVEL_MASK);
     int is_DESTROY;
     int is_FETCH;
+    int is_unrelated_to_Statement = 0;
     int keep_error = FALSE;
     UV  ErrCount = UV_MAX;
     int i, outitems;
@@ -2512,7 +2598,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    (dirty?'!':' '), meth_name, neatsvpv(h,0),
 	    (long)SvREFCNT(h), (SvROK(h) ? (long)SvREFCNT(SvRV(h)) : (long)-1),
 	    (long)items, (int)gimme, (long)ima_flags, (long)PerlProc_getpid());
-	PerlIO_puts(logfp, log_where(0, 0, " at ","\n", (trace_level >= 3), (trace_level >= 4)));
+	PerlIO_puts(logfp, log_where(0, 0, " at ","\n", 1, (trace_level >= 3), (trace_level >= 4)));
 	PerlIO_flush(logfp);
     }
 
@@ -2529,7 +2615,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     */
     if (SvROK(h) && SvRMAGICAL(SvRV(h)) && (mg=mg_find(SvRV(h),'P'))!=NULL) {
 
-        if (SvPVX(mg->mg_obj)==NULL) {  /* maybe global destruction */
+        if (mg->mg_obj==NULL || !SvOK(mg->mg_obj) || SvPVX(mg->mg_obj)==NULL) {  /* maybe global destruction */
             if (trace_level >= 3)
                 PerlIO_printf(DBILOGFP,
 		    "%c   <> %s for %s ignored (inner handle gone)\n",
@@ -2731,6 +2817,10 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    }
 	}
     }
+
+    is_unrelated_to_Statement = ( (DBIc_TYPE(imp_xxh) == DBIt_ST) ? 0
+                                : (DBIc_TYPE(imp_xxh) == DBIt_DR) ? 1
+                                : (ima_flags & IMA_UNRELATED_TO_STMT) );
 
     if (tainting && items > 1		      /* method call has args	*/
 	&& DBIc_is(imp_xxh, DBIcf_TaintIn)    /* taint checks requested	*/
@@ -3027,7 +3117,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    PerlIO_printf(logfp," (not implemented)");
 	/* XXX add flag to show pid here? */
 	/* add file and line number information */
-	PerlIO_puts(logfp, log_where(0, 0, " at ", "\n", (trace_level >= 3), (trace_level >= 4)));
+	PerlIO_puts(logfp, log_where(0, 0, " at ", "\n", 1, (trace_level >= 3), (trace_level >= 4)));
     skip_meth_return_trace:
 	PerlIO_flush(logfp);
     }
@@ -3130,20 +3220,22 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		neatsvpv(DBIc_ERR(imp_xxh),0), neatsvpv(DBIc_STATE(imp_xxh),0) );
 
 	if (    DBIc_has(imp_xxh, DBIcf_ShowErrorStatement)
+	    && !is_unrelated_to_Statement
 	    && (DBIc_TYPE(imp_xxh) == DBIt_ST || ima_flags & IMA_SHOW_ERR_STMT)
-	    && !(ima_flags & IMA_UNRELATED_TO_STMT) /* error unrelated to Statement */
 	    && (statement_svp = hv_fetch((HV*)SvRV(h), "Statement", 9, 0))
 	    &&  statement_svp && SvOK(*statement_svp)
 	) {
-	    SV **svp;
+	    SV **svp = 0;
 	    sv_catpv(msg, " [for Statement \"");
 	    sv_catsv(msg, *statement_svp);
 
 	    /* fetch from tied outer handle to trigger FETCH magic  */
 	    /* could add DBIcf_ShowErrorParams (default to on?)		*/
-	    svp = hv_fetch((HV*)DBIc_MY_H(imp_xxh),"ParamValues",11,FALSE);
-	    if (svp && SvMAGICAL(*svp))
-		mg_get(*svp); /* XXX may recurse, may croak. could use eval */
+            if (!(ima_flags & IMA_HIDE_ERR_PARAMVALUES)) {
+                svp = hv_fetch((HV*)DBIc_MY_H(imp_xxh),"ParamValues",11,FALSE);
+                if (svp && SvMAGICAL(*svp))
+                    mg_get(*svp); /* XXX may recurse, may croak. could use eval */
+            }
 	    if (svp && SvRV(*svp) && SvTYPE(SvRV(*svp)) == SVt_PVHV && HvKEYS(SvRV(*svp))>0 ) {
 		HV *bvhv = (HV*)SvRV(*svp);
 		SV *sv;
@@ -3211,8 +3303,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
 
 	if (profile_t1) { /* see also dbi_profile() call a few lines below */
-	    char *Statement = (ima_flags & IMA_UNRELATED_TO_STMT) ? "" : Nullch;
-	    dbi_profile(h, imp_xxh, Statement, imp_msv ? imp_msv : (SV*)cv,
+	    SV *statement_sv = (is_unrelated_to_Statement) ? &sv_no : &sv_undef;
+	    dbi_profile(h, imp_xxh, statement_sv, imp_msv ? imp_msv : (SV*)cv,
 		profile_t1, dbi_time());
 	}
 	if (is_warning) {
@@ -3227,8 +3319,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	}
     }
     else if (profile_t1) { /* see also dbi_profile() call a few lines above */
-	char *Statement = (ima_flags & IMA_UNRELATED_TO_STMT) ? "" : Nullch;
-	dbi_profile(h, imp_xxh, Statement, imp_msv ? imp_msv : (SV*)cv,
+        SV *statement_sv = (is_unrelated_to_Statement) ? &sv_no : &sv_undef;
+	dbi_profile(h, imp_xxh, statement_sv, imp_msv ? imp_msv : (SV*)cv,
 		profile_t1, dbi_time());
     }
 
@@ -3793,7 +3885,7 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
 	    ima->minargs = (U8)SvIV(*av_fetch(av, 0, 1));
 	    ima->maxargs = (U8)SvIV(*av_fetch(av, 1, 1));
 	    svp = av_fetch(av, 2, 0);
-	    ima->usage_msg  = savepv( (svp) ? SvPV(*svp,lna) : "");
+            ima->usage_msg = (svp) ? savepv_using_sv(SvPV(*svp, lna)) : "";
 	    ima->flags |= IMA_HAS_USAGE;
 	    if (trace_msg && DBIS_TRACE_LEVEL >= 11)
 		sv_catpvf(trace_msg, ",\n    usage: min %d, max %d, '%s'",
@@ -3886,11 +3978,9 @@ dbi_profile(h, statement, method, t1, t2)
     double t2
     CODE:
     D_imp_xxh(h);
-    STRLEN lna = 0;
     (void)cv;
-    dbi_profile(h, imp_xxh,
-	SvOK(statement) ? SvPV(statement,lna) : Nullch,
-	SvROK(method)   ? SvRV(method)        : method,
+    dbi_profile(h, imp_xxh, statement,
+	SvROK(method) ? SvRV(method) : method,
 	t1, t2
     );
     RETVAL = &sv_undef;
@@ -3993,7 +4083,7 @@ FETCH(sv)
     if (trace)
 	PerlIO_printf(DBILOGFP,"    <- $DBI::%s= %s\n", meth, neatsvpv(ST(0),0));
     if (profile_t1)
-	dbi_profile(DBI_LAST_HANDLE, imp_xxh, Nullch, (SV*)cv, profile_t1, dbi_time());
+	dbi_profile(DBI_LAST_HANDLE, imp_xxh, &sv_undef, (SV*)cv, profile_t1, dbi_time());
 
 
 MODULE = DBI   PACKAGE = DBD::_::db

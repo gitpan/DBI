@@ -18,6 +18,7 @@ dbiprof.PL
 dbiproxy.PL			Frontend for DBI::ProxyServer
 dbivport.h			DBI version portability macros (for drivers to copy)
 ex/perl_dbi_nulls_test.pl	A test script for forms of IS NULL qualification in SQL
+ex/profile.pl                   A test script for DBI::Profile
 lib/Bundle/DBI.pm		A bundle for automatic installation via CPAN.
 lib/DBD/DBM.pm			A driver for DBM files (uses DBD::File)
 lib/DBD/ExampleP.pm		A very simple example Driver module
@@ -36,6 +37,7 @@ lib/DBI/Profile.pm		Manage DBI usage profile data
 lib/DBI/ProfileData.pm
 lib/DBI/ProfileDumper.pm
 lib/DBI/ProfileDumper/Apache.pm
+lib/DBI/ProfileSubs.pm
 lib/DBI/ProxyServer.pm		The proxy drivers server
 lib/DBI/PurePerl.pm		A DBI.xs emulation in Perl
 lib/DBI/SQL/Nano.pm		A 'smaller than micro' SQL parser
@@ -59,7 +61,7 @@ t/30subclass.t
 t/40profile.t
 t/41prof_dump.t
 t/42prof_data.t
-t/43profenv.t
+t/43prof_env.t
 t/50dbm.t
 t/60preparse.t
 t/70callbacks.t

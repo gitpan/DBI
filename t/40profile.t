@@ -20,15 +20,19 @@ BEGIN {
     }
 }
 
-use Test::More tests => 36;
+use Test::More tests => 46;
 
 $Data::Dumper::Indent = 1;
 $Data::Dumper::Terse = 1;
 
 # log file to store profile results 
 my $LOG_FILE = "profile.log";
-DBI->trace(0, $LOG_FILE);
-END { 1 while unlink $LOG_FILE; }
+my $orig_dbi_debug = $DBI::dbi_debug;
+DBI->trace($DBI::dbi_debug, $LOG_FILE);
+END {
+    return if $orig_dbi_debug;
+    1 while unlink $LOG_FILE;
+}
 
 
 print "Test enabling the profile\n";
@@ -43,22 +47,26 @@ ok(!$dbh->{Profile} && !$ENV{DBI_PROFILE});
 $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
 $dbh->{Profile} = "4";
 is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ DBIprofile_MethodName ],
+	'Path' => [ '!MethodName' ],
 } => 'DBI::Profile';
 
 # using a package name
 $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
-$dbh->{Profile} = "DBI::Profile";
+$dbh->{Profile} = "/DBI::Profile";
 is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ DBIprofile_Statement ],
+	'Path' => [ ],
 } => 'DBI::Profile';
 
 # using a combined path and name
 $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
 $dbh->{Profile} = "20/DBI::Profile";
+is_deeply sanitize_tree($dbh->{Profile}), bless {
+	'Path' => [ '!MethodName', '!Caller2' ],
+} => 'DBI::Profile';
+
 $dbh->do("set foo=1"); my $line = __LINE__;
 is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ DBIprofile_MethodName, DBIprofile_Caller ],
+	'Path' => [ '!MethodName', '!Caller2' ],
 	'Data' => { 'do' => {
 		"40profile.t line $line" => [ 1, 0, 0, 0, 0, 0, 0 ]
 	} }
@@ -69,7 +77,7 @@ is_deeply sanitize_tree($dbh->{Profile}), bless {
 # can turn it on at connect
 $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1, Profile=>6 });
 is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ DBIprofile_Statement, DBIprofile_MethodName ],
+	'Path' => [ '!Statement', '!MethodName' ],
 	'Data' => {
 		'' => {
 			'FETCH' => [ 1, 0, 0, 0, 0, 0, 0 ],
@@ -82,7 +90,7 @@ print "dbi_profile\n";
 my $t1 = DBI::dbi_time;
 dbi_profile($dbh, "Hi, mom", "my_method_name", $t1, $t1 + 1);
 is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ DBIprofile_Statement, DBIprofile_MethodName ],
+	'Path' => [ '!Statement', '!MethodName' ],
 	'Data' => {
 		'' => {
 			'FETCH' => [ 1, 0, 0, 0, 0, 0, 0 ], # +0
@@ -151,7 +159,7 @@ ok($time1 <= $time2);
 my $tmp = sanitize_tree($dbh->{Profile});
 $tmp->{Data}{$sql}[0] = -1; # make test insensitive to local file count
 is_deeply $tmp, bless {
-	'Path' => [ DBIprofile_Statement ],
+	'Path' => [ '!Statement' ],
 	'Data' => {
 		''   => [ 3, 0, 0, 0, 0, 0, 0 ],
 		$sql => [ -1, 0, 0, 0, 0, 0, 0 ],
@@ -169,23 +177,23 @@ ok($output =~ /^DBI::Profile:/);
 ok($output =~ /\((\d+) calls\)/);
 ok($1 >= $count);
 
+# -----------------------------------------------------------------------------------
 
 # try statement and method name path
 $dbh = DBI->connect("dbi:ExampleP:", 'usrnam', '', {
     RaiseError => 1,
-    Profile => { Path => [ '{Username}', DBIprofile_Statement, 'foo', DBIprofile_MethodName ] }
+    Profile => { Path => [ '{Username}', '!Statement', 'foo', '!MethodName' ] }
 });
 $sql = "select name from .";
 $sth = $dbh->prepare($sql);
 $sth->execute();
-while ( my $hash = $sth->fetchrow_hashref ) {}
+$sth->fetchrow_hashref;
 undef $sth; # DESTROY
 
 $tmp = sanitize_tree($dbh->{Profile});
 # make test insentitive to number of local files
-$tmp->{Data}{usrnam}{'select name from .'}{foo}{fetchrow_hashref}[0] = -1;
 is_deeply $tmp, bless {
-    'Path' => [ '{Username}', DBIprofile_Statement, 'foo', DBIprofile_MethodName ],
+    'Path' => [ '{Username}', '!Statement', 'foo', '!MethodName' ],
     'Data' => {
 	'usrnam' => {
 	    '' => {
@@ -197,14 +205,114 @@ is_deeply $tmp, bless {
 	    'select name from .' => {
 		    'foo' => {
 			'execute' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'fetchrow_hashref' => [ -1, 0, 0, 0, 0, 0, 0 ],
+			'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
 			'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ]
+			'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                        # XXX finish shouldn't be profiled as it's not called explicitly
+                        # but currently the finish triggered by DESTROY does get profiled
+			'finish' => [ 1, 0, 0, 0, 0, 0, 0 ],
 		    },
 	    },
 	},
     },
 } => 'DBI::Profile';
+
+
+$dbh->{Profile}->{Path} = [ '!File', '!File2', '!Caller', '!Caller2' ];
+$dbh->{Profile}->{Data} = undef;
+
+my ($file, $line1, $line2) = (__FILE__, undef, undef);
+$file =~ s:.*/::;
+sub a_sub {
+    $sth = $dbh->prepare("select name from ."); $line2 = __LINE__;
+}
+a_sub(); $line1 = __LINE__;
+
+$tmp = sanitize_profile_data_nodes($dbh->{Profile}{Data});
+#warn Dumper($tmp);
+is_deeply $tmp, {
+  "$file" => {
+    "$file via $file" => {
+      "$file line $line2" => {
+        "$file line $line2 via $file line $line1" => [ 1, 0, 0, 0, 0, 0, 0 ]
+      }
+    }
+  }
+};
+
+
+$dbh->{Profile} = '&norm_std_n3'; # assign as string to get magic
+is_deeply $dbh->{Profile}{Path}, [
+    \&DBI::ProfileSubs::norm_std_n3
+];
+$dbh->{Profile}->{Data} = undef;
+$sql = qq{insert into foo20060726 (a,b) values (42,"foo")};
+dbi_profile($dbh, $sql, 'mymethod', 100000000, 100000002);
+$tmp = $dbh->{Profile}{Data};
+#warn Dumper($tmp);
+is_deeply $tmp, {
+    'insert into foo<N> (a,b) values (<N>,"<S>")' => [ 1, '2', '2', '2', '2', '100000000', '100000000' ]
+};
+
+
+# -----------------------------------------------------------------------------------
+
+print "testing code ref in Path\n";
+
+sub run_test1 {
+    my ($profile) = @_;
+    $dbh = DBI->connect("dbi:ExampleP:", 'usrnam', '', {
+        RaiseError => 1,
+        Profile => $profile,
+    });
+    $sql = "select name from .";
+    $sth = $dbh->prepare($sql);
+    $sth->execute();
+    $sth->fetchrow_hashref;
+    undef $sth; # DESTROY
+    return sanitize_profile_data_nodes($dbh->{Profile}{Data});
+}
+
+$tmp = run_test1( { Path => [ 'foo', sub { 'bar' }, 'baz' ] });
+is_deeply $tmp, { 'foo' => { 'bar' => { 'baz' => [ 8, 0,0,0,0,0,0 ] } } };
+
+$tmp = run_test1( { Path => [ 'foo', sub { 'ping','pong' } ] });
+is_deeply $tmp, { 'foo' => { 'ping' => { 'pong' => [ 8, 0,0,0,0,0,0 ] } } };
+
+$tmp = run_test1( { Path => [ 'foo', sub { \undef } ] });
+is_deeply $tmp, { 'foo' => undef }, 'should be vetoed';
+
+# check what code ref sees in $_
+$tmp = run_test1( { Path => [ sub { $_ } ] });
+is_deeply $tmp, {
+  '' => [ 3, 0, 0, 0, 0, 0, 0 ],
+  'select name from .' => [ 5, 0, 0, 0, 0, 0, 0 ]
+}, '$_ should contain statement';
+
+# check what code ref sees in @_
+$tmp = run_test1( { Path => [ sub { my ($h,$method) = @_; return (ref $h, $method) } ] });
+is_deeply $tmp, {
+  'DBI::db' => {
+    'FETCH'   => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'STORE'   => [ 2, 0, 0, 0, 0, 0, 0 ],
+  },
+  'DBI::st' => {
+    'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'execute' => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'finish'  => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
+  },
+}, 'should have @_ as keys';
+
+# check we can filter by method
+$tmp = run_test1( { Path => [ sub { return \undef unless $_[1] =~ /^fetch/; return $_[1] } ] });
+#warn Dumper($tmp);
+is_deeply $tmp, {
+    'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
+}, 'should be able to filter by method';
+
+# -----------------------------------------------------------------------------------
 
 print "dbi_profile_merge\n";
 my $total_time = dbi_profile_merge(
@@ -236,19 +344,20 @@ sub sanitize_tree {
     my $data = shift;
     return $data unless ref $data;
     $data = dclone($data);
-    my $tree = (exists $data->{Path} && exists $data->{Data}) ? $data->{Data} : $data;
-    _sanitize_node($_) for values %$tree;
+    sanitize_profile_data_nodes($data->{Data}) if $data->{Data};
     return $data;
 }
 
-sub _sanitize_node {
+sub sanitize_profile_data_nodes {
     my $node = shift;
     if (ref $node eq 'HASH') {
-        _sanitize_node($_) for values %$node;
+        sanitize_profile_data_nodes($_) for values %$node;
     }
     elsif (ref $node eq 'ARRAY') {
-	# sanitize the profile data node so tests
-	$_ = 0 for @{$node}[1..@$node-1]; # not 0
+        if (@$node == 7 and DBI::looks_like_number($node->[0])) {
+            # sanitize the profile data node to simplify tests
+            $_ = 0 for @{$node}[1..@$node-1]; # not 0
+        }
     }
-    return;
+    return $node;
 }

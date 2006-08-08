@@ -2,7 +2,7 @@
 
 use strict;
 
-use Test::More tests => 50;
+use Test::More tests => 52;
 
 ## ----------------------------------------------------------------------------
 ## 15array.t
@@ -15,11 +15,11 @@ BEGIN {
 }
 
 # create a database handle
-my $dbh = DBI->connect("dbi:Sponge:dummy", '', '', 
-					{ 
-						RaiseError=>1, 
-						AutoCommit=>1 
-					});
+my $dbh = DBI->connect("dbi:Sponge:dummy", '', '', { 
+    RaiseError => 1, 
+    ShowErrorStatement => 1,
+    AutoCommit => 1 
+});
 
 # check that our db handle is good
 isa_ok($dbh, "DBI::db");
@@ -45,7 +45,9 @@ cmp_ok(scalar @{$rows}, '==', 0, '... we should have 0 rows');
 
 # -----------------------------------------------
 
-ok(!$sth->execute_array(
+ok(! eval {
+        local $sth->{PrintError} = 0;
+        $sth->execute_array(
 		{ 
 			ArrayTupleStatus => $tuple_status 
 		},
@@ -53,9 +55,11 @@ ok(!$sth->execute_array(
 		42,		                  # scalar 42 treated as array of 42's
 		undef,		              # scalar undef treated as array of undef's
 		[ qw(A B C) ],	          # array of strings
-    ),
-	'... execute_array should return false'
+    ) },
+    '... execute_array should return false'
 );
+ok $@, 'execute_array failure with RaiseError should have died';
+like $sth->errstr, '/executing 3 generated 1 errors/';
 
 cmp_ok(scalar @{$rows}, '==', 2, '... we should have 2 rows');
 cmp_ok(scalar @{$tuple_status}, '==', 3, '... we should have 3 tuple_status');

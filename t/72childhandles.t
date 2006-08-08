@@ -13,15 +13,16 @@ use Test::More;
 my $HAS_WEAKEN = eval {
     require Scalar::Util;
     # this will croak() if this Scalar::Util doesn't have a working weaken().
-    Scalar::Util::weaken(my $test = \"foo");
+    Scalar::Util::weaken( \my $test ); # same test as in DBI.pm
     1;
 };
 if (!$HAS_WEAKEN) {
-    print "1..0 # Skipped: Scalar::Util::weaken not available\n";
+    chomp $@;
+    print "1..0 # Skipped: Scalar::Util::weaken not available ($@)\n";
     exit 0;
 }
 
-plan tests => 15;
+plan tests => 14;
 
 {
     # make 10 connections
@@ -61,10 +62,8 @@ plan tests => 15;
 
 my $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1 });
 
-
 my $empty = $dbh->{ChildHandles};
-is ref $empty, 'ARRAY', "ChildHandles should be an array-ref if wekref is available";
-is scalar @$empty, 0, "ChildHandles should start with an empty array-ref";
+is_deeply $empty, [], "ChildHandles should be an array-ref if wekref is available";
 
 # test child handles for statement handles
 {

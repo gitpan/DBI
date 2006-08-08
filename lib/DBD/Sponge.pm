@@ -7,7 +7,7 @@
     @EXPORT = qw(); # Do NOT @EXPORT anything.
     $VERSION = sprintf("%d.%02d", q$Revision: 11.10 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: Sponge.pm 2488 2006-02-07 22:24:43Z timbo $
+#   $Id: Sponge.pm 6618 2006-07-05 23:03:40Z timbo $
 #
 #   Copyright (c) 1994-2003 Tim Bunce Ireland
 #
@@ -161,6 +161,10 @@
 
     sub execute {
 	my $sth = shift;
+
+        # hack to support ParamValues (when not using bind_param)
+        $sth->{ParamValues} = (@_) ? { map { $_ => $_[$_-1] } 1..@_ } : undef;
+
 	if (my $hook = $sth->{execute_hook}) {
 	    &$hook($sth, @_) or return;
 	}

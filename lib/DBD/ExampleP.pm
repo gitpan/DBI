@@ -8,7 +8,7 @@
     @EXPORT = qw(); # Do NOT @EXPORT anything.
     $VERSION = sprintf("%d.%02d", q$Revision: 11.12 $ =~ /(\d+)\.(\d+)/o);
 
-#   $Id: ExampleP.pm 3719 2006-03-27 09:32:36Z timbo $
+#   $Id: ExampleP.pm 6734 2006-07-30 22:42:07Z timbo $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -317,9 +317,10 @@
 	}
 	else {
 	    $sth->{dbd_dir} = $dir;
-	    $sth->{dbd_datahandle} = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
-	    opendir($sth->{dbd_datahandle}, $dir)
-		or return $sth->set_err(2, "opendir($dir): $!");
+	    my $sym = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
+	    opendir($sym, $dir)
+                or return $sth->set_err(2, "opendir($dir): $!");
+	    $sth->{dbd_datahandle} = $sym;
 	}
 	$sth->STORE(Active => 1);
 	return 1;
