@@ -1,4 +1,4 @@
-# $Id: DBI.pm 6755 2006-08-06 21:21:03Z timbo $
+# $Id: DBI.pm 7991 2006-10-27 21:20:45Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2004  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.52"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.53"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,7 +120,7 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.52.
+This is the DBI specification that corresponds to the DBI version 1.53.
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -1912,7 +1912,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 		return \@tuple;
 	    };
 	}
-
+	# pass thru the callers scalar or list context
 	return $sth->execute_for_fetch($fetch_tuple_sub, $tuple_sts);
     }
 
@@ -1921,21 +1921,27 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# start with empty status array
 	($tuple_status) ? @$tuple_status = () : $tuple_status = [];
 
+        my $rc_total = 0;
 	my ($err_count, %errstr_cache);
 	while ( my $tuple = &$fetch_tuple_sub() ) {
 	    if ( my $rc = $sth->execute(@$tuple) ) {
 		push @$tuple_status, $rc;
+		$rc_total = ($rc >= 0 && $rc_total >= 0) ? $rc_total + $rc : -1;
 	    }
 	    else {
 		$err_count++;
 		my $err = $sth->err;
 		push @$tuple_status, [ $err, $errstr_cache{$err} ||= $sth->errstr, $sth->state ];
+                # XXX drivers implementing execute_for_fetch could opt to "last;" here
+                # if the know the error code means no further executes will work.
 	    }
 	}
         my $tuples = @$tuple_status;
         return $sth->set_err(1, "executing $tuples generated $err_count errors")
             if $err_count;
-	return scalar(@$tuple_status) || "0E0";
+	$tuples ||= "0E0";
+	return $tuples unless wantarray;
+	return ($tuples, $rc_total);
     }
 
 
@@ -3251,12 +3257,37 @@ I<inner> hash that actually holds the contents.  The swap_inner_handle()
 method swaps the inner hashes between two handles. The $h1 and $h2
 handles still point to the same tied hashes, but what those hashes
 are tied to has been swapped.  In effect $h1 I<becomes> $h2 and
-vice-versa. This is powerful stuff. Use with care.
+vice-versa. This is powerful stuff, expect problems. Use with care.
 
 As a small safety measure, the two handles, $h1 and $h2, have to
 share the same parent unless $allow_reparent is true.
 
 The swap_inner_handle() method was added in DBI 1.44.
+
+Here's a quick kind of 'diagram' as a worked example to help think about what's
+happening:
+
+    Original state:
+            dbh1o -> dbh1i
+            sthAo -> sthAi(dbh1i)
+            dbh2o -> dbh2i
+
+    swap_inner_handle dbh1o with dbh2o:
+            dbh2o -> dbh1i
+            sthAo -> sthAi(dbh1i)
+            dbh1o -> dbh2i
+
+    create new sth from dbh1o:
+            dbh2o -> dbh1i
+            sthAo -> sthAi(dbh1i)
+            dbh1o -> dbh2i
+            sthBo -> sthBi(dbh2i)
+
+    swap_inner_handle sthAo with sthBo:
+            dbh2o -> dbh1i
+            sthBo -> sthAi(dbh1i)
+            dbh1o -> dbh2i
+            sthAo -> sthBi(dbh2i)
 
 =back
 
@@ -4251,6 +4282,12 @@ like:
 which will ensure that prepare_cached only returns statements cached
 by that line of code in that source file. 
 
+If you'd like the cache to managed intelligently, you can tie the                                                                                                          
+hashref returned by C<CachedKids> to an appropriate caching module,                                                                                                        
+such as L<Tie::Cache::LRU>:                                                                                                                                                
+                                                                                                                                                                           
+  my $cache = $dbh->{CachedKids};                                                                                                                                          
+  tie %$cache, 'Tie::Cache::LRU', 500;                                                                                                                                      
 
 =item C<commit>
 
@@ -5532,19 +5569,32 @@ execution.
 
 =item C<execute_array>
 
-  $rv = $sth->execute_array(\%attr) or die $sth->errstr;
-  $rv = $sth->execute_array(\%attr, @bind_values) or die $sth->errstr;
+  $tuples = $sth->execute_array(\%attr) or die $sth->errstr;
+  $tuples = $sth->execute_array(\%attr, @bind_values) or die $sth->errstr;
+
+  ($tuples, $rows) = $sth->execute_array(\%attr) or die $sth->errstr;
+  ($tuples, $rows) = $sth->execute_array(\%attr, @bind_values) or die $sth->errstr;
 
 Execute the prepared statement once for each parameter tuple
 (group of values) provided either in the @bind_values, or by prior
 calls to L</bind_param_array>, or via a reference passed in \%attr.
 
-The execute_array() method returns the number of tuples executed,
-or C<undef> if an error occured. Like execute(), a successful
-execute_array() always returns true regardless of the number of
-tuples executed, even if it's zero.  See the C<ArrayTupleStatus>
-attribute below for how to determine the execution status for each
-tuple.
+When called in scalar context the execute_array() method returns the
+number of tuples executed, or C<undef> if an error occured.  Like
+execute(), a successful execute_array() always returns true regardless
+of the number of tuples executed, even if it's zero. If there were any
+errors the ArrayTupleStatus array can be used to discover which tuples
+failed and with what errors.
+
+When called in list context the execute_array() method returns two scalars;
+$tuples is the same as calling execute_array() in scalar context and $rows is
+the sum of the number of rows affected for each tuple, if available or
+-1 if the driver cannot determine this.
+If you are doing an update operation the returned rows affected may not be what
+you expect if, for instance, one or more of the tuples affected the same row
+multiple times.  Some drivers may not yet support list context, in which case
+$rows will be undef, or may not be able to provide the number of rows affected
+when performing this batch operation, in which case $rows will be -1.
 
 Bind values for the tuples to be executed may be supplied row-wise
 by an C<ArrayTupleFetch> attribute, or else column-wise in the
@@ -5656,8 +5706,11 @@ was added in 1.36.
 
 =item C<execute_for_fetch>
 
-  $rc = $sth->execute_for_fetch($fetch_tuple_sub);
-  $rc = $sth->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+  $tuples = $sth->execute_for_fetch($fetch_tuple_sub);
+  $tuples = $sth->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+
+  ($tuples, $rows) = $sth->execute_for_fetch($fetch_tuple_sub);
+  ($tuples, $rows) = $sth->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
 
 The execute_for_fetch() method is used to perform bulk operations
 and is most often used via the execute_array() method, not directly.
@@ -5669,11 +5722,21 @@ The execute_for_fetch() method calls $fetch_tuple_sub, without any
 parameters, until it returns a false value. Each tuple returned is
 used to provide bind values for an $sth->execute(@$tuple) call.
 
-If there were any errors then C<undef> is returned and the @tuple_status
-array can be used to discover which tuples failed and with what errors.
-If there were no errors then execute_for_fetch() returns the number
-of tuples executed. Like execute() and execute_array() a zero is
-returned as "0E0" so execute_for_fetch() is only false on error.
+In scalar context execute_for_fetch() returns C<undef> if there were any
+errors and the number of tuples executed otherwise. Like execute() and
+execute_array() a zero is returned as "0E0" so execute_for_fetch() is
+only false on error.  If there were any errors the @tuple_status array
+can be used to discover which tuples failed and with what errors.
+
+When called in list context execute_for_fetch() returns two scalars;
+$tuples is the same as calling execute_for_fetch() in scalar context and $rows is
+the sum of the number of rows affected for each tuple, if available or -1
+if the driver cannot determine this.
+If you are doing an update operation the returned rows affected may not be what
+you expect if, for instance, one or more of the tuples affected the same row
+multiple times.  Some drivers may not yet support list context, in which case
+$rows will be undef, or may not be able to provide the number of rows affected
+when performing this batch operation, in which case $rows will be -1.
 
 If \@tuple_status is passed then the execute_for_fetch method uses
 it to return status information. The tuple_status array holds one
@@ -5681,6 +5744,10 @@ element per tuple. If the corresponding execute() did not fail then
 the element holds the return value from execute(), which is typically
 a row count. If the execute() did fail then the element holds a
 reference to an array containing ($sth->err, $sth->errstr, $sth->state).
+
+If the driver detects an error that it knows means no further tuples can be
+executed then it may return, with an error status, even though $fetch_tuple_sub
+may still have more tuples to be executed.
 
 Although each tuple returned by $fetch_tuple_sub is effectively used
 to call $sth->execute(@$tuple_array_ref) the exact timing may vary.
@@ -6868,11 +6935,12 @@ can be found in F<t/subclass.t> in the DBI distribution.
 
 When calling a SUPER::method that returns a handle, be careful to
 check the return value before trying to do other things with it in
-your overridden method. This is especially important if you want
-to set a hash attribute on the handle, as Perl's autovivification
-will bite you by (in)conveniently creating an unblessed hashref,
-which your method will then return with usually baffling results
-later on.  It's best to check right after the call and return undef
+your overridden method. This is especially important if you want to
+set a hash attribute on the handle, as Perl's autovivification will
+bite you by (in)conveniently creating an unblessed hashref, which your
+method will then return with usually baffling results later on like
+the error "dbih_getcom handle HASH(0xa4451a8) is not a DBI handle (has
+no magic".  It's best to check right after the call and return undef
 immediately on error, just like DBI would and just like the example
 above.
 
@@ -7273,6 +7341,7 @@ Other database related links:
 
  http://www.jcc.com/sql_stnd.html
  http://cuiwww.unige.ch/OSG/info/FreeDB/FreeDB.home.html
+ http://www.connectionstrings.com/
 
 Security, especially the "SQL Injection" attack:
 
@@ -7398,8 +7467,8 @@ if you have one, else just 'guest' and 'guest'. The source code will
 be in a new subdirectory called C<trunk>.
 
 To keep informed about changes to the source you can send an empty email
-to dbi-changes@perl.org after which you'll get an email with the
-change log message and diff of each change checked-in to the source.
+to svn-commit-modules-dbi-subscribe@perl.org after which you'll get an email
+with the change log message and diff of each change checked-in to the source.
 
 After making your changes you can generate a patch file, but before
 you do, make sure your source is still upto date using:

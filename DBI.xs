@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 6734 2006-07-30 22:42:07Z timbo $
+ * $Id: DBI.xs 7994 2006-10-31 11:58:57Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -1368,13 +1368,23 @@ dbih_get_fbav(imp_sth_t *imp_sth)
 {
     AV *av;
 
-    if ( (av = DBIc_FIELDS_AV(imp_sth)) == Nullav)
+    if ( (av = DBIc_FIELDS_AV(imp_sth)) == Nullav) {
 	av = dbih_setup_fbav(imp_sth);
-
-    if (1) { /* XXX turn into option later */
-	int i = DBIc_NUM_FIELDS(imp_sth);
+    }
+    else {
+	dTHX;
+	int i = av_len(av) + 1;
+        if (i != DBIc_NUM_FIELDS(imp_sth)) {
+            SV *sth = dbih_inner((SV*)DBIc_MY_H(imp_sth), "_get_fbav");
+            /* warn via PrintWarn */
+            set_err_char(SvRV(DBIc_MY_H(imp_sth)), (imp_xxh_t*)imp_sth,
+                    "0", 0, "Number of row fields inconsistent with NUM_OF_FIELDS, NUM_OF_FIELDS updated", "", "_get_fbav");
+            DBIc_NUM_FIELDS(imp_sth) = i;
+            hv_delete((HV*)SvRV(sth), "NUM_OF_FIELDS", 13, G_DISCARD);
+        }
 	/* don't let SvUTF8 flag persist from one row to the next   */
 	/* (only affects drivers that use sv_setpv, but most XS do) */
+        /* XXX turn into option later (force on/force off/ignore) */
 	while(i--)                  /* field 1 stored at index 0    */
 	    SvUTF8_off(AvARRAY(av)[i]);
     }
@@ -1806,7 +1816,7 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
 		IV num_fields = DBIc_NUM_FIELDS(imp_sth);
                 valuesv = (num_fields < 0) ? &sv_undef : newSViv(num_fields);
                 if (num_fields > 0)
-                    cacheit = TRUE;	/* can't change once set */
+                    cacheit = TRUE;	/* can't change once set (XXX except for multiple result sets) */
             }
             else if (keylen==13 && strEQ(key, "NUM_OF_PARAMS")) {
                 D_imp_sth(h);
@@ -2032,28 +2042,6 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
 }
 
 
-static SV *			/* find attrib in handle or its parents	*/
-dbih_find_attr(SV *h, SV *keysv, int copydown, int spare)
-{
-    dTHX;
-    D_imp_xxh(h);
-    SV *ph;
-    STRLEN keylen;
-    char  *key = SvPV(keysv, keylen);
-    SV *valuesv;
-    SV **svp = hv_fetch((HV*)SvRV(h), key, keylen, FALSE);
-    if (svp)
-	valuesv = *svp;
-    else
-    if (!SvOK(ph=(SV*)DBIc_PARENT_H(imp_xxh)))
-	valuesv = Nullsv;
-    else /* recurse up */
-	valuesv = dbih_find_attr(ph, keysv, copydown, spare);
-    if (valuesv && copydown)
-	hv_store((HV*)SvRV(h), key, keylen, newSVsv(valuesv), 0);
-    return valuesv;	/* return actual sv, not a mortalised copy	*/
-}
-
 
 /* --------------------------------------------------------------------	*/
 /* Functions implementing Error and Event Handling.                   	*/
@@ -2140,7 +2128,7 @@ dbi_caller_cop()
 }
 
 static void
-dbi_caller_string(SV *buf, COP *cop, char *prefix, char *suffix, int show_line, int show_caller, int show_path)
+dbi_caller_string(SV *buf, COP *cop, char *prefix, int show_line, int show_path)
 {
     dTHX;
     STRLEN len;
@@ -2170,10 +2158,10 @@ log_where(SV *buf, int append, char *prefix, char *suffix, int show_line, int sh
 	sv_setpv(buf,"");
     if (CopLINE(curcop)) {
         COP *cop;
-        dbi_caller_string(buf, curcop, prefix, suffix, show_line, show_caller, show_path);
+        dbi_caller_string(buf, curcop, prefix, show_line, show_path);
 	if (show_caller && (cop = dbi_caller_cop())) {
             SV *via = sv_2mortal(newSVpv("",0));
-            dbi_caller_string(via, cop, prefix, suffix, show_line, show_caller, show_path);
+            dbi_caller_string(via, cop, prefix, show_line, show_path);
             sv_catpvf(buf, " via %s", SvPV_nolen(via));
 	}
     }
@@ -2615,7 +2603,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
     */
     if (SvROK(h) && SvRMAGICAL(SvRV(h)) && (mg=mg_find(SvRV(h),'P'))!=NULL) {
 
-        if (mg->mg_obj==NULL || !SvOK(mg->mg_obj) || SvPVX(mg->mg_obj)==NULL) {  /* maybe global destruction */
+        if (mg->mg_obj==NULL || !SvOK(mg->mg_obj) || SvRV(mg->mg_obj)==NULL) {  /* maybe global destruction */
             if (trace_level >= 3)
                 PerlIO_printf(DBILOGFP,
 		    "%c   <> %s for %s ignored (inner handle gone)\n",
@@ -3255,6 +3243,13 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		sv_catpv(msg, "\"]");
 	    }
 	}
+
+        if (0) {
+            COP *cop = dbi_caller_cop();
+            if (cop && (CopLINE(cop) != CopLINE(curcop) || CopFILEGV(cop) != CopFILEGV(curcop))) {
+                dbi_caller_string(msg, cop, " called via ", 1, 0);
+            }
+        }
 
 	if (    SvTRUE(err_sv)
 	    &&  DBIc_has(imp_xxh, DBIcf_HandleError)
@@ -4235,7 +4230,7 @@ _set_fbav(sth, src_rv)
 	croak("_set_fbav(%s): not an array ref", neatsvpv(src_rv,0));
     src_av = (AV*)SvRV(src_rv);
     if (AvFILL(src_av)+1 != num_fields)
-	croak("_set_fbav(%s): array has %d fields, should have %d",
+	croak("_set_fbav(%s): array has %d elements, the statement handle expects %d",
 		neatsvpv(src_rv,0), AvFILL(src_av)+1, num_fields);
     for(i=0; i < num_fields; ++i) {	/* copy over the row	*/
         /* If we're given the values, then taint them if required */
@@ -4605,6 +4600,7 @@ swap_inner_handle(rh1, rh2, allow_reparent=0)
     SV *h1  = (rh1 == h1i) ? (SV*)DBIc_MY_H(imp_xxh1) : SvRV(rh1);
     SV *h2  = (rh2 == h2i) ? (SV*)DBIc_MY_H(imp_xxh2) : SvRV(rh2);
     (void)cv;
+
     if (DBIc_TYPE(imp_xxh1) != DBIc_TYPE(imp_xxh2)) {
 	char buf[99];
 	sprintf(buf, "Can't swap_inner_handle between %sh and %sh",
@@ -4618,16 +4614,22 @@ swap_inner_handle(rh1, rh2, allow_reparent=0)
 	    Nullch, Nullch);
 	XSRETURN_NO;
     }
+
     SvREFCNT_inc(h1i);
     SvREFCNT_inc(h2i);
+
     sv_unmagic(h1, 'P');		/* untie(%$h1)  	*/
     sv_unmagic(h2, 'P');		/* untie(%$h2)  	*/
+
     sv_magic(h1, h2i, 'P', Nullch, 0);	/* tie %$h1, $h2i	*/
     DBIc_MY_H(imp_xxh2) = (HV*)h1;
+
     sv_magic(h2, h1i, 'P', Nullch, 0);	/* tie %$h2, $h1i	*/
     DBIc_MY_H(imp_xxh1) = (HV*)h2;
+
     SvREFCNT_dec(h1i);
     SvREFCNT_dec(h2i);
+
     ST(0) = &sv_yes;
     }
 
