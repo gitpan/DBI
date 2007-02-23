@@ -1,4 +1,4 @@
-# $Id: ODBC.pm 2488 2006-02-07 22:24:43Z timbo $
+# $Id: ODBC.pm 8696 2007-01-24 23:12:38Z timbo $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #
@@ -35,7 +35,8 @@ The API for this module is private and subject to change.
 =cut
 
 my
-$VERSION = sprintf "%d.%02d", '$Revision: 1.3 $ ' =~ /(\d+)\.(\d+)/;
+$VERSION = sprintf("2.%06d", q$Revision: 8696 $ =~ /(\d+)/o);
+
 
 %InfoTypes =
 (

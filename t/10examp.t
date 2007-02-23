@@ -1,4 +1,4 @@
-#!perl -Tw
+#!perl -w
 
 use lib qw(blib/arch blib/lib);	# needed since -T ignores PERL5LIB
 use DBI qw(:sql_types);
@@ -12,7 +12,7 @@ $| = 1;
 my $haveFileSpec = eval { require File::Spec };
 require VMS::Filespec if $^O eq 'VMS';
 
-use Test::More tests => 263;
+use Test::More tests => 204;
 
 # "globals"
 my ($r, $dbh);
@@ -22,12 +22,10 @@ sub trace_to_file {
 
 	my $trace_file = "dbitrace.log";
 
-	SKIP: {
-		skip "no trace file to clean up", 2 unless (-e $trace_file);
-	
-		is(unlink( $trace_file ), 1, "Remove trace file: $trace_file" );
-		ok( !-e $trace_file, "Trace file actually gone" );
-	}
+        if (-e $trace_file) {
+            1 while unlink $trace_file;
+            die "Can't unlink existing $trace_file: $!" if -e $trace_file;
+        }
 
 	my $orig_trace_level = DBI->trace;
 	DBI->trace(3, $trace_file);		# enable trace before first driver load
@@ -46,7 +44,8 @@ sub trace_to_file {
 		ok( -s $trace_file, "trace file size = " . -s $trace_file);
 	}
 
-	is( unlink( $trace_file ), 1, "Remove trace file: $trace_file" );
+	my $unlinked = unlink( $trace_file );
+	ok( $unlinked, "Remove trace file $trace_file ($!)" );
 	ok( !-e $trace_file, "Trace file actually gone" );
 
 	DBI->trace($orig_trace_level);	# no way to restore previous outfile XXX
@@ -59,7 +58,7 @@ DBI->trace(@DBI::dbi_debug) if @DBI::dbi_debug;
 
 my $dbh2;
 eval {
-    $dbh2 = DBI->connect("dbi:NoneSuch:foobar", 1, 1, { RaiseError => 1, AutoCommit => 0 });
+    $dbh2 = DBI->connect("dbi:NoneSuch:foobar", 1, 1, { RaiseError => 1, AutoCommit => 1 });
 };
 like($@, qr/install_driver\(NoneSuch\) failed/, '... we should have an exception here');
 ok(!$dbh2, '... $dbh2 should not be defined');
@@ -73,13 +72,14 @@ sub check_connect_cached {
 	# This test checks that connect_cached works
 	# and how it then relates to the CachedKids 
 	# attribute for the driver.
-
-	my $dbh_cached_1 = DBI->connect_cached('dbi:ExampleP:', '', '');
-	my $dbh_cached_2 = DBI->connect_cached('dbi:ExampleP:', '', '');
-	my $dbh_cached_3 = DBI->connect_cached('dbi:ExampleP:', '', '', { examplep_foo => 1 });
-	
+#DBI->trace(4);
+	my $dbh_cached_1 = DBI->connect_cached('dbi:ExampleP:', '', '', { TraceLevel=>0});
 	isa_ok($dbh_cached_1, "DBI::db");
+
+	my $dbh_cached_2 = DBI->connect_cached('dbi:ExampleP:', '', '', { TraceLevel=>0});
 	isa_ok($dbh_cached_2, "DBI::db");
+
+	my $dbh_cached_3 = DBI->connect_cached('dbi:ExampleP:', '', '', { examplep_foo => 1 });
 	isa_ok($dbh_cached_3, "DBI::db");
 	
 	is($dbh_cached_1, $dbh_cached_2, '... these 2 handles are cached, so they are the same');
@@ -103,50 +103,10 @@ $dbh->{PrintError} = 0;
 ok($dbh->{AutoCommit} == 1);
 cmp_ok($dbh->{PrintError}, '==', 0, '... PrintError should be 0');
 
-SKIP: {
-	skip "cant test this if we have DBI::PurePerl", 1 if $DBI::PurePerl;
-	$dbh->{Taint} = 1;	
-	ok($dbh->{Taint}      == 1);
-}
-
 is($dbh->{FetchHashKeyName}, 'NAME', '... FetchHashKey is NAME');
+
+# test access to driver-private attributes
 like($dbh->{example_driver_path}, qr/DBD\/ExampleP\.pm$/, '... checking the example driver_path');
-
-sub check_quote {
-	# checking quote
-	is($dbh->quote("quote's"),         "'quote''s'", '... quoting strings with embedded single quotes');
-	is($dbh->quote("42", SQL_VARCHAR), "'42'",       '... quoting number as SQL_VARCHAR');
-	is($dbh->quote("42", SQL_INTEGER), "42",         '... quoting number as SQL_INTEGER');
-	is($dbh->quote(undef),			   "NULL",		 '... quoting undef as NULL');
-}
-
-check_quote();
-
-my $get_info = $dbh->{examplep_get_info} || {};
-
-sub check_quote_identifier {
-	# quote_identifier
-	$get_info->{29}  ='"';					# SQL_IDENTIFIER_QUOTE_CHAR
-	$dbh->{examplep_get_info} = $get_info;	# trigger STORE
-	
-	is($dbh->quote_identifier('foo'),             '"foo"',       '... properly quotes foo as "foo"');
-	is($dbh->quote_identifier('f"o'),             '"f""o"',      '... properly quotes f"o as "f""o"');
-	is($dbh->quote_identifier('foo','bar'),       '"foo"."bar"', '... properly quotes foo, bar as "foo"."bar"');
-	is($dbh->quote_identifier(undef,undef,'bar'), '"bar"',       '... properly quotes undef, undef, bar as "bar"');
-
-	is($dbh->quote_identifier('foo',undef,'bar'), '"foo"."bar"', '... properly quotes foo, undef, bar as "foo"."bar"');
-
-	$get_info->{41}  ='@';                  # SQL_CATALOG_NAME_SEPARATOR
-	$get_info->{114} = 2;                   # SQL_CATALOG_LOCATION
-	$dbh->{examplep_get_info} = $get_info;	# trigger STORE
-
-	# force cache refresh
-	$dbh->{dbi_quote_identifier_cache} = undef; 
-	is($dbh->quote_identifier('foo',undef,'bar'), '"bar"@"foo"', '... now quotes it as "bar"@"foo" after flushing cache');
-}
-
-check_quote_identifier();
-
 
 print "others\n";
 eval { $dbh->commit('dummy') };
@@ -173,7 +133,7 @@ ok(ref $csr_a);
 ok($csr_a->{NUM_OF_FIELDS} == 3);
 
 SKIP: {
-	skip "dont test for DBI::PurePerl", 3 if $DBI::PurePerl;
+    skip "inner/outer handles not fully supported for DBI::PurePerl", 3 if $DBI::PurePerl;
     ok(tied %{ $csr_a->{Database} });	# ie is 'outer' handle
     ok($csr_a->{Database} eq $dbh, "$csr_a->{Database} ne $dbh")
 	unless $dbh->{mx_handle_list} && ok(1); # skip for Multiplex tests
@@ -181,11 +141,13 @@ SKIP: {
 }
 
 my $driver_name = $csr_a->{Database}->{Driver}->{Name};
-ok($driver_name eq 'ExampleP');
+ok($driver_name eq 'ExampleP')
+    unless $ENV{DBI_AUTOPROXY} && ok(1);
 
 # --- FetchHashKeyName
 $dbh->{FetchHashKeyName} = 'NAME_uc';
 my $csr_b = $dbh->prepare($std_sql);
+$csr_b->execute('.');
 ok(ref $csr_b);
 
 ok($csr_a != $csr_b);
@@ -200,42 +162,12 @@ ok("@{[sort values %{$csr_b->{NAME_lc_hash}}]}" eq "0 1 2");
 ok("@{[sort keys   %{$csr_b->{NAME_uc_hash}}]}" eq "MODE NAME SIZE");
 ok("@{[sort values %{$csr_b->{NAME_uc_hash}}]}" eq "0 1 2");
 
-SKIP: {
-	skip "do not test with DBI::PurePerl", 15 if $DBI::PurePerl;
-	
-    # Check Taint* attribute switching
-
-    #$dbh->{'Taint'} = 1; # set in connect
-    ok($dbh->{'Taint'});
-    ok($dbh->{'TaintIn'} == 1);
-    ok($dbh->{'TaintOut'} == 1);
-
-    $dbh->{'TaintOut'} = 0;
-    ok($dbh->{'Taint'} == 0);
-    ok($dbh->{'TaintIn'} == 1);
-    ok($dbh->{'TaintOut'} == 0);
-
-    $dbh->{'Taint'} = 0;
-    ok($dbh->{'Taint'} == 0);
-    ok($dbh->{'TaintIn'} == 0);
-    ok($dbh->{'TaintOut'} == 0);
-
-    $dbh->{'TaintIn'} = 1;
-    ok($dbh->{'Taint'} == 0);
-    ok($dbh->{'TaintIn'} == 1);
-    ok($dbh->{'TaintOut'} == 0);
-
-    $dbh->{'TaintOut'} = 1;
-    ok($dbh->{'Taint'} == 1);
-    ok($dbh->{'TaintIn'} == 1);
-    ok($dbh->{'TaintOut'} == 1);
-}
 
 # get a dir always readable on all platforms
 my $dir = getcwd() || cwd();
 $dir = VMS::Filespec::unixify($dir) if $^O eq 'VMS';
 # untaint $dir
-$dir =~ m/(.*)/; $dir = $1 || die;
+#$dir =~ m/(.*)/; $dir = $1 || die;
 
 
 # ---
@@ -243,7 +175,6 @@ $dir =~ m/(.*)/; $dir = $1 || die;
 my($col0, $col1, $col2, $col3, $rows);
 my(@row_a, @row_b);
 
-ok($csr_a->{Taint} = 1) unless $DBI::PurePerl && ok(1);
 #$csr_a->trace(5);
 ok($csr_a->bind_columns(undef, \($col0, $col1, $col2)) );
 ok($csr_a->execute( $dir ), $DBI::errstr);
@@ -252,9 +183,9 @@ ok($csr_a->execute( $dir ), $DBI::errstr);
 ok(@row_a);
 
 # check bind_columns
-ok($row_a[0] eq $col0) or print "$row_a[0] ne $col0\n";
-ok($row_a[1] eq $col1) or print "$row_a[1] ne $col1\n";
-ok($row_a[2] eq $col2) or print "$row_a[2] ne $col2\n";
+is($row_a[0], $col0);
+is($row_a[1], $col1);
+is($row_a[2], $col2);
 #$csr_a->trace(0);
 
 ok( ! $csr_a->bind_columns(undef, \($col0, $col1)) );
@@ -267,87 +198,6 @@ ok ! eval { $csr_a->bind_col(0, undef) };
 like $@, '/bind_col: column 0 is not a valid column \(1..3\)/', 'errstr should contain error message';
 ok ! eval { $csr_a->bind_col(4, undef) };
 like $@, '/bind_col: column 4 is not a valid column \(1..3\)/', 'errstr should contain error message';
-
-SKIP: {
-
-    # Check Taint attribute works. This requires this test to be run
-    # manually with the -T flag: "perl -T -Mblib t/examp.t"
-    sub is_tainted {
-	my $foo;
-	return ! eval { ($foo=join('',@_)), kill 0; 1; };
-    }
-
-    skip " Taint attribute tests skipped\n", 19 unless(is_tainted($^X) && !$DBI::PurePerl);
-
-    $dbh->{'Taint'} = 0;
-    my $st;
-    eval { $st = $dbh->prepare($std_sql); };
-    ok(ref $st);
-
-    ok($st->{'Taint'} == 0);
-
-    ok($st->execute( $dir ));
-
-    my @row = $st->fetchrow_array;
-    ok(@row);
-
-    ok(!is_tainted($row[0]));
-    ok(!is_tainted($row[1]));
-    ok(!is_tainted($row[2]));
-
-    $st->{'TaintIn'} = 1;
-
-    @row = $st->fetchrow_array;
-    ok(@row);
-
-    ok(!is_tainted($row[0]));
-    ok(!is_tainted($row[1]));
-    ok(!is_tainted($row[2]));
-
-    $st->{'TaintOut'} = 1;
-
-    @row = $st->fetchrow_array;
-    ok(@row);
-
-    ok(is_tainted($row[0]));
-    ok(is_tainted($row[1]));
-    ok(is_tainted($row[2]));
-
-    $st->finish;
-
-    # check simple method call values
-    #ok(1);
-    # check simple attribute values
-    #ok(1); # is_tainted($dbh->{AutoCommit}) );
-    # check nested attribute values (where a ref is returned)
-    #ok(is_tainted($csr_a->{NAME}->[0]) );
-    # check checking for tainted values
-
-    $dbh->{'Taint'} = $csr_a->{'Taint'} = 1;
-    eval { $dbh->prepare($^X); 1; };
-    ok($@ =~ /Insecure dependency/, $@);
-    eval { $csr_a->execute($^X); 1; };
-    ok($@ =~ /Insecure dependency/, $@);
-    undef $@;
-
-    $dbh->{'TaintIn'} = $csr_a->{'TaintIn'} = 0;
-
-    eval { $dbh->prepare($^X); 1; };
-    ok(!$@);
-    eval { $csr_a->execute($^X); 1; };
-    ok(!$@);
-
-    # Reset taint status to what it was before this block, so that
-    # tests later in the file don't get confused
-    $dbh->{'Taint'} = $csr_a->{'Taint'} = 1;
-}
-
-
-SKIP: {
-	skip "do not test with DBI::PurePerl", 1 if $DBI::PurePerl;
-    $csr_a->{Taint} = 0;
-    ok($csr_a->{Taint} == 0);
-}
 
 ok($csr_b->bind_param(1, $dir));
 ok($csr_b->execute());
@@ -499,25 +349,6 @@ ok($r->[1] eq $row_b[1]);
 
 # ---
 
-print "begin_work...\n";
-ok($dbh->{AutoCommit});
-ok(!$dbh->{BegunWork});
-
-ok($dbh->begin_work);
-ok(!$dbh->{AutoCommit});
-ok($dbh->{BegunWork});
-
-$dbh->commit;
-ok($dbh->{AutoCommit});
-ok(!$dbh->{BegunWork});
-
-ok($dbh->begin_work({}));
-$dbh->rollback;
-ok($dbh->{AutoCommit});
-ok(!$dbh->{BegunWork});
-
-# ---
-
 print "others...\n";
 my $csr_c;
 $csr_c = $dbh->prepare("select unknown_field_name1 from ?");
@@ -602,7 +433,7 @@ ok($@ =~ m/^HandleError:/, $@);
 print "HandleError -> 0 -> RaiseError\n";
 $HandleErrorReturn = 0;
 ok(! eval { $csr_c = $dbh->prepare($error_sql); 1; });
-ok($@ =~ m/^DBD::(ExampleP|Multiplex)::db prepare failed:/, $@);
+ok($@ =~ m/^DBD::(ExampleP|Multiplex|Gofer)::db prepare failed:/, $@);
 
 print "HandleError -> 1 -> return (original)undef\n";
 $HandleErrorReturn = 1;
@@ -644,7 +475,7 @@ ok(!$dbh->{HandleError});
 						File::Spec->catfile($dump_dir, 'dumpcsr.tst')
 						: 
 						"$dump_dir/dumpcsr.tst";
-	($dump_file) = ($dump_file =~ m/^(.*)$/);	# untaint
+        #($dump_file) = ($dump_file =~ m/^(.*)$/);	# untaint
 
 	SKIP: {
 		skip "# dump_results test skipped: unable to open $dump_file: $!\n", 2 unless (open(DUMP_RESULTS, ">$dump_file"));
@@ -660,22 +491,24 @@ ok(!$dbh->{HandleError});
 
 print "table_info\n";
 # First generate a list of all subdirectories
-$dir = $haveFileSpec ? File::Spec->curdir() : ".";
+$dir = getcwd();
 ok(opendir(DIR, $dir));
 my(%dirs, %unexpected, %missing);
 while (defined(my $file = readdir(DIR))) {
     $dirs{$file} = 1 if -d $file;
 }
+print "Local $dir subdirs: @{[ keys %dirs ]}\n";
 closedir(DIR);
-my $sth = $dbh->table_info(undef, undef, "%", "TABLE");
+#$dbh->trace(9);
+my $sth = $dbh->table_info($dir, undef, "%", "TABLE");
 ok($sth);
 %unexpected = %dirs;
 %missing = ();
 while (my $ref = $sth->fetchrow_hashref()) {
     if (exists($unexpected{$ref->{'TABLE_NAME'}})) {
-		delete $unexpected{$ref->{'TABLE_NAME'}};
+        delete $unexpected{$ref->{'TABLE_NAME'}};
     } else {
-		$missing{$ref->{'TABLE_NAME'}} = 1;
+        $missing{$ref->{'TABLE_NAME'}} = 1;
     }
 }
 ok(keys %unexpected == 0)
@@ -683,6 +516,7 @@ ok(keys %unexpected == 0)
 ok(keys %missing == 0)
     or print "Missing directories: ", join(",", keys %missing), "\n";
 
+#$dbh->trace(0); die 1;
 
 print "tables\n";
 my @tables_expected = (
@@ -696,7 +530,6 @@ my @tables = $dbh->tables(undef, undef, "%", "VIEW");
 ok(@tables == @tables_expected, "Table count mismatch".@tables_expected." vs ".@tables);
 ok($tables[$_] eq $tables_expected[$_], "$tables[$_] ne $tables_expected[$_]")
 	foreach (0..$#tables_expected);
-
 
 for (my $i = 0;  $i < 300;  $i += 100) {
 	print "Testing the fake directories ($i).\n";

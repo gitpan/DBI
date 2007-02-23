@@ -6,9 +6,10 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.12 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 9153 $ =~ /(\d+)/o);
 
-#   $Id: ExampleP.pm 6734 2006-07-30 22:42:07Z timbo $
+
+#   $Id: ExampleP.pm 9153 2007-02-22 02:36:14Z timbo $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -60,7 +61,11 @@
         my($drh, $dbname, $user, $auth)= @_;
         my ($outer, $dbh) = DBI::_new_dbh($drh, { Name => $dbname });
         $dbh->STORE('Active', 1);
-        $dbh->{examplep_get_info} = {};
+        $dbh->{examplep_get_info} = {
+            29 => '"',  # SQL_IDENTIFIER_QUOTE_CHAR
+            41 => '.',  # SQL_CATALOG_NAME_SEPARATOR
+            114 => 1,   # SQL_CATALOG_LOCATION
+        };
         $dbh->{Name} = $dbname;
         return $outer;
     }
@@ -69,7 +74,6 @@
 	return ("dbi:ExampleP:dir=.");	# possibly usefully meaningless
     }
 
-    sub DESTROY { undef }
 }
 
 
@@ -130,7 +134,7 @@
 	# Return a list of all subdirectories
 	my $dh = Symbol::gensym(); # "DBD::ExampleP::".++$DBD::ExampleP::gensym;
 	my $haveFileSpec = eval { require File::Spec };
-	my $dir = $haveFileSpec ? File::Spec->curdir() : ".";
+	my $dir = $catalog || ($haveFileSpec ? File::Spec->curdir() : ".");
 	my @list;
 	if ($types{VIEW}) {	# for use by test harness
 	    push @list, [ undef, "schema",  "table",  'VIEW', undef ];
@@ -142,13 +146,13 @@
 	if ($types{TABLE}) {
 	    no strict 'refs';
 	    opendir($dh, $dir)
-		or return $dbh->set_err(int($!),
-					"Failed to open directory $dir: $!");
-	    while (defined(my $file = readdir($dh))) {
+		or return $dbh->set_err(int($!), "Failed to open directory $dir: $!");
+	    while (defined(my $item = readdir($dh))) {
+                my $file = ($haveFileSpec) ? File::Spec->catdir($dir,$item) : $item;
 		next unless -d $file;
 		my($dev, $ino, $mode, $nlink, $uid) = lstat($file);
 		my $pwnam = undef; # eval { scalar(getpwnam($uid)) } || $uid;
-		push @list, [ $dir, $pwnam, $file, 'TABLE', undef ];
+		push @list, [ $dir, $pwnam, $item, 'TABLE', undef ];
 	    }
 	    close($dh);
 	}
@@ -269,6 +273,9 @@
 	return $h->SUPER::parse_trace_flag($name);
     }
 
+    sub private_attribute_info {
+        return { example_driver_path => undef };
+    }
 }
 
 
@@ -329,7 +336,6 @@
 
     sub fetch {
 	my $sth = shift;
-	my $dh  = $sth->{dbd_datahandle};
 	my $dir = $sth->{dbd_dir};
 	my %s;
 
@@ -345,6 +351,8 @@
 	          $time, $time, $time, 512, 2, "file$num")
 	}
 	else {			# normal mode
+            my $dh  = $sth->{dbd_datahandle}
+                or return $sth->set_err(1, "fetch without successful execute");
 	    my $f = readdir($dh);
 	    unless ($f) {
 		$sth->finish;
@@ -404,11 +412,6 @@
 	return $sth->{$attrib} = $value
 	    if $attrib eq 'NAME' or $attrib eq 'NULLABLE' or $attrib eq 'SCALE' or $attrib eq 'PRECISION';
 	return $sth->SUPER::STORE($attrib, $value);
-    }
-
-    sub DESTROY {
-	my $sth = shift;
-	$sth->finish if $sth->SUPER::FETCH('Active');
     }
 
     *parse_trace_flag = \&DBD::ExampleP::db::parse_trace_flag;

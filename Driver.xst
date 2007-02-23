@@ -1,4 +1,4 @@
-#  $Id: Driver.xst 2488 2006-02-07 22:24:43Z timbo $
+#  $Id: Driver.xst 9153 2007-02-22 02:36:14Z timbo $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #  Copyright (c) 2002       Jonathan Leffler
 #
@@ -320,6 +320,7 @@ void
 DESTROY(dbh)
     SV *	dbh
     PPCODE:
+    /* keep in sync with default DESTROY in DBI.xs */
     D_imp_dbh(dbh);
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
@@ -718,6 +719,7 @@ void
 DESTROY(sth)
     SV *	sth
     PPCODE:
+    /* keep in sync with default DESTROY in DBI.xs */
     D_imp_sth(sth);
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_sth)) {	/* was never fully set up	*/

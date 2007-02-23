@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl 6734 2006-07-30 22:42:07Z timbo $
+# $Id: test.pl 8812 2007-02-07 11:36:40Z timbo $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 11.7 $}."\n";
+    print q{DBI test application $Revision: 8812 $}."\n";
     $| = 1;
 }
 
@@ -49,7 +49,7 @@ my $driver = $ARGV[0] || ($::opt_m ? 'NullP' : 'ExampleP');
 
 # Now ask for some information from the DBI Switch
 my $switch = DBI->internal;
-$switch->debug($::opt_h); # 2=detailed handle trace
+$switch->trace($::opt_h); # 2=detailed handle trace
 
 DBI->trace($::opt_d, $::opt_l) if $::opt_d || $::opt_l;
 
@@ -58,8 +58,8 @@ print "Switch: $switch->{'Attribution'}, $switch->{'Version'}\n";
 print "Available Drivers: ",join(", ",DBI->available_drivers(1)),"\n";
 
 
-my $dbh = DBI->connect("dbi:$driver:", '', ''); # old-style connect syntax
-$dbh->debug($::opt_h);
+my $dbh = DBI->connect("dbi:$driver:", '', '') or die;
+$dbh->trace($::opt_h);
 
 if (0) {
     DBI->trace(3);
@@ -109,25 +109,17 @@ else {
     my $tds= Benchmark::timestr($td);
     my $dur = $td->cpu_a || (1/$count); # fudge if cpu_a==0
 
-    printf "%5d NullP sth/s perl %8s %s (%s %s %s)\n\n",
+    printf "%5d NullP sth/s perl %8s %s (%s %s %s) %fs\n\n",
 	    $count/$dur, $], $Config{archname},
 	    $Config{gccversion} ? 'gcc' : $Config{cc},
 	    (split / /, $Config{gccversion}||$Config{ccversion}||'')[0]||'',
-	    $Config{optimize};
+	    $Config{optimize},
+            $dur/$count;
 
-  if (0) {
-    $null_dbh = DBI->connect('dbi:mysql:VC_log','','',{RaiseError=>1});
-    $null_sth = $null_dbh->prepare('select * from big');
-    $null_sth->execute();
-    $t1 = new Benchmark;
-    1 while ($null_sth->fetchrow_hashref());
-    #1 while ($null_sth->fetchrow_arrayref());
-    $td = Benchmark::timediff(Benchmark->new, $t1);
-    $tds= Benchmark::timestr($td);
-    $dur = $td->cpu_a;
-    printf "$DBI::rows in $tds\n";
-  }
+    $null_dbh->disconnect;
 }
+
+$dbh->disconnect;
 
 #DBI->trace(4);
 print "$0 done\n";

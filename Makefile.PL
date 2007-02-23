@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 5963 2006-04-25 22:55:48Z timbo $
+# $Id: Makefile.PL 9118 2007-02-17 01:22:41Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -99,7 +99,7 @@ if ($@) {
     You do *not* need these modules for typical DBI usage.
 
 MSG
-    sleep 2;
+    sleep 1;
 }
 
 if (@missing) {
@@ -111,7 +111,7 @@ Optional modules are available from any CPAN mirror, in particular
     ftp://ftp.funet.fi/pub/languages/perl/CPAN/modules/by-module
 
 MSG
-    sleep 4;
+    sleep 1;
 }
 
  
@@ -289,6 +289,7 @@ DBI.c: Perl$(OBJ_EXT)
 inst_libdbi = ' . File::Spec->catdir($self->{INST_LIB}, 'DBI') . '
 changes_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Changes.pm') . '
 roadmap_pm = '  . File::Spec->catfile($self->{INST_LIB}, 'DBI', 'Roadmap.pm') . '
+'.q{
 
 config :: $(changes_pm) $(roadmap_pm)
 	$(NOECHO) $(NOOP)
@@ -302,7 +303,12 @@ $(roadmap_pm): Roadmap.pod
 	$(MKPATH) $(inst_libdbi)
 	$(RM_F) $(roadmap_pm)
 	$(CP) Roadmap.pod $(roadmap_pm)
-';
+
+checkkeywords:
+	$(RM_F) blib
+	find . -type f \( -name .svn -prune -o -name \*.pm -o -name \*.PL -o -name \*.pl \) \
+            -exec bash -c '[ -z "$$(svn pg svn:keywords {})" ] && echo svn propset svn:keywords \"Id Revision\" {}' \;
+};
 
     return $xst;
 }

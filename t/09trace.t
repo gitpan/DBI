@@ -13,6 +13,7 @@ use Test::More tests => 66;
 ## ----------------------------------------------------------------------------
 
 BEGIN { 
+    $ENV{DBI_TRACE} = 0; # for PurePerl - ensure DBI_TRACE is in the env
     use_ok( 'DBI' ); 
 }
 
@@ -94,10 +95,10 @@ $dbh->{TraceLevel} = 'ALL';
 ok $dbh->{TraceLevel};
 
 {
-    print "unknown parse_trace_flag\n";
+    print "test unknown parse_trace_flag\n";
     my $warn = 0;
     local $SIG{__WARN__} = sub {
-        if ($_[0] =~ /unknown/i) { ++$warn; print "warn: ",@_ }else{ warn @_ }
+        if ($_[0] =~ /unknown/i) { ++$warn; print "caught warn: ",@_ }else{ warn @_ }
         };
     is $dbh->parse_trace_flag("nonesuch"), undef;
     is $warn, 0;

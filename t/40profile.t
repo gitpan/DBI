@@ -1,4 +1,5 @@
 #!perl -w
+$|=1;
 
 #
 # test script for DBI::Profile
@@ -18,9 +19,10 @@ use Test::More;
 BEGIN {
     plan skip_all => "profiling not supported for DBI::PurePerl"
         if $DBI::PurePerl;
-    plan skip_all => "test results assume perl >= 5.8"
-        if $] < 5.008;
-    plan tests => 45;
+    # tie methods (STORE/FETCH etc) get called different number of times
+    plan skip_all => "test results assume perl >= 5.8.2"
+        if $] <= 5.008001;
+    plan tests => 51;
 }
 
 $Data::Dumper::Indent = 1;
@@ -65,11 +67,16 @@ is_deeply sanitize_tree($dbh->{Profile}), bless {
 	'Path' => [ '!MethodName', '!Caller2' ],
 } => 'DBI::Profile';
 
+my $t_file = __FILE__;
 $dbh->do("set foo=1"); my $line = __LINE__;
+my $expected_caller = "40profile.t line $line";
+$expected_caller .= " via ${1}40profile.t line 3"
+    if $0 =~ /(zv\w+_)/;
+print Dumper($dbh->{Profile});
 is_deeply sanitize_tree($dbh->{Profile}), bless {
 	'Path' => [ '!MethodName', '!Caller2' ],
 	'Data' => { 'do' => {
-		"40profile.t line $line" => [ 1, 0, 0, 0, 0, 0, 0 ]
+	    $expected_caller => [ 1, 0, 0, 0, 0, 0, 0 ]
 	} }
 } => 'DBI::Profile';
 #die Dumper $dbh->{Profile};
@@ -77,42 +84,31 @@ is_deeply sanitize_tree($dbh->{Profile}), bless {
 
 # can turn it on at connect
 $dbh = DBI->connect("dbi:ExampleP:", '', '', { RaiseError=>1, Profile=>6 });
-is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ '!Statement', '!MethodName' ],
-	'Data' => {
-		'' => {
-			'FETCH' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'STORE' => [ 2, 0, 0, 0, 0, 0, 0 ]
-		}
-	}
-} => 'DBI::Profile';
+is_deeply $dbh->{Profile}{Path}, [ '!Statement', '!MethodName' ];
+cmp_ok(keys %{ $dbh->{Profile}{Data} },     '==', 1);
+cmp_ok(keys %{ $dbh->{Profile}{Data}{""} }, '>=', 1); # at least STORE
+ok(        ref $dbh->{Profile}{Data}{""}{STORE}    );
 
 print "dbi_profile\n";
 # Try to avoid rounding problem on double precision systems
 #   $got->[5]      = '1150962858.01596498'
 #   $expected->[5] = '1150962858.015965'
-# (looks like is_deeply stringifies) by treating as a string:
-my $t1 = DBI::dbi_time() . "";
-dbi_profile($dbh, "Hi, mom", "my_method_name", $t1, $t1 + 1);
-is_deeply sanitize_tree($dbh->{Profile}), bless {
-	'Path' => [ '!Statement', '!MethodName' ],
-	'Data' => {
-		'' => {
-			'FETCH' => [ 1, 0, 0, 0, 0, 0, 0 ], # +0
-			'STORE' => [ 2, 0, 0, 0, 0, 0, 0 ]
-		},
-		"Hi, mom" => {
-			my_method_name => [ 1, 0, 0, 0, 0, 0, 0 ],
-		},
-	}
-} => 'DBI::Profile';
+# by treating as a string (because is_deeply stringifies)
+my $t1 = DBI::dbi_time() . ""; 
+my $dummy_statement = "Hi mom";
+my $dummy_methname  = "my_method_name";
+dbi_profile($dbh, $dummy_statement, $dummy_methname, $t1, $t1 + 1);
+print Dumper($dbh->{Profile});
+cmp_ok(keys %{ $dbh->{Profile}{Data} }, '==', 2);
+cmp_ok(keys %{ $dbh->{Profile}{Data}{$dummy_statement} }, '==', 1);
+ok(        ref $dbh->{Profile}{Data}{$dummy_statement}{$dummy_methname}    );
 
-my $mine = $dbh->{Profile}{Data}{"Hi, mom"}{my_method_name};
+my $mine = $dbh->{Profile}{Data}{$dummy_statement}{$dummy_methname};
 print "@$mine\n";
 is_deeply $mine, [ 1, 1, 1, 1, 1, $t1, $t1 ];
 
 my $t2 = DBI::dbi_time() . "";
-dbi_profile($dbh, "Hi, mom", "my_method_name", $t2, $t2 + 2);
+dbi_profile($dbh, $dummy_statement, $dummy_methname, $t2, $t2 + 2);
 print "@$mine\n";
 is_deeply $mine, [ 2, 3, 1, 1, 2, $t1, $t2 ];
 
@@ -169,7 +165,7 @@ $tmp->{Data}{$sql}[0] = -1; # make test insensitive to local file count
 is_deeply $tmp, bless {
 	'Path' => [ '!Statement' ],
 	'Data' => {
-		''   => [ 3, 0, 0, 0, 0, 0, 0 ],
+		''   => [ 7, 0, 0, 0, 0, 0, 0 ],
 		$sql => [ -1, 0, 0, 0, 0, 0, 0 ],
 		'set foo=1' => [ 1, 0, 0, 0, 0, 0, 0 ],
 	}
@@ -196,19 +192,26 @@ $sql = "select name from .";
 $sth = $dbh->prepare($sql);
 $sth->execute();
 $sth->fetchrow_hashref;
+$sth->finish;
 undef $sth; # DESTROY
 
 $tmp = sanitize_tree($dbh->{Profile});
+ok $tmp->{Data}{usrnam}{""}{foo}{STORE};
+$tmp->{Data}{usrnam}{""}{foo} = {};
 # make test insentitive to number of local files
 is_deeply $tmp, bless {
     'Path' => [ '{Username}', '!Statement', 'foo', '!MethodName' ],
     'Data' => {
+        '' => { # because Profile was enabled by DBI just before Username was set
+            '' => {
+                'foo' => {
+                    'STORE' => [ 3, 0, 0, 0, 0, 0, 0 ],
+                }
+            }
+        },
 	'usrnam' => {
 	    '' => {
-		    'foo' => {
-			    'FETCH' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			    'STORE' => [ 2, 0, 0, 0, 0, 0, 0 ],
-		    },
+		    'foo' => { },
 	    },
 	    'select name from .' => {
 		    'foo' => {
@@ -216,15 +219,12 @@ is_deeply $tmp, bless {
 			'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
 			'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
 			'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
-                        # XXX finish shouldn't be profiled as it's not called explicitly
-                        # but currently the finish triggered by DESTROY does get profiled
 			'finish' => [ 1, 0, 0, 0, 0, 0, 0 ],
 		    },
 	    },
 	},
     },
 } => 'DBI::Profile';
-
 
 $dbh->{Profile}->{Path} = [ '!File', '!File2', '!Caller', '!Caller2' ];
 $dbh->{Profile}->{Data} = undef;
@@ -277,15 +277,16 @@ sub run_test1 {
     $sth = $dbh->prepare($sql);
     $sth->execute();
     $sth->fetchrow_hashref;
+    $sth->finish;
     undef $sth; # DESTROY
     return sanitize_profile_data_nodes($dbh->{Profile}{Data});
 }
 
 $tmp = run_test1( { Path => [ 'foo', sub { 'bar' }, 'baz' ] });
-is_deeply $tmp, { 'foo' => { 'bar' => { 'baz' => [ 8, 0,0,0,0,0,0 ] } } };
+is_deeply $tmp, { 'foo' => { 'bar' => { 'baz' => [ 12, 0,0,0,0,0,0 ] } } };
 
 $tmp = run_test1( { Path => [ 'foo', sub { 'ping','pong' } ] });
-is_deeply $tmp, { 'foo' => { 'ping' => { 'pong' => [ 8, 0,0,0,0,0,0 ] } } };
+is_deeply $tmp, { 'foo' => { 'ping' => { 'pong' => [ 12, 0,0,0,0,0,0 ] } } };
 
 $tmp = run_test1( { Path => [ 'foo', sub { \undef } ] });
 is_deeply $tmp, { 'foo' => undef }, 'should be vetoed';
@@ -293,23 +294,21 @@ is_deeply $tmp, { 'foo' => undef }, 'should be vetoed';
 # check what code ref sees in $_
 $tmp = run_test1( { Path => [ sub { $_ } ] });
 is_deeply $tmp, {
-  '' => [ 3, 0, 0, 0, 0, 0, 0 ],
+  '' => [ 7, 0, 0, 0, 0, 0, 0 ],
   'select name from .' => [ 5, 0, 0, 0, 0, 0, 0 ]
 }, '$_ should contain statement';
 
 # check what code ref sees in @_
-$tmp = run_test1( { Path => [ sub { my ($h,$method) = @_; return (ref $h, $method) } ] });
+$tmp = run_test1( { Path => [ sub { my ($h,$method) = @_; return \undef if $method =~ /^[A-Z]+$/; return (ref $h, $method) } ] });
 is_deeply $tmp, {
   'DBI::db' => {
-    'FETCH'   => [ 1, 0, 0, 0, 0, 0, 0 ],
+    'connected' => [ 1, 0, 0, 0, 0, 0, 0 ],
     'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
-    'STORE'   => [ 2, 0, 0, 0, 0, 0, 0 ],
   },
   'DBI::st' => {
     'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
     'execute' => [ 1, 0, 0, 0, 0, 0, 0 ],
     'finish'  => [ 1, 0, 0, 0, 0, 0, 0 ],
-    'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
   },
 }, 'should have @_ as keys';
 
@@ -343,7 +342,7 @@ is("@$totals", "27.00 2.93 0.11 0.01 0.23 1023110000.00 1023110010.00");
 is($total_time, 2.93);
 
 DBI->trace(0, "STDOUT"); # close current log to flush it
-ok(-s $LOG_FILE); # check that output went into the log file
+ok(-s $LOG_FILE, 'output should go to log file');
 
 exit 0;
 

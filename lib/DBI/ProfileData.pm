@@ -71,8 +71,8 @@ The following methods are supported by DBI::ProfileData objects.
 
 =cut
 
-use vars qw($VERSION);
-$VERSION = "1.0";
+
+our $VERSION = sprintf("2.%06d", q$Revision: 8696 $ =~ /(\d+)/o);
 
 use Carp qw(croak);
 use Symbol;

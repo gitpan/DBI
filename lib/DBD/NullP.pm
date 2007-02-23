@@ -5,11 +5,11 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.4 $ =~ /(\d+)\.(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 8744 $ =~ /(\d+)/o);
 
-#   $Id: NullP.pm 2488 2006-02-07 22:24:43Z timbo $
+#   $Id: NullP.pm 8744 2007-01-29 13:04:18Z timbo $
 #
-#   Copyright (c) 1994, Tim Bunce
+#   Copyright (c) 1994-2007 Tim Bunce
 #
 #   You may distribute under the terms of either the GNU General Public
 #   License or the Artistic License, as specified in the Perl README file.
@@ -37,7 +37,14 @@
 {   package DBD::NullP::dr; # ====== DRIVER ======
     $imp_data_size = 0;
     use strict;
-    # we use default (dummy) connect method
+
+    sub connect { # normally overridden, but a handy default
+        my $dbh = shift->SUPER::connect(@_)
+            or return;
+        $dbh->STORE(Active => 1); 
+        $dbh;
+    }
+
 
     sub DESTROY { undef }
 }
@@ -78,6 +85,8 @@
 	}
 	return $dbh->SUPER::STORE($attrib, $value);
     }
+
+    sub ping { 1 }
 
     sub disconnect {
 	shift->STORE(Active => 0);

@@ -4,10 +4,11 @@
     require DBI;
     require Carp;
 
-    @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("%d.%02d", q$Revision: 11.10 $ =~ /(\d+)\.(\d+)/o);
+    our @EXPORT = qw(); # Do NOT @EXPORT anything.
+    our $VERSION = sprintf("12.%06d", q$Revision: 8696 $ =~ /(\d+)/o);
 
-#   $Id: Sponge.pm 6618 2006-07-05 23:03:40Z timbo $
+
+#   $Id: Sponge.pm 8696 2007-01-24 23:12:38Z timbo $
 #
 #   Copyright (c) 1994-2003 Tim Bunce Ireland
 #

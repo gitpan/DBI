@@ -1,7 +1,7 @@
-# $Id: DBI.pm 7991 2006-10-27 21:20:45Z timbo $
+# $Id: DBI.pm 9152 2007-02-22 01:44:25Z timbo $
 # vim: ts=8:sw=4
 #
-# Copyright (c) 1994-2004  Tim Bunce  Ireland
+# Copyright (c) 1994-2007  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.53"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.54"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,7 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.53.
+This is the DBI specification that corresponds to the DBI version 1.54
+($Revision: 9152 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -167,6 +168,7 @@ BEGIN {
 	SQL_WLONGVARCHAR
 	SQL_WVARCHAR
 	SQL_WCHAR
+	SQL_BIGINT
 	SQL_BIT
 	SQL_TINYINT
 	SQL_LONGVARBINARY
@@ -277,7 +279,7 @@ if ($INC{'Apache/DBI.pm'} && $ENV{MOD_PERL}) {
 }
 
 # check for weaken support, used by ChildHandles
-my $HAS_WEAKEN = eval { 
+my $HAS_WEAKEN = eval {
     require Scalar::Util;
     # this will croak() if this Scalar::Util doesn't have a working weaken().
     Scalar::Util::weaken( \my $test ); # same test as in t/72childhandles.t
@@ -318,6 +320,7 @@ my $dbd_prefix_registry = {
   df_      => { class => 'DBD::DF',		},
   f_       => { class => 'DBD::File',		},
   file_    => { class => 'DBD::TextFile',	},
+  go_      => { class => 'DBD::Gofer',  	},
   ib_      => { class => 'DBD::InterBase',	},
   ing_     => { class => 'DBD::Ingres',		},
   ix_      => { class => 'DBD::Informix',	},
@@ -344,6 +347,7 @@ my $dbd_prefix_registry = {
   tuber_   => { class => 'DBD::Tuber',		},
   uni_     => { class => 'DBD::Unify',		},
   wmi_     => { class => 'DBD::WMI',		},
+  x_       => { }, # for private use
   xbase_   => { class => 'DBD::XBase',		},
   xl_      => { class => 'DBD::Excel',		},
   yaswi_   => { class => 'DBD::Yaswi',		},
@@ -385,10 +389,11 @@ my $keeperr = { O=>0x0004 };
 	trace		=> { U =>[1,3,'[$trace_level, [$filename]]'],	O=>0x0004 },
 	trace_msg	=> { U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
 	swap_inner_handle => { U =>[2,3,'$h [, $allow_reparent ]'] },
+        private_attribute_info => { },
     },
     dr => {		# Database Driver Interface
-	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
-	'connect_cached'=>{U=>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3 },
+	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3, O=>0x8000 },
+	'connect_cached'=>{U=>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3, O=>0x8000 },
 	'disconnect_all'=>{ U =>[1,1], O=>0x0800 },
 	data_sources => { U =>[1,2,'[\%attr]' ], O=>0x0800 },
 	default_user => { U =>[3,4,'$user, $pass [, \%attr]' ] },
@@ -397,15 +402,15 @@ my $keeperr = { O=>0x0004 };
 	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
 	take_imp_data	=> { U =>[1,1], },
 	clone   	=> { U =>[1,2,'[\%attr]'] },
-	connected   	=> { O=>0x0100 },
+	connected   	=> { U =>[1,0], O => 0x0004 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
 	commit     	=> { U =>[1,1], O=>0x0480|0x0800 },
 	rollback   	=> { U =>[1,1], O=>0x0480|0x0800 },
 	'do'       	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x3200 },
 	last_insert_id	=> { U =>[5,6,'$catalog, $schema, $table_name, $field_name [, \%attr ]'], O=>0x2800 },
 	preparse    	=> {  }, # XXX
-	prepare    	=> { U =>[2,3,'$statement [, \%attr]'],                    O=>0x2200 },
-	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $if_active ] ]'],   O=>0x2200 },
+	prepare    	=> { U =>[2,3,'$statement [, \%attr]'],                    O=>0xA200 },
+	prepare_cached	=> { U =>[2,4,'$statement [, \%attr [, $if_active ] ]'],   O=>0xA200 },
 	selectrow_array	=> { U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	selectrow_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	selectrow_hashref=>{ U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
@@ -419,12 +424,12 @@ my $keeperr = { O=>0x0004 };
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x2200 },
-	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x2200|0x0800 },
-	column_info     => { U =>[5,6,'$catalog, $schema, $table, $column [, \%attr ]'],O=>0x2200|0x0800 },
-	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200|0x0800 },
+	table_info      => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ],	O=>0x2200|0x8800 },
+	column_info     => { U =>[5,6,'$catalog, $schema, $table, $column [, \%attr ]'],O=>0x2200|0x8800 },
+	primary_key_info=> { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200|0x8800 },
 	primary_key     => { U =>[4,5,'$catalog, $schema, $table [, \%attr ]' ],	O=>0x2200 },
-	foreign_key_info=> { U =>[7,8,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table [, \%attr ]' ], O=>0x2200|0x0800 },
-	statistics_info => { U =>[6,7,'$catalog, $schema, $table, $unique_only, $quick, [, \%attr ]' ], O=>0x2200|0x0800 },
+	foreign_key_info=> { U =>[7,8,'$pk_catalog, $pk_schema, $pk_table, $fk_catalog, $fk_schema, $fk_table [, \%attr ]' ], O=>0x2200|0x8800 },
+	statistics_info => { U =>[6,7,'$catalog, $schema, $table, $unique_only, $quick, [, \%attr ]' ], O=>0x2200|0x8800 },
 	type_info_all	=> { U =>[1,1], O=>0x2200|0x0800 },
 	type_info	=> { U =>[1,2,'$data_type'], O=>0x2200 },
 	get_info	=> { U =>[2,2,'$info_type'], O=>0x2200|0x0800 },
@@ -569,18 +574,22 @@ sub connect {
 	or Carp::croak("Can't connect to data source $dsn, no database driver specified "
 		."and DBI_DSN env var not set");
 
+    my $proxy;
     if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Sponge' && $driver ne 'Switch') {
 	my $dbi_autoproxy = $ENV{DBI_AUTOPROXY};
-	my $proxy = 'Proxy';
+	$proxy = 'Proxy';
 	if ($dbi_autoproxy =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i) {
 	    $proxy = $1;
-	    my $attr_spec = $2 || '';
-	    $driver_attrib_spec = ($driver_attrib_spec) ? "$driver_attrib_spec,$attr_spec" : $attr_spec;
+	    $driver_attrib_spec = join ",",
+                ($driver_attrib_spec) ? $driver_attrib_spec : (),
+                ($2                 ) ? $2                  : ();
 	}
 	$dsn = "$dbi_autoproxy;dsn=dbi:$driver:$dsn";
 	$driver = $proxy;
 	DBI->trace_msg("       DBI_AUTOPROXY: dbi:$driver($driver_attrib_spec):$dsn\n");
     }
+    # avoid recursion if proxy calls DBI->connect itself
+    local $ENV{DBI_AUTOPROXY};
 
     my %attributes;	# take a copy we can delete from
     if ($old_driver) {
@@ -603,23 +612,16 @@ sub connect {
     # attributes in DSN take precedence over \%attr connect parameter
     $user =        $attr->{Username} if defined $attr->{Username};
     $pass = delete $attr->{Password} if defined $attr->{Password};
-
-    ($user, $pass) = $drh->default_user($user, $pass, $attr)
-	if !(defined $user && defined $pass);
-
-    $attr->{Username} = $user;	# store username as attribute
+    if ( !(defined $user && defined $pass) ) {
+        ($user, $pass) = $drh->default_user($user, $pass, $attr);
+    }
+    $attr->{Username} = $user; # force the Username to be the actual one used
 
     my $connect_closure = sub {
 	my ($old_dbh, $override_attr) = @_;
 
-	my $attr = {
-	    # copy so we can edit them each time we're called
-	    %attributes,
-	    # merge in modified attr in %$old_dbh, this should also copy in
-	    # the dbi_connect_closure attribute so we can reconnect again.
-	    %{ $override_attr || {} },
-	};
-	#warn "connect_closure: ".Data::Dumper::Dumper([\%attributes, $override_attr]);
+        #use Data::Dumper;
+        #warn "connect_closure: ".Data::Dumper::Dumper([$attr,\%attributes, $override_attr]);
 
 	my $dbh;
 	unless ($dbh = $drh->$connect_meth($dsn, $user, $pass, $attr)) {
@@ -641,45 +643,48 @@ sub connect {
 	    return $dbh; # normally undef, but HandleError could change it
 	}
 
-	# handle basic RootClass subclassing:
-	my $rebless_class = $attr->{RootClass} || ($class ne 'DBI' ? $class : '');
-	if ($rebless_class) {
-	    no strict 'refs';
-	    if ($attr->{RootClass}) {	# explicit attribute (rather than static call)
-		delete $attr->{RootClass};
-		DBI::_load_class($rebless_class, 0);
-	    }
-	    unless (@{"$rebless_class\::db::ISA"} && @{"$rebless_class\::st::ISA"}) {
-		Carp::carp("DBI subclasses '$rebless_class\::db' and ::st are not setup, RootClass ignored");
-		$rebless_class = undef;
-		$class = 'DBI';
-	    }
-	    else {
-		$dbh->{RootClass} = $rebless_class; # $dbh->STORE called via plain DBI::db
-		DBI::_set_isa([$rebless_class], 'DBI');     # sets up both '::db' and '::st'
-		DBI::_rebless($dbh, $rebless_class);        # appends '::db'
-	    }
-	}
+        # merge any attribute overrides but don't change $attr itself (for closure)
+        my $apply = { ($override_attr) ? (%$attr, %$override_attr ) : %$attr };
 
-	if (%$attr) {
+        # handle basic RootClass subclassing:
+        my $rebless_class = $apply->{RootClass} || ($class ne 'DBI' ? $class : '');
+        if ($rebless_class) {
+            no strict 'refs';
+            if ($apply->{RootClass}) { # explicit attribute (ie not static methd call class)
+                delete $apply->{RootClass};
+                DBI::_load_class($rebless_class, 0);
+            }
+            unless (@{"$rebless_class\::db::ISA"} && @{"$rebless_class\::st::ISA"}) {
+                Carp::carp("DBI subclasses '$rebless_class\::db' and ::st are not setup, RootClass ignored");
+                $rebless_class = undef;
+                $class = 'DBI';
+            }
+            else {
+                $dbh->{RootClass} = $rebless_class; # $dbh->STORE called via plain DBI::db
+                DBI::_set_isa([$rebless_class], 'DBI');     # sets up both '::db' and '::st'
+                DBI::_rebless($dbh, $rebless_class);        # appends '::db'
+            }
+        }
 
-	    DBI::_rebless_dbtype_subclass($dbh, $rebless_class||$class, delete $attr->{DbTypeSubclass}, $attr)
-		if $attr->{DbTypeSubclass};
+	if (%$apply) {
 
+            if ($apply->{DbTypeSubclass}) {
+                my $DbTypeSubclass = delete $apply->{DbTypeSubclass};
+                DBI::_rebless_dbtype_subclass($dbh, $rebless_class||$class, $DbTypeSubclass);
+            }
 	    my $a;
-	    foreach $a (qw(RaiseError PrintError AutoCommit)) { # do these first
-		next unless  exists $attr->{$a};
-		$dbh->{$a} = delete $attr->{$a};
+	    foreach $a (qw(Profile RaiseError PrintError AutoCommit)) { # do these first
+		next unless  exists $apply->{$a};
+		$dbh->{$a} = delete $apply->{$a};
 	    }
-	    foreach $a (keys %$attr) {
-		eval { $dbh->{$a} = $attr->{$a} } or $@ && warn $@;
+	    while ( my ($a, $v) = each %$apply) {
+		eval { $dbh->{$a} = $v } or $@ && warn $@;
 	    }
 	}
 
-	# if we've been subclassed then let the subclass know that we're connected
-	# and pass in the original arguments
-	$dbh->connected(@orig_args)
-	    if ref $dbh ne 'DBI::db';
+        # confirm to driver (ie if subclassed) that we've connected sucessfully
+        # and finished the attribute setup. pass in the original arguments
+	$dbh->connected(@orig_args); #if ref $dbh ne 'DBI::db' or $proxy;
 
 	DBI->trace_msg("    <- connect= $dbh\n") if $DBI::dbi_debug;
 
@@ -835,9 +840,9 @@ sub _set_isa {
 
 
 sub _rebless_dbtype_subclass {
-    my ($dbh, $rootclass, $DbTypeSubclass, $attr) = @_;
+    my ($dbh, $rootclass, $DbTypeSubclass) = @_;
     # determine the db type names for class hierarchy
-    my @hierarchy = DBI::_dbtype_names($dbh, $DbTypeSubclass, $attr);
+    my @hierarchy = DBI::_dbtype_names($dbh, $DbTypeSubclass);
     # add the rootclass prefix to each ('DBI::' or 'MyDBI::' etc)
     $_ = $rootclass.'::'.$_ foreach (@hierarchy);
     # load the modules from the 'top down'
@@ -850,7 +855,7 @@ sub _rebless_dbtype_subclass {
 
 
 sub _dbtype_names { # list dbtypes for hierarchy, ie Informix=>ADO=>ODBC
-    my ($dbh, $DbTypeSubclass, $attr) = @_;
+    my ($dbh, $DbTypeSubclass) = @_;
 
     if ($DbTypeSubclass && $DbTypeSubclass ne '1' && ref $DbTypeSubclass ne 'CODE') {
 	# treat $DbTypeSubclass as a comma separated list of names
@@ -1050,7 +1055,7 @@ sub data_diff {
     $diff .= "\n" if $diff;
     return "a: $a_desc\nb: $b_desc\n$diff";
 }
-    
+
 
 sub data_string_diff {
     # Compares 'logical' characters, not bytes, so a latin1 string and an
@@ -1110,7 +1115,7 @@ sub data_string_desc {	# describe a data string
     #   (might be ascii so also need to check for hibit to make it worthwhile)
     # - UTF8 flag set but invalid UTF8 byte sequence
     # could do better here, but this'll do for now
-    my $utf8 = sprintf "UTF8 %s%s", 
+    my $utf8 = sprintf "UTF8 %s%s",
 	utf8::is_utf8($a) ? "on" : "off",
 	utf8::valid($a||'') ? "" : " but INVALID encoding";
     return "$utf8, undef" unless defined $a;
@@ -1391,6 +1396,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	return;
     }
 
+    sub private_attribute_info {
+        return undef;
+    }
+
 }
 
 
@@ -1414,6 +1423,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# XXX debatable as there's no "server side" here
 	# (and now many uses would trigger warnings on DESTROY)
 	# $this->STORE(Active => 1);
+        # so drivers should set it in their own connect
 	$this;
     }
 
@@ -1714,7 +1724,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    my $temp = $dbh->type_info_all;
 	    return unless $temp && @$temp;
 	    # we cache here because type_info_all may be expensive to call
-	    $tia      = $dbh->{dbi_type_info_row_cache} = $temp;
+	    # (and we take a copy so the following shift can't corrupt
+	    # the data that may be returned by future calls to type_info_all)
+	    $tia      = $dbh->{dbi_type_info_row_cache} = [ @$temp ];
 	    $idx_hash = $dbh->{dbi_type_info_idx_cache} = shift @$tia;
 	}
 
@@ -1801,12 +1813,12 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# use bind_param_array() so long as they don't pass any attribs.
 
 	$$hash_of_arrays{$p_id} = $value_array;
-	return $sth->bind_param($p_id, undef, $attr) 
+	return $sth->bind_param($p_id, undef, $attr)
 		if $attr;
 	1;
     }
 
-    sub bind_param_inout_array { 
+    sub bind_param_inout_array {
 	my $sth = shift;
 	# XXX not supported so we just call bind_param_array instead
 	# and then return an error
@@ -2212,14 +2224,11 @@ Perl supports binary data in Perl strings, and the DBI will pass binary
 data to and from the driver without change. It is up to the driver
 implementors to decide how they wish to handle such binary data.
 
-Most databases that understand multiple character sets have a
-default global charset. Text stored in the database is, or should
-be, stored in that charset; if not, then that's the fault of either
-the database or the application that inserted the data. When text is
-fetched it should be automatically converted to the charset of the
-client, presumably based on the locale. If a driver needs to set a
-flag to get that behaviour, then it should do so; it should not require
-the application to do that.
+Perl supports two kinds of strings: unicode (utf8 internally) and non-unicode
+(defaults to iso-8859-1 if forced to assume an encoding).  Drivers should
+accept both kinds of strings and, if required, convert them to the character
+set of the database being used. Similarly, when fetching from the database
+character data that isn't iso-8859-1 the driver should convert it into utf8.
 
 Multiple SQL statements may not be combined in a single statement
 handle (C<$sth>), although some databases and drivers do support this
@@ -2350,7 +2359,7 @@ C<age> with a NULL value:
     UPDATE people SET age = ? WHERE fullname = ?
   });
   $sth->execute(undef, "Joe Bloggs");
-  
+
 However, care must be taken when trying to use NULL values in a
 C<WHERE> clause.  Consider:
 
@@ -2413,7 +2422,7 @@ placeholder in a statement.
   4)  age = ? OR (age IS NULL AND ? IS NULL)
   5)  age = ? OR (age IS NULL AND SP_ISNULL(?) = 1)
   6)  age = ? OR (age IS NULL AND ? = 1)
-	
+
 Statements formed with the above C<WHERE> clauses require execute
 statements as follows.  The arguments are required, whether their
 values are C<defined> or C<undef>.
@@ -2450,7 +2459,7 @@ work on various database engines:
   Informix IDS 9   N  N  N  Y  N  Y  Y
   MS SQL           N  N  Y  N  Y  ?  Y
   Sybase           Y  N  N  N  N  N  Y
-  AnyData,DBM,CSV  Y  N  N  N  Y  Y* Y  
+  AnyData,DBM,CSV  Y  N  N  N  Y  Y* Y
 
 * Works only because Example 0 works.
 
@@ -2792,7 +2801,7 @@ print out a formatted list of the hash contents, one per line.
 
 Due to the potentially high memory cost and unknown risks of loading
 in an unknown number of drivers that just happen to be installed
-on the system, this method is nor recommended for general use.
+on the system, this method is not recommended for general use.
 Use available_drivers() instead.
 
 The installed_versions() method is primarily intended as a quick
@@ -2829,6 +2838,7 @@ There is also a data_sources() method defined for database handles.
 
   DBI->trace($trace_setting)
   DBI->trace($trace_setting, $trace_filename)
+  DBI->trace($trace_setting, $trace_filehandle)
   $trace_setting = DBI->trace;
 
 The C<DBI-E<gt>trace> method sets the I<global default> trace
@@ -3143,11 +3153,12 @@ provides an alternate return value.
 Some special rules apply if the C<err> or C<errstr>
 values for the handle are I<already> set...
 
-If C<errstr> is true then: "C< [err was %s now %s]>" is appended if
-$err is true and C<err> is already true; "C< [state was %s now %s]>"
-is appended if $state is true and C<state> is already true; then
-"C<\n>" and the new $errstr are appended. Obviously the C<%s>'s
-above are replaced by the corresponding values.
+If C<errstr> is true then: "C< [err was %s now %s]>" is appended if $err is
+true and C<err> is already true and the new err value differs from the original
+one. Similarly "C< [state was %s now %s]>" is appended if $state is true and C<state> is
+already true and the new state value differs from the original one. Finally
+"C<\n>" and the new $errstr are appended if $errstr differs from the existing
+errstr value. Obviously the C<%s>'s above are replaced by the corresponding values.
 
 The handle C<err> value is set to $err if: $err is true; or handle
 C<err> value is undef; or $err is defined and the length is greater
@@ -3243,6 +3254,14 @@ check if $trace_flag_name is a driver specific trace flags and, if
 not, then call the DBIs default parse_trace_flag().
 
 The parse_trace_flag() method was added in DBI 1.42.
+
+=item C<private_attribute_info>
+
+  $hash_ref = $h->private_attribute_info();
+
+Returns a reference to a hash whose keys are the names of driver-private
+attributes available for that kind of handle (driver, database, statement).
+(The values should be undef. Meanings may be assigned to particular values in future.)
 
 =item C<swap_inner_handle>
 
@@ -3371,7 +3390,7 @@ statement handles created by the L</prepare_cached> method.  For a
 driver handle, returns a reference to the cache (hash) of
 database handles created by the L</connect_cached> method.
 
-=item C<Type> (scalar)
+=item C<Type> (scalar, read-only)
 
 The C<Type> attribute identifies the type of a DBI handle.  Returns
 "dr" for driver handles, "db" for database handles and "st" for
@@ -3395,7 +3414,7 @@ statement handles:
         my ($h, $level) = @_;
         $level ||= 0;
         printf "%sh %s %s\n", $h->{Type}, "\t" x $level, $h;
-        show_child_handles($_, $level + 1) 
+        show_child_handles($_, $level + 1)
             for (grep { defined } @{$h->{ChildHandles}});
     }
 
@@ -4092,7 +4111,7 @@ Or, to fetch into an array instead of an array ref:
   @result = @{ $dbh->selectall_arrayref($sql, { Slice => {} }) };
 
 See L</fetchall_arrayref> method for more details.
-  
+
 =item C<selectall_hashref>
 
   $hash_ref = $dbh->selectall_hashref($statement, $key_field);
@@ -4280,14 +4299,14 @@ like:
   $sth = $dbh->prepare_cached("...", { dbi_dummy => __FILE__.__LINE__ });
 
 which will ensure that prepare_cached only returns statements cached
-by that line of code in that source file. 
+by that line of code in that source file.
 
-If you'd like the cache to managed intelligently, you can tie the                                                                                                          
-hashref returned by C<CachedKids> to an appropriate caching module,                                                                                                        
-such as L<Tie::Cache::LRU>:                                                                                                                                                
-                                                                                                                                                                           
-  my $cache = $dbh->{CachedKids};                                                                                                                                          
-  tie %$cache, 'Tie::Cache::LRU', 500;                                                                                                                                      
+If you'd like the cache to managed intelligently, you can tie the
+hashref returned by C<CachedKids> to an appropriate caching module,
+such as L<Tie::Cache::LRU>:
+
+  my $cache = $dbh->{CachedKids};
+  tie %$cache, 'Tie::Cache::LRU', 500;
 
 =item C<commit>
 
@@ -4420,6 +4439,8 @@ of information types to ensure the DBI itself works properly:
   $sth = $dbh->table_info( $catalog, $schema, $table, $type );
   $sth = $dbh->table_info( $catalog, $schema, $table, $type, \%attr );
 
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
+
 Returns an active statement handle that can be used to fetch
 information about tables and views that exist in the database.
 
@@ -4496,6 +4517,8 @@ L</"Standards Reference Information">.
 
   $sth = $dbh->column_info( $catalog, $schema, $table, $column );
 
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
+
 Returns an active statement handle that can be used to fetch
 information about columns in specified tables.
 
@@ -4505,6 +4528,9 @@ according to the database/driver, for example: $table = '%FOO%';
 Note: The support for the selection criteria is driver specific. If the
 driver doesn't support one or more of them then you may get back more
 than you asked for and can do the filtering yourself.
+
+If the arguments don't match any tables then you'll still get a statement
+handle, it'll just return no rows.
 
 The statement handle returned has at least the following fields in the
 order shown below. Other fields, after these, may also be present.
@@ -4608,14 +4634,11 @@ See also L</"Catalog Methods"> and L</"Standards Reference Information">.
 
   $sth = $dbh->primary_key_info( $catalog, $schema, $table );
 
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
+
 Returns an active statement handle that can be used to fetch information
 about columns that make up the primary key for a table.
 The arguments don't accept search patterns (unlike table_info()).
-
-For example:
-
-  $sth = $dbh->primary_key_info( undef, $user, 'foo' );
-  $data = $sth->fetchall_arrayref;
 
 The statement handle will return one row per column, ordered by
 TABLE_CAT, TABLE_SCHEM, TABLE_NAME, and KEY_SEQ.
@@ -4667,6 +4690,8 @@ If there is no primary key then an empty list is returned.
                                , $fk_catalog, $fk_schema, $fk_table
                                , \%attr );
 
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
+
 Returns an active statement handle that can be used to fetch information
 about foreign keys in and/or referencing the specified table(s).
 The arguments don't accept search patterns (unlike table_info()).
@@ -4693,6 +4718,8 @@ For example:
   $sth = $dbh->foreign_key_info( undef, $user, 'master');
   $sth = $dbh->foreign_key_info( undef, undef,   undef , undef, $user, 'detail');
   $sth = $dbh->foreign_key_info( undef, $user, 'master', undef, $user, 'detail');
+
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
 
 Note: The support for the selection criteria, such as C<$catalog>, is
 driver specific.  If the driver doesn't support catalogs and/or
@@ -4782,6 +4809,8 @@ B<Warning:> This method is experimental and may change.
 
   $sth = $dbh->statistics_info( $catalog, $schema, $table, $unique_only, $quick );
 
+  # then $sth->fetchall_arrayref or $sth->fetchall_hashref etc
+
 Returns an active statement handle that can be used to fetch statistical
 information about a table and its indexes.
 
@@ -4794,11 +4823,6 @@ If the boolean argument $quick is set, the actual statistical information
 columns (CARDINALITY and PAGES) will only be returned if they are readily
 available from the server, and might not be current.  Some databases may
 return stale statistics or no statistics at all with this flag set.
-
-For example:
-
-  $sth = $dbh->statistics_info( undef, $user, 'foo', 1, 1 );
-  $data = $sth->fetchall_arrayref;
 
 The statement handle will return at most one row per column name per index,
 plus at most one row for the entire table itself, ordered by NON_UNIQUE, TYPE,
@@ -5515,7 +5539,7 @@ The default implementation provided by DBI (for drivers that have
 not implemented array binding) is to iteratively call L</execute> for
 each parameter tuple provided in the bound arrays.  Drivers may
 provide more optimized implementations using whatever bulk operation
-support the database API provides. The default driver behaviour should 
+support the database API provides. The default driver behaviour should
 match the default DBI behaviour, but always consult your driver
 documentation as there may be driver specific issues to consider.
 
@@ -6743,7 +6767,7 @@ Unfortunately they make signals unsafe again.
 
 The two most common uses of signals in relation to the DBI are for
 canceling operations when the user types Ctrl-C (interrupt), and for
-implementing a timeout using C<alarm()> and C<$SIG{ALRM}>. 
+implementing a timeout using C<alarm()> and C<$SIG{ALRM}>.
 
 =over 4
 
@@ -6798,7 +6822,7 @@ The code would look something like this (for the DBD-Oracle connect()):
    use POSIX ':signal_h';
 
    my $mask = POSIX::SigSet->new( SIGALRM ); # signals to mask in the handler
-   my $action = POSIX::SigAction->new( 
+   my $action = POSIX::SigAction->new(
        sub { die "connect timeout" },        # the handler code ref
        $mask,
        # not using (perl 5.8.2 and later) 'safe' switch or sa_flags
@@ -6817,8 +6841,8 @@ The code would look something like this (for the DBD-Oracle connect()):
 
 Similar techniques can be used for canceling statement execution.
 
-Unfortunately, this solution is somewhat messy, and it does I<not> work with 
-perl versions less than perl 5.8 where C<POSIX::sigaction()> appears to be broken.  
+Unfortunately, this solution is somewhat messy, and it does I<not> work with
+perl versions less than perl 5.8 where C<POSIX::sigaction()> appears to be broken.
 
 For a cleaner implementation that works across perl versions, see Lincoln Baxter's
 Sys::SigAction module at L<http://search.cpan.org/~lbaxter/Sys-SigAction/>.
@@ -7048,18 +7072,145 @@ bar ("C<|>") or comma ("C<,>") characters. For example:
 
 Initially trace output is written to C<STDERR>.  Both the
 C<$h-E<gt>trace> and C<DBI-E<gt>trace> methods take an optional
-$trace_filename parameter. If specified, and can be opened in
-append mode, then I<all> trace output (currently including that
-from other handles) is redirected to that file.  A warning is
-generated if the file can't be opened.
+$trace_file parameter, which may be either the name of a file to be
+openned by DBI in append mode, or a reference to an existing writable
+(possibly layered) filehandle. If $trace_file is a filename,
+and can be opened in append mode, or $trace_file is a writable
+filehandle, then I<all> trace output (currently including that from
+other handles) is redirected to that file. A warning is generated
+if $trace_file can't be opened or is not writable.
 
-Further calls to trace() without a $trace_filename do not alter where
-the trace output is sent. If $trace_filename is undefined, then
-trace output is sent to C<STDERR> and the previous trace file is closed.
+Further calls to trace() without $trace_file do not alter where
+the trace output is sent. If $trace_file is undefined, then
+trace output is sent to C<STDERR> and, if the prior trace was openned with
+$trace_file as a filename, the previous trace file is closed; if $trace_file was
+a filehandle, the filehandle is B<not> closed.
 
-Currently $trace_filename can't be a filehandle. But meanwhile you
-can use the special strings C<"STDERR"> and C<"STDOUT"> to select
-those filehandles.
+B<NOTE>: If $trace_file is specified as a filehandle, the filehandle
+should not be closed until all DBI operations are completed, or the
+application has reset the trace file via another call to
+C<trace()> that changes the trace file.
+
+=head2 Tracing to Layered Filehandles
+
+B<NOTE>:
+
+=over 4
+
+=item *
+Tied filehandles are not currently supported, as
+tie operations are not available to the PerlIO
+methods used by the DBI.
+
+=item *
+PerlIO layer support requires Perl version 5.8 or higher.
+
+=back
+
+As of version 5.8, Perl provides the ability to layer various
+"disciplines" on an open filehandle via the L<PerlIO> module.
+
+A simple example of using PerlIO layers is to use a scalar as the output:
+
+    my $scalar = '';
+    open( my $fh, "+>:scalar", \$scalar );
+    $dbh->trace( 2, $fh );
+
+Now all trace output is simply appended to $scalar.
+
+A more complex application of tracing to a layered filehandle is the
+use of a custom layer (I<Refer to >L<Perlio::via> I<for details
+on creating custom PerlIO layers.>). Consider an application with the
+following logger module:
+
+    package MyFancyLogger;
+
+    sub new
+    {
+        my $self = {};
+        my $fh;
+        open $fh, '>', 'fancylog.log';
+        $self->{_fh} = $fh;
+        $self->{_buf} = '';
+        return bless $self, shift;
+    }
+
+    sub log
+    {
+        my $self = shift;
+        return unless exists $self->{_fh};
+        my $fh = $self->{_fh};
+        $self->{_buf} .= shift;
+    #
+    # DBI feeds us pieces at a time, so accumulate a complete line
+    # before outputing
+    #
+        print $fh "At ", scalar localtime(), ':', $self->{_buf}, "\n" and
+        $self->{_buf} = ''
+            if $self->{_buf}=~tr/\n//;
+    }
+
+    sub close {
+        my $self = shift;
+        return unless exists $self->{_fh};
+        my $fh = $self->{_fh};
+        print $fh "At ", scalar localtime(), ':', $self->{_buf}, "\n" and
+        $self->{_buf} = ''
+            if $self->{_buf};
+        close $fh;
+        delete $self->{_fh};
+    }
+
+    1;
+
+To redirect DBI traces to this logger requires creating
+a package for the layer:
+
+    package PerlIO::via::MyFancyLogLayer;
+
+    sub PUSHED
+    {
+        my ($class,$mode,$fh) = @_;
+        my $logger;
+        return bless \$logger,$class;
+    }
+
+    sub OPEN {
+        my ($self, $path, $mode, $fh) = @_;
+        #
+        # $path is actually our logger object
+        #
+        $$self = $path;
+        return 1;
+    }
+
+    sub WRITE
+    {
+        my ($self, $buf, $fh) = @_;
+        $$self->log($buf);
+        return length($buf);
+    }
+
+    sub CLOSE {
+        my $self = shift;
+        $$self->close();
+        return 0;
+    }
+
+    1;
+
+
+The application can then cause DBI traces to be routed to the
+logger using
+
+    use PerlIO::via::MyFancyLogLayer;
+
+    open my $fh, '>:via(MyFancyLogLayer)', MyFancyLogger->new();
+
+    $dbh->trace('SQL', $fh);
+
+Now all trace output will be processed by MyFancyLogger's
+log() method.
 
 =head2 Trace Content
 
@@ -7374,9 +7525,10 @@ You can use I<perldoc> to read it by executing the C<perldoc DBI::FAQ> command.
 
 =head1 AUTHORS
 
-DBI by Tim Bunce.  This pod text by Tim Bunce, J. Douglas Dunlop,
-Jonathan Leffler and others.  Perl by Larry Wall and the
-C<perl5-porters>.
+DBI by Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+This pod text by Tim Bunce, J. Douglas Dunlop, Jonathan Leffler and others.
+Perl by Larry Wall and the C<perl5-porters>.
 
 =head1 COPYRIGHT
 
@@ -7431,9 +7583,17 @@ to Alligator Descartes for starting work on the first edition of the
 "Programming the Perl DBI" book and letting me jump on board.
 
 The DBI and DBD::Oracle were originally developed while I was Technical
-Director (CTO) of the Paul Ingram Group (www.ig.co.uk).  So I'd
-especially like to thank Paul for his generosity and vision in
-supporting this work for many years.
+Director (CTO) of Ingeneering in the UK (L<http://www.ig.co.uk>) (formerly known as the
+Paul Ingram Group).  So I'd especially like to thank Paul for his generosity
+and vision in supporting this work for many years.
+
+A couple of specific DBI features have been sponsored by enlightened companies:
+
+The development of the swap_inner_handle() method was sponsored by BizRate.com (L<http://BizRate.com>)
+
+The development of DBD::Gofer and related modules was sponsored by
+Shopzilla.com (L<http://Shopzilla.com>), where I currently work.
+
 
 =head1 CONTRIBUTING
 
@@ -7542,28 +7702,6 @@ References to DBI related training resources. No recommendation implied.
 (If you offer professional DBI related training services,
 please send me your details so I can add them here.)
 
-=head1 FREQUENTLY ASKED QUESTIONS
-
-See the DBI FAQ for a more comprehensive list of FAQs. Use the
-C<perldoc DBI::FAQ> command to read it.
-
-=head2 Why doesn't my CGI script work right?
-
-Read the information in the references below.  Please do I<not> post
-CGI related questions to the I<dbi-users> mailing list (or to me).
-
- http://www.perl.com/cgi-bin/pace/pub/doc/FAQs/cgi/perl-cgi-faq.html
- http://www3.pair.com/webthing/docs/cgi/faqs/cgifaq.shtml
- http://www-genome.wi.mit.edu/WWW/faqs/www-security-faq.html
- http://www.boutell.com/faq/
- http://www.perl.com/perl/faq/
-
-=head2 How can I maintain a WWW connection to a database?
-
-For information on the Apache httpd server and the C<mod_perl> module see
-
-  http://perl.apache.org/
-
 =head1 OTHER RELATED WORK AND PERL MODULES
 
 =over 4
@@ -7574,19 +7712,6 @@ To be used with the Apache daemon together with an embedded Perl
 interpreter like C<mod_perl>. Establishes a database connection which
 remains open for the lifetime of the HTTP daemon. This way the CGI
 connect and disconnect for every database access becomes superfluous.
-
-=item JDBC Server by Stuart 'Zen' Bishop zen@bf.rmit.edu.au
-
-The server is written in Perl. The client classes that talk to it are
-of course in Java. Thus, a Java applet or application will be able to
-comunicate via the JDBC API with any database that has a DBI driver installed.
-The URL used is in the form C<jdbc:dbi://host.domain.etc:999/Driver/DBName>.
-It seems to be very similar to some commercial products, such as jdbcKona.
-
-=item Remote Proxy DBD support
-
-As of DBI 1.02, a complete implementation of a DBD::Proxy driver and the
-DBI::ProxyServer are part of the DBI distribution.
 
 =item SQL Parser
 

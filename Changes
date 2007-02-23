@@ -2,7 +2,72 @@
 
 DBI::Changes - List of significant changes to the DBI
 
+(As of $Date: 2007-02-23 17:43:38 +0000 (Fri, 23 Feb 2007) $ $Revision: 9157 $)
+
 =cut
+
+Add attr-passthru to prepare()?
+Terminology for client and server ends
+I could make the short transport/policy name do a lookup in both DBD::Gofer::Transport and DBIx::Gofer::Transport.
+Document user/passwd issues at the various levels of the stack
+is_sth_request via dbh_method_call->[0] =~ /^prepare/?
+Policy for dbh attr FETCH (ie example_driver_path)
+    or piggyback on skip_connect_check
+    could also remember which attr have been returned to us
+    so not bother FETCHing them (unless pedantic)
+Refactor http transport like the others re timeout
+Call method on transport timeout so transport can cleanup/reset it it wants
+XXX quote policy control
+prepare(...,{ Err=>\my $isolated_err, ...})
+
+=head2 Changes in DBI 1.54 (svn rev 9157),  23rd February 2007
+
+  NOTE: This release includes the 'next big thing': DBD::Gofer.
+  Take a look!
+
+  WARNING: This version has some subtle changes in DBI internals.
+  It's possible, though doubtful, that some may affect your code.
+  I recommend some extra testing before using this release.
+  Or perhaps I'm just being over cautious...
+
+  Fixed type_info when called for multiple dbh thanks to Cosimo Streppone.
+  Fixed compile warnings in bleadperl on freebsd-6.1-release
+    and solaris 10g thanks to Philip M. Gollucci.
+  Fixed to compile for perl built with -DNO_MATHOMS thanks to Jerry D. Hedden.
+  Fixed to work for bleadperl (r29544) thanks to Nicholas Clark.
+    Users of Perl >= 5.9.5 will require DBI >= 1.54.
+  Fixed rare error when profiling access to $DBI::err etc tied variables.
+  Fixed DBI::ProfileDumper to not be affected by changes to $/ and $,
+    thanks to Michael Schwern.
+
+  Changed t/40profile.t to skip tests for perl < 5.8.0.
+  Changed setting trace file to no longer write "Trace file set" to new file.
+  Changed 'handle cleared whilst still active' warning for dbh
+    to only be given for dbh that have active sth or are not AutoCommit.
+  Changed take_imp_data to call finish on all Active child sth.
+  Changed DBI::PurePerl trace() method to be more consistent.
+  Changed set_err method to effectively not append to errstr if the new errstr
+    is the same as the current one.
+  Changed handle factory methods, like connect, prepare, and table_info,
+    to copy any error/warn/info state of the handle being returned
+    up into the handle the method was called on.
+  Changed row buffer handling to not alter NUM_OF_FIELDS if it's
+    inconsistent with number of elements in row buffer array.
+  Updated DBI::DBD docs re handling multiple result sets.
+  Updated DBI::DBD docs for driver authors thanks to Ammon Riley
+    and Dean Arnold.
+  Updated column_info docs to note that if a table doesn't exist
+    you get an sth for an empty result set and not an error.
+
+  Added new DBD::Gofer 'stateless proxy' driver and framework,
+    and the DBI test suite is now also executed via DBD::Gofer,
+    and DBD::Gofer+DBI::PurePerl, in addition to DBI::PurePerl.
+  Added ability for trace() to support filehandle argument,
+    including tracing into a string, thanks to Dean Arnold.
+  Added ability for drivers to implement func() method
+    so proxy drivers can proxy the func method itself.
+  Added SQL_BIGINT type code (resolved to the ODBC/JDBC value (-5))
+  Added $h->private_attribute_info method.
 
 =head2 Changes in DBI 1.53 (svn rev 7995),   31st October 2006
 

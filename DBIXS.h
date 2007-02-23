@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h 2488 2006-02-07 22:24:43Z timbo $
+/* $Id: DBIXS.h 8789 2007-02-02 12:14:29Z timbo $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -299,7 +299,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 	imp_xxh_t *ph_com = DBIc_PARENT_COM(imp);			\
 	if (!DBIc_ACTIVE(imp) && ph_com && !dirty			\
 		&& ++DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com))	\
-	    croak("panic: DBI active kids (%d) > kids (%d)",		\
+	    croak("panic: DBI active kids (%ld) > kids (%ld)",		\
 		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
 	DBIc_FLAGS(imp) |=  DBIcf_ACTIVE;				\
     } while(0)
@@ -309,7 +309,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 	if (DBIc_ACTIVE(imp) && ph_com && !dirty			\
 		&& (--DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com)	\
 		   || DBIc_ACTIVE_KIDS(ph_com) < 0) )			\
-	    croak("panic: DBI active kids (%d) < 0 or > kids (%d)",	\
+	    croak("panic: DBI active kids (%ld) < 0 or > kids (%ld)",	\
 		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
 	DBIc_FLAGS(imp) &= ~DBIcf_ACTIVE;				\
     } while(0)
@@ -422,7 +422,11 @@ struct dbistate_st {
     int         (*set_err_char) _((SV *h, imp_xxh_t *imp_xxh, const char *err, IV err_i, const char *errstr, const char *state, const char *method));
     int         (*bind_col)     _((SV *sth, SV *col, SV *ref, SV *attribs));
 
-    void *pad2[5];
+    IO *logfp_ref;	/* DAA keep ptr to filehandle for refcounting */
+
+    /* WARNING: Only add new structure members here, and reduce pad2 to keep */
+    /* the memory footprint exactly the same */
+    void *pad2[4];
 };
 
 /* macros for backwards compatibility */
@@ -487,7 +491,7 @@ struct dbistate_st {
 	(DBD_ATTRIB_OK(attribs)					\
 	    ? hv_fetch((HV*)SvRV(attribs), key,klen, 0)		\
 	    : (SV **)Nullsv)
-	
+
 #define DBD_ATTRIB_GET_IV(attribs, key,klen, svp, var)			\
 	if ((svp=DBD_ATTRIB_GET_SVP(attribs, key,klen)) != NULL)	\
 	    var = SvIV(*svp)

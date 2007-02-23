@@ -31,7 +31,8 @@ require utf8;
 } unless defined &utf8::is_utf8;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf "%d.%02d", '$Revision: 1.96 $ ' =~ /(\d+)\.(\d+)/;
+$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 9148 $ =~ /(\d+)/o);
+
 $DBI::neat_maxlen ||= 400;
 
 $DBI::tfh = Symbol::gensym();
@@ -39,10 +40,10 @@ open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
 select( (select($DBI::tfh), $| = 1)[0] );  # autoflush
 
 # check for weaken support, used by ChildHandles
-my $HAS_WEAKEN = eval { 
+my $HAS_WEAKEN = eval {
     require Scalar::Util;
     # this will croak() if this Scalar::Util doesn't have a working weaken().
-    Scalar::Util::weaken( my $test = [] ); 
+    Scalar::Util::weaken( my $test = [] );
     1;
 };
 
@@ -51,6 +52,7 @@ my $HAS_WEAKEN = eval {
 use constant SQL_ALL_TYPES => 0;
 use constant SQL_ARRAY => 50;
 use constant SQL_ARRAY_LOCATOR => 51;
+use constant SQL_BIGINT => (-5);
 use constant SQL_BINARY => (-2);
 use constant SQL_BIT => (-7);
 use constant SQL_BLOB => 30;
@@ -128,6 +130,7 @@ use constant IMA_NOT_FOUND_OKAY	=> 0x0800; #/* not error if not found */
 use constant IMA_EXECUTE	=> 0x1000; #/* do/execute: DBIcf_Executed   */
 use constant IMA_SHOW_ERR_STMT  => 0x2000; #/* dbh meth relates to Statement*/
 use constant IMA_HIDE_ERR_PARAMVALUES => 0x4000; #/* ParamValues are not relevant */
+use constant IMA_IS_FACTORY     => 0x8000; #/* new h ie connect & prepare */
 
 my %is_flag_attribute = map {$_ =>1 } qw(
 	Active
@@ -231,7 +234,6 @@ sub  _install_method {
 	if IMA_STUB & $bitmask;
 
     push @pre_call_frag, q{
-	#$method_name = $imp . '::' . pop @_;
 	$method_name = pop @_;
     } if IMA_FUNC_REDIRECT & $bitmask;
 
@@ -319,6 +321,13 @@ sub  _install_method {
     } if IMA_END_WORK & $bitmask;
 
     push @post_call_frag, q{
+        if ( ref $ret[0] and defined( (my $h_new = $ret[0])->{err} ) ) {
+            # copy up info/warn to drh so PrintWarn on connect is triggered
+            $h->set_err($h_new->{err}, $h_new->{errstr}, $h_new->{state})
+        }
+    } if IMA_IS_FACTORY & $bitmask;
+
+    push @post_call_frag, q{
 	$keep_error = 0 if $keep_error && $h->{ErrCount} > $ErrCount;
 
 	$DBI::err    = $h->{err};
@@ -397,6 +406,9 @@ sub  _install_method {
 
 	my @ret;
         my $sub = $imp->can($method_name);
+        if (!$sub and IMA_FUNC_REDIRECT & $bitmask and $sub = $imp->can('func')) {
+            push @_, $method_name;
+        }
 	if ($sub) {
 	    (wantarray) ? (@ret = &$sub($h,@_)) : (@ret = scalar &$sub($h,@_));
 	}
@@ -404,7 +416,7 @@ sub  _install_method {
 	    # XXX could try explicit fallback to $imp->can('AUTOLOAD') etc
 	    # which would then let Multiplex pass PurePerl tests, but some
 	    # hook into install_method may be better.
-	    croak "Can't find DBI method $method_name for $h (via $imp)"
+	    croak "Can't locate DBI object method \"$method_name\" via package \"$imp\""
 		if ] . ((IMA_NOT_FOUND_OKAY & $bitmask) ? 0 : 1) . q[;
 	}
 
@@ -463,7 +475,7 @@ sub _setup_handle {
 		@$handles = grep { defined } @$handles;
 		Scalar::Util::weaken($_) for @$handles; # re-weaken after grep
 	    }
-	}   
+	}
     }
     else {	# setting up a driver handle
         $h_inner->{Warn}		= 1;
@@ -474,43 +486,57 @@ sub _setup_handle {
 	$h_inner->{FetchHashKeyName}	||= 'NAME';
 	$h_inner->{LongReadLen}		||= 80;
 	$h_inner->{ChildHandles}        ||= [] if $HAS_WEAKEN;
+	$h_inner->{Type}                ||= 'dr';
     }
     $h_inner->{"_call_depth"} = 0;
     $h_inner->{ErrCount} = 0;
     $h_inner->{Active} = 1;
 }
+
 sub constant {
-    warn "constant @_"; return;
+    warn "constant(@_) called unexpectedly"; return undef;
 }
+
 sub trace {
     my ($h, $level, $file) = @_;
     $level = $h->parse_trace_flags($level)
 	if defined $level and !DBI::looks_like_number($level);
     my $old_level = $DBI::dbi_debug;
-    _set_trace_file($file);
+    _set_trace_file($file) if $level;
     if (defined $level) {
 	$DBI::dbi_debug = $level;
 	print $DBI::tfh "    DBI $DBI::VERSION (PurePerl) "
                 . "dispatch trace level set to $DBI::dbi_debug\n"
 		if $DBI::dbi_debug & 0xF;
-        if ($level==0 and fileno($DBI::tfh)) {
-	    _set_trace_file("");
-        }
     }
+    _set_trace_file($file) if !$level;
     return $old_level;
 }
+
 sub _set_trace_file {
     my ($file) = @_;
-    return unless defined $file;
+    #
+    #   DAA add support for filehandle inputs
+    #
+    # DAA required to avoid closing a prior fh trace()
+    $DBI::tfh = undef unless $DBI::tfh_needs_close;
+
+    if (ref $file eq 'GLOB') {
+	$DBI::tfh = $file;
+        select((select($DBI::tfh), $| = 1)[0]);
+        $DBI::tfh_needs_close = 0;
+        return 1;
+    }
+    $DBI::tfh_needs_close = 1;
     if (!$file || $file eq 'STDERR') {
-	open $DBI::tfh, ">&STDERR" or warn "Can't dup STDERR: $!";
-	return 1;
+	open $DBI::tfh, ">&STDERR" or carp "Can't dup STDERR: $!";
     }
-    if ($file eq 'STDOUT') {
-	open $DBI::tfh, ">&STDOUT" or warn "Can't dup STDOUT: $!";
-	return 1;
+    elsif ($file eq 'STDOUT') {
+	open $DBI::tfh, ">&STDOUT" or carp "Can't dup STDOUT: $!";
     }
-    open $DBI::tfh, ">>$file" or carp "Can't open $file: $!";
+    else {
+        open $DBI::tfh, ">>$file" or carp "Can't open $file: $!";
+    }
     select((select($DBI::tfh), $| = 1)[0]);
     return 1;
 }
@@ -648,15 +674,15 @@ sub trace {	# XXX should set per-handle level, not global
 sub FETCH {
     my($h,$key)= @_;
     my $v = $h->{$key};
-#warn ((exists $h->{$key}) ? "$key=$v\n" : "$key NONEXISTANT\n");
+    #warn ((exists $h->{$key}) ? "$key=$v\n" : "$key NONEXISTANT\n");
     return $v if defined $v;
     if ($key =~ /^NAME_.c$/) {
         my $cols = $h->FETCH('NAME');
         return undef unless $cols;
         my @lcols = map { lc $_ } @$cols;
-        $h->STORE('NAME_lc', \@lcols);
+        $h->{NAME_lc} = \@lcols;
         my @ucols = map { uc $_ } @$cols;
-        $h->STORE('NAME_uc',\@ucols);
+        $h->{NAME_uc} = \@ucols;
         return $h->FETCH($key);
     }
     if ($key =~ /^NAME.*_hash$/) {
@@ -678,7 +704,7 @@ sub FETCH {
             return "dr" if $h->isa('DBI::dr');
             return "db" if $h->isa('DBI::db');
             return "st" if $h->isa('DBI::st');
-            Carp::carp( sprintf "Can't get determine Type for %s",$h );
+            Carp::carp( sprintf "Can't determine Type for %s",$h );
         }
 	if (!$is_valid_attribute{$key} and $key =~ m/^[A-Z]/) {
 	    local $^W; # hide undef warnings
@@ -729,10 +755,10 @@ sub set_err {
 
     if ($h->{errstr}) {
 	$h->{errstr} .= sprintf " [err was %s now %s]", $h->{err}, $errnum
-		if $h->{err} && $errnum;
+		if $h->{err} && $errnum && $h->{err} ne $errnum;
 	$h->{errstr} .= sprintf " [state was %s now %s]", $h->{state}, $state
-		if $h->{state} and $h->{state} ne "S1000" && $state;
-	$h->{errstr} .= "\n$msg";
+		if $h->{state} and $h->{state} ne "S1000" && $state && $h->{state} ne $state;
+	$h->{errstr} .= "\n$msg" if $h->{errstr} ne $msg;
 	$DBI::errstr = $h->{errstr};
     }
     else {
@@ -784,6 +810,13 @@ sub rows {
 }
 sub DESTROY {
 }
+
+package
+	DBD::_::db;
+
+sub connected {
+}
+
 
 package
 	DBD::_::st;
