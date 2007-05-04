@@ -1,15 +1,25 @@
 package DBI::Gofer::Response;
 
-#   $Id: Response.pm 9143 2007-02-20 22:58:25Z timbo $
+#   $Id: Response.pm 9478 2007-05-01 11:03:38Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
 #   You may distribute under the terms of either the GNU General Public
 #   License or the Artistic License, as specified in the Perl README file.
 
-use base qw(DBI::Util::_accessor);
+use strict;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9143 $ =~ /(\d+)/o);
+use Carp;
+use DBI qw(neat neat_list);
+
+use base qw(DBI::Util::_accessor Exporter);
+
+our $VERSION = sprintf("0.%06d", q$Revision: 9478 $ =~ /(\d+)/o);
+
+use constant GOf_RESPONSE_EXECUTED => 0x0001;
+
+our @EXPORT = qw(GOf_RESPONSE_EXECUTED);
+
 
 __PACKAGE__->mk_accessors(qw(
     version
@@ -17,10 +27,14 @@ __PACKAGE__->mk_accessors(qw(
     err
     errstr
     state
+    flags
     last_insert_id
     dbh_attributes
     sth_resultsets
     warnings
+));
+__PACKAGE__->mk_accessors_using(make_accessor_autoviv_hashref => qw(
+    meta
 ));
 
 
@@ -32,6 +46,14 @@ sub new {
 }   
 
 
+
+sub executed_flag_set {
+    my $flags = shift->flags
+        or return 0;
+    return $flags & GOf_RESPONSE_EXECUTED;
+}
+
+
 sub add_err {
     my ($self, $err, $errstr, $state, $trace) = @_;
 
@@ -40,7 +62,8 @@ sub add_err {
 
     chomp $errstr if $errstr;
     $state ||= '';
-    warn "add_err($err, $errstr, $state)" if $trace and $errstr || $err;
+    carp ref($self)."->add_err($err, $errstr, $state)"
+        if $trace and defined($err) || $errstr;
 
     my ($r_err, $r_errstr, $r_state) = ($self->{err}, $self->{errstr}, $self->{state});
 
@@ -72,6 +95,61 @@ sub add_err {
     ($self->{err}, $self->{errstr}, $self->{state}) = ($r_err, $r_errstr, $r_state);
 
     return undef;
+}
+
+
+sub summary_as_text {
+    my $self = shift;
+    my ($context) = @_;
+
+    my ($rv, $err, $errstr, $state) = ($self->{rv}, $self->{err}, $self->{errstr}, $self->{state});
+
+    my @s = sprintf("\trv=%s", (ref $rv) ? "[".neat_list($rv)."]" : neat($rv));
+    $s[-1] .= sprintf(", err=%s, errstr=%s", $err, neat($errstr))
+        if defined $err;
+    $s[-1] .= sprintf(",  flags=0x%x", $self->{flags})
+        if defined $self->{flags};
+
+    push @s, "last_insert_id=%s", $self->last_insert_id
+        if defined $self->last_insert_id;
+
+    if (my $dbh_attr = $self->dbh_attributes) {
+        my @keys = sort keys %$dbh_attr;
+        push @s, sprintf "dbh= { %s }", join(", ", map { "$_=>".neat($dbh_attr->{$_},100) } @keys)
+            if @keys;
+    }   
+
+    for my $rs (@{$self->sth_resultsets || []}) {
+        my ($rowset, $err, $errstr, $state)
+            = @{$rs}{qw(rowset err errstr state)};
+        my $summary = "rowset: ";
+        my $NUM_OF_FIELDS = $rs->{NUM_OF_FIELDS} || 0;
+        my $rows = $rowset ? @$rowset : 0;
+        if ($rowset || $NUM_OF_FIELDS > 0) {
+            $summary .= sprintf "%d rows, %d columns", $rows, $NUM_OF_FIELDS;
+        }
+        $summary .= sprintf ", err=%s, errstr=%s", $err, neat($errstr) if defined $err;
+        if ($rows) {
+            my $NAME = $rs->{NAME};
+            # generate 
+            my @colinfo = map { "$NAME->[$_]=".neat($rowset->[0][$_], 30) } 0..@{$NAME}-1;
+            $summary .= sprintf " [%s]", join ", ", @colinfo;
+            $summary .= ",..." if $rows > 1;
+            # we can be a little more helpful for Sybase/MSSQL user
+            $summary .= " syb_result_type=$rs->{syb_result_type}"
+                if $rs->{syb_result_type} and $rs->{syb_result_type} != 4040;
+        }
+        push @s, $summary;
+    }
+    for my $w (@{$self->warnings || []}) {
+        chomp $w;
+        push @s, "warning: $w";
+    }
+    if ($context && %$context) { 
+        my @keys = sort keys %$context;
+        push @s, join(", ", map { "$_=>".$context->{$_} } @keys);
+    }       
+    return join("\n\t", @s). "\n";
 }
 
 

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl 8812 2007-02-07 11:36:40Z timbo $
+# $Id: test.pl 9451 2007-04-25 15:57:06Z timbo $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 8812 $}."\n";
+    print q{DBI test application $Revision: 9451 $}."\n";
     $| = 1;
 }
 
@@ -94,14 +94,15 @@ else {
     
     # new experimental connect_test_perf method
     DBI->connect_test_perf("dbi:$driver:", '', '', {
-	dbi_loops=>5, dbi_par=>20, dbi_verb=>1
+	dbi_loops=>3, dbi_par=>20, dbi_verb=>1
     });
 
     require Benchmark;
     print "Testing handle creation speed...\n";
     my $null_dbh = DBI->connect('dbi:NullP:','','');
     my $null_sth = $null_dbh->prepare('');	# create one to warm up
-    $count = 10_000;
+    $count = 20_000;
+    $count /= 10 if $ENV{DBI_AUTOPROXY};
     my $i = $count;
     my $t1 = new Benchmark;
     $null_dbh->prepare('') while $i--;

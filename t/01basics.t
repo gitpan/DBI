@@ -2,7 +2,7 @@
 
 use strict;
 
-use Test::More tests => 132;
+use Test::More tests => 130;
 use File::Spec;
 
 $|=1;
@@ -148,20 +148,6 @@ is(neat_list([ 1 + 1, "2", undef, "foobarbaz"]), "2, '2', undef, 'foobarbaz'", '
 ## ----------------------------------------------------------------------------
 ## testing DBI functions
 
-## testing dbi_debug
-
-cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug's initial state is 0");
-
-SKIP: {
-    my $null = File::Spec->devnull();
-    skip "cannot find : $null", 2 unless ($^O eq "MSWin32" || -e $null);
-
-    DBI->trace(15,$null);
-    cmp_ok($DBI::dbi_debug, '==', 15, "... DBI::dbi_debug is 15");
-    DBI->trace(0, undef);
-    cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug is 0");
-}
-
 ## test DBI->internal
 
 my $switch = DBI->internal;
@@ -190,11 +176,10 @@ is($switch->{'Version'}, $DBI::VERSION, '... the version should match DBI versio
 cmp_ok(($switch->{private_test1} = 1), '==', 1, '... this should work and return 1');
 cmp_ok($switch->{private_test1},       '==', 1, '... this should equal 1');
 
-ok(!defined $switch->{CachedKids},     '... CachedKids shouldnt be defined');
-ok(($switch->{CachedKids} = { }),      '... assigned empty hash to CachedKids');
-is(ref($switch->{CachedKids}), 'HASH', '... CachedKids should be a HASH reference');
-
-cmp_ok(scalar(keys(%{$switch->{CachedKids}})), '==', 0, '... CachedKids should be an empty HASH reference');
+is($switch->{CachedKids}, undef, '... CachedKids should be undef initially');
+my $cache = {};
+$switch->{CachedKids} = $cache;
+is($switch->{CachedKids}, $cache,      '... CachedKids should be our ref');
 
 cmp_ok($switch->{Kids},       '==', 0, '... this should be zero');
 cmp_ok($switch->{ActiveKids}, '==', 0, '... this should be zero');
@@ -315,6 +300,20 @@ SKIP: {
 
 	cmp_ok(scalar(@installed_drivers), '>=', 1, '... make sure we got at least one');
 	like("@installed_drivers", qr/Sponge/, '... make sure at least one of them is DBI::Spounge');
+}
+
+## testing dbi_debug
+
+cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug's initial state is 0");
+
+SKIP: {
+    my $null = File::Spec->devnull();
+    skip "cannot find : $null", 2 unless ($^O eq "MSWin32" || -e $null);
+
+    DBI->trace(15,$null);
+    cmp_ok($DBI::dbi_debug, '==', 15, "... DBI::dbi_debug is 15");
+    DBI->trace(0, undef);
+    cmp_ok($DBI::dbi_debug, '==',  0, "... DBI::dbi_debug is 0");
 }
 
 1;

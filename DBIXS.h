@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h 8789 2007-02-02 12:14:29Z timbo $
+/* $Id: DBIXS.h 9461 2007-04-26 23:28:15Z timbo $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -133,13 +133,13 @@ struct imp_xxh_st { struct dbih_com_st com; };
 typedef struct {		/* -- DRIVER --				*/
     dbih_com_std_t	std;
     dbih_com_attr_t	attr;
-    HV          *cached_kids;	/* $drh->connect_cached(...)		*/
+    HV          *_old_cached_kids; /* not used, here for binary compat */
 } dbih_drc_t;
 
 typedef struct {		/* -- DATABASE --			*/
     dbih_com_std_t	std;	/* \__ standard structure		*/
     dbih_com_attr_t	attr;	/* /   plus... (nothing else right now)	*/
-    HV          *cached_kids;	/* $dbh->prepare_cached(...)		*/
+    HV          *_old_cached_kids; /* not used, here for binary compat */
 } dbih_dbc_t;
 
 typedef struct {		/* -- STATEMENT --			*/
@@ -231,8 +231,8 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 #define DBIc_FetchHashKeyName(imp) (_imp2com(imp, attr.FetchHashKeyName))
 
 /* handle sub-type specific fields						*/
-/*	dbh	*/
-#define DBIc_CACHED_KIDS(imp)  	_imp2com(imp, cached_kids)
+/*	dbh & drh	*/
+#define DBIc_CACHED_KIDS(imp)  	Nullhv /* no longer used, here for src compat */
 /*	sth	*/
 #define DBIc_NUM_FIELDS(imp)  	_imp2com(imp, num_fields)
 #define DBIc_NUM_PARAMS(imp)  	_imp2com(imp, num_params)
@@ -328,7 +328,7 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 
 
 #ifdef IN_DBI_XS		/* get Handle Common Data Structure	*/
-#define DBIh_COM(h)         	(dbih_getcom2(h, 0))
+#define DBIh_COM(h)         	(dbih_getcom2(aTHX_ h, 0))
 #else
 #define DBIh_COM(h)         	(DBIS->getcom(h))
 #define neatsvpv(sv,len)       	(DBIS->neat_svpv(sv,len))
@@ -481,10 +481,9 @@ struct dbistate_st {
 /* attribs value. One day we may add some extra magic in here.		*/
 #define DBD_ATTRIBS_CHECK(func, h, attribs)	\
     if ((attribs) && SvOK(attribs)) {		\
-	STRLEN lna1=0, lna2=0;			\
 	if (!SvROK(attribs) || SvTYPE(SvRV(attribs))!=SVt_PVHV)		\
 	    croak("%s->%s(...): attribute parameter '%s' is not a hash ref",	\
-		    SvPV(h,lna1), func, SvPV(attribs,lna2));		\
+		    SvPV_nolen(h), func, SvPV_nolen(attribs));		\
     } else (attribs) = Nullsv
 
 #define DBD_ATTRIB_GET_SVP(attribs, key,klen)			\

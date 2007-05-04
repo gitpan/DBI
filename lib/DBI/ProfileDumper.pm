@@ -154,7 +154,7 @@ it under the same terms as Perl 5 itself.
 # inherit from DBI::Profile
 use DBI::Profile;
 
-our $VERSION = sprintf("2.%06d", q$Revision: 9137 $ =~ /(\d+)/o);
+our $VERSION = sprintf("2.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
 
 our @ISA = ("DBI::Profile");
 
@@ -192,7 +192,7 @@ sub flush_to_disk {
 
     $self->write_data($fh, $self->{Data}, 1);
 
-    close($fh) or croak("Unable to close '$self->{File}': $!");
+    close($fh) or croak("Error closing '$self->{File}': $!");
 
     $self->empty();
 }

@@ -2,23 +2,100 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-02-23 17:43:38 +0000 (Fri, 23 Feb 2007) $ $Revision: 9157 $)
+(As of $Date: 2007-05-02 11:30:21 +0100 (Wed, 02 May 2007) $ $Revision: 9490 $)
 
 =cut
 
-Add attr-passthru to prepare()?
+Assorted TODO notes:
+
+Policy principle:
+    Designed to influence behaviour of unaltered programs
+    ie go_* attributes take precidence over policy
+    on the basis that if you can alter the code to add go_* attributes
+    then you can also put your required logic at that place
+
+Move post-request cleanup into separate method and enable hooks so
+    it can be done after the response has been sent
+
+Gofer request flags:
+    return current executor stats as an attribute - handy for tests
+    only fetch one result set - handy for Sybase/MSSQL users
+    will accept streamed resultsets
+Pedantic policy should force a fresh connect each time - add new policy item
+Add attr-passthru to prepare()? ie for gofer cache control & ReadOnly
 Terminology for client and server ends
-I could make the short transport/policy name do a lookup in both DBD::Gofer::Transport and DBIx::Gofer::Transport.
-Document user/passwd issues at the various levels of the stack
-is_sth_request via dbh_method_call->[0] =~ /^prepare/?
+Document user/passwd issues at the various levels of the gofer stack
+Policy's from pod
 Policy for dbh attr FETCH (ie example_driver_path)
     or piggyback on skip_connect_check
     could also remember which attr have been returned to us
     so not bother FETCHing them (unless pedantic)
 Refactor http transport like the others re timeout
-Call method on transport timeout so transport can cleanup/reset it it wants
-XXX quote policy control
+Call method on transport failure so transport can cleanup/reset it it wants
+
 prepare(...,{ Err=>\my $isolated_err, ...})
+Move _new_sth to DBI::db::_new_sth (leave alias) and implement in C
+Or call _new_child and move to DBI::common?
+Add trace modules that just records the last N trace messages into an array
+and prepends them to any error message.
+
+=head2 Changes in DBI 1.55 (svn rev 9504),  4th May 2007
+
+  Fixed set_err() so HandleSetErr hook is executed reliably, if set.
+  Fixed accuracy of profiling when perl configured to use long doubles.
+  Fixed 42prof_data.t on fast systems with poor timers thanks to Malcolm Nooning.
+  Fixed potential corruption in selectall_arrayref and selectrow_arrayref
+    for compiled drivers, thanks to Rob Davies.
+    Rebuild your compiled drivers after installing DBI.
+
+  Changed some handle creation code from perl to C code,
+    to reduce handle creation cost by ~20%.
+  Changed internal implementation of the CachedKids attribute
+    so it's a normal handle attribute (and initially undef).
+  Changed connect_cached and prepare_cached to avoid a FETCH method call,
+    and thereby reduced cost by ~5% and ~30% respectively.
+  Changed _set_fbav to not croak when given a wrongly sized array,
+    it now warns and adjusts the row buffer to match.
+  Changed some internals to improve performance with threaded perls.
+  Changed DBD::NullP to be slightly more useful for testing.
+  Changed File::Spec prerequisite to not require a minimum version.
+  Changed tests to work with other DBMs thanks to ZMAN.
+  Changed ex/perl_dbi_nulls_test.pl to be more descriptive.
+
+  Added more functionality to the (undocumented) Callback mechanism.
+    Callbacks can now elect to provide a value to be returned, in which case
+    the method won't be called. A callback for "*" is applied to all methods
+    that don't have their own callback.
+  Added $h->{ReadOnly} attribute.
+  Added support for DBI Profile Path to contain refs to scalars
+    which will be de-ref'd for each profile sample.
+  Added dbilogstrip utility to edit DBI logs for diff'ing (gets installed)
+  Added details for SQLite 3.3 to NULL handling docs thanks to Alex Teslik.
+  Added take_imp_data() to DBI::PurePerl.
+
+  Gofer related changes:
+    Fixed gofer pipeone & stream transports to avoid risk of hanging.
+    Improved error handling and tracing significantly.
+    Added way to generate random 1-in-N failures for methods.
+    Added automatic retry-on-error mechanism to gofer transport base class.
+    Added tests to show automatic retry mechanism works a treat!
+    Added go_retry_hook callback hook so apps can fine-tune retry behaviour.
+    Added header to request and response packets for sanity checking
+      and to enable version skew between client and server.
+    Added forced_single_resultset, max_cached_sth_per_dbh and max_cached_dbh_per_drh
+      to gofer executor config.
+    Driver-private methods installed with install_method are now proxied.
+    No longer does a round-trip to the server for methods it knows
+      have not been overridden by the remote driver.
+    Most significant aspects of gofer behaviour are controlled by policy mechanism.
+    Added policy-controlled caching of results for some methods, such as schema metadata.
+    The connect_cached and prepare_cached methods cache on client and server.
+    The bind_param_array and execute_array methods are now supported.
+    Worked around a DBD::Sybase bind_param bug (which is fixed in DBD::Sybase 1.07)
+    Added goferperf.pl utility (doesn't get installed).
+    Many other assorted Gofer related bug fixes, enhancements and docs.
+    The http and mod_perl transports have been remove to their own distribution.
+    Client and server will need upgrading together for this release.
 
 =head2 Changes in DBI 1.54 (svn rev 9157),  23rd February 2007
 

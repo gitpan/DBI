@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::pipeone;
 
-#   $Id: pipeone.pm 9139 2007-02-19 16:45:56Z timbo $
+#   $Id: pipeone.pm 9395 2007-04-11 15:57:46Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use DBI::Gofer::Execute;
 
 use base qw(DBI::Gofer::Transport::Base Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9139 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
 
 our @EXPORT = qw(run_one_stdio);
 
@@ -22,13 +22,13 @@ my $executor = DBI::Gofer::Execute->new();
 
 sub run_one_stdio {
 
-    my $self = DBI::Gofer::Transport::pipeone->new();
+    my $transport = DBI::Gofer::Transport::pipeone->new();
 
     my $frozen_request = do { local $/; <STDIN> };
 
-    my $response = $executor->execute_request( $self->thaw_data($frozen_request) );
+    my $response = $executor->execute_request( $transport->thaw_request($frozen_request) );
 
-    my $frozen_response = $self->freeze_data($response);
+    my $frozen_response = $transport->freeze_response($response);
 
     print $frozen_response;
 }

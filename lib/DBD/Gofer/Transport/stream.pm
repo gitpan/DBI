@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 9147 2007-02-21 00:54:06Z timbo $
+#   $Id: stream.pm 9395 2007-04-11 15:57:46Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -11,11 +11,10 @@ use strict;
 use warnings;
 
 use Carp;
-use Fcntl;
 
 use base qw(DBD::Gofer::Transport::pipeone);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9147 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     go_persist
@@ -23,9 +22,6 @@ __PACKAGE__->mk_accessors(qw(
 
 my $persist_all = 5;
 my %persist;
-
-sub nonblock;
-
 
 
 sub _connection_key {
@@ -41,7 +37,7 @@ sub _connection_get {
     $persist = $persist_all if not defined $persist;
     my $key = ($persist) ? $self->_connection_key : '';
     if ($persist{$key} && $self->_connection_check($persist{$key})) {
-        DBI->trace_msg("reusing persistent connection $key\n",0) if $self->trace >= 1;
+        $self->trace_msg("reusing persistent connection $key\n",0) if $self->trace >= 1;
         return $persist{$key};
     }
 
@@ -60,7 +56,9 @@ sub _connection_check {
     my ($self, $connection) = @_;
     $connection ||= $self->connection_info;
     my $pid = $connection->{pid};
-    return (kill 0, $pid);
+    my $ok = (kill 0, $pid);
+    $self->trace_msg("_connection_check: $ok (pid $$)\n",0) if $self->trace;
+    return $ok;
 }
 
 
@@ -68,9 +66,10 @@ sub _connection_kill {
     my ($self) = @_;
     my $connection = $self->connection_info;
     my ($pid, $wfh, $rfh, $efh) = @{$connection}{qw(pid wfh rfh efh)};
+    $self->trace_msg("_connection_kill: closing write handle\n",0) if $self->trace;
     # closing the write file handle should be enough, generally
     close $wfh;
-    # in code cases in future we may want to be more aggressive
+    # in future we may want to be more aggressive
     #close $rfh; close $efh; kill 15, $pid
     # but deleting from the persist cache...
     delete $persist{ $self->_connection_key };
@@ -99,19 +98,19 @@ sub _make_connection {
         unshift @$cmd, qw(ssh -xq), split(' ', $ssh), qw(bash -c), $setup;
     }
 
-    DBI->trace_msg("new connection: @$cmd\n",0) if $self->trace;
+    $self->trace_msg("new connection: @$cmd\n",0) if $self->trace;
 
     # XXX add a handshake - some message from DBI::Gofer::Transport::stream that's
     # sent as soon as it starts that we can wait for to report success - and soak up
     # and report useful warnings etc from ssh before we get it? Increases latency though.
     my $connection = $self->start_pipe_command($cmd);
-    nonblock($connection->{efh});
     return $connection;
 }
 
 
 sub transmit_request_by_transport {
     my ($self, $request) = @_;
+    my $trace = $self->trace;
 
     my $connection = $self->connection_info || do {
         my $con = $self->_connection_get;
@@ -119,18 +118,22 @@ sub transmit_request_by_transport {
         $con;
     };
 
-    my $frozen_request = unpack("H*", $self->freeze_data($request));
-    $frozen_request .= "\n";
+    my $encoded_request = unpack("H*", $self->freeze_request($request));
+    $encoded_request .= "\015\012";
 
     my $wfh = $connection->{wfh};
+    $self->trace_msg(sprintf("transmit_request_by_transport: to fh %s fd%d\n", $wfh, fileno($wfh)),0)
+        if $trace >= 4;
+
     # send frozen request
-    print $wfh $frozen_request # autoflush enabled
+    local $\;
+    print $wfh $encoded_request # autoflush enabled
         or do {
             # XXX should make new connection and retry
             $self->_connection_kill;
             die "Error sending request: $!";
         };
-    $self->trace_msg("Request: $frozen_request\n",0) if $self->trace >= 4;
+    $self->trace_msg("Request sent: $encoded_request\n",0) if $trace >= 4;
 
     return;
 }
@@ -138,56 +141,69 @@ sub transmit_request_by_transport {
 
 sub receive_response_by_transport {
     my $self = shift;
+    my $trace = $self->trace;
 
+    $self->trace_msg("receive_response_by_transport: awaiting response\n",0) if $trace >= 4;
     my $connection = $self->connection_info || die;
-    my ($pid, $rfh, $efh) = @{$connection}{qw(pid rfh efh)};
+    my ($pid, $rfh, $efh, $cmd) = @{$connection}{qw(pid rfh efh cmd)};
 
-    # blocks till a newline has been read
-    $! = 0;
-    my $frozen_response = <$rfh>; # always one line
-    my $frozen_response_errno = $!;
+    my $errno = 0;
+    my $frozen_response;
+    my $stderr_msg;
 
-    # must read any stderr output _afterwards_
-    # warnings during execution are caught and returned as part
-    # of the response object. So stderr should be silent.
-    my $stderr_msg = do { local $/; <$efh> }; # nonblocking
+    $self->read_response_from_fh( {
+        $efh => {
+            error => sub { warn "error reading response stderr: $!"; $errno||=$!; 1 },
+            eof   => sub { warn "eof on stderr" if 0; 1 },
+            read  => sub { $stderr_msg .= $_; 0 },
+        },
+        $rfh => {
+            error => sub { warn "error reading response: $!"; $errno||=$!; 1 },
+            eof   => sub { warn "eof on stdout" if 0; 1 },
+            read  => sub { $frozen_response .= $_; ($frozen_response=~s/\015\012$//) ? 1 : 0 },
+        },
+    });
 
     # if we got no output on stdout at all then the command has
     # probably exited, possibly with an error to stderr.
     # Turn this situation into a reasonably useful DBI error.
-    if (not $frozen_response or !chomp $frozen_response) {
-        chomp $stderr_msg if $stderr_msg;
-        my $msg = sprintf("Error reading from %s (pid %d%s): ",
-            $self->cmd_as_string, $pid, (kill 0, $pid) ? "" : ", exited");
-        $msg .= $stderr_msg || $frozen_response_errno;
+    if (not $frozen_response) {
+        my $msg = "No response received";
+        if (chomp $stderr_msg && $stderr_msg) {
+            $msg .= sprintf ", error reported by \"%s\" (pid %d%s): %s",
+                $self->cmd_as_string,
+                $pid, ((kill 0, $pid) ? "" : ", exited"),
+                $stderr_msg;
+        }
+        else {
+            $msg .= ($errno) ? ", error while reading response: $errno" : "(no error message)";
+        }
         die "$msg\n";
     }
 
-    $self->trace_msg("Response: $frozen_response\n",0)
-        if $self->trace >= 4;
+    $self->trace_msg("Response received: $frozen_response\n",0)
+        if $trace >= 4;
 
     $self->trace_msg("Gofer stream stderr message: $stderr_msg\n",0)
-        if $stderr_msg && $self->trace;
+        if $stderr_msg && $trace;
 
     # XXX need to be able to detect and deal with corruption
-    my $response = $self->thaw_data(pack("H*",$frozen_response));
+    my $response = $self->thaw_response(pack("H*",$frozen_response));
 
-    # add any stderr messages as a warning (ie PrintWarn)
-    $response->add_err(0, $stderr_msg, undef, $self->trace)
-        if $stderr_msg;
+    if ($stderr_msg) {
+        # add stderr messages as warnings (for PrintWarn)
+        $response->add_err(0, $stderr_msg, undef, $trace)
+            # but ignore warning from old version of blib
+            unless $stderr_msg =~ /^Using .*blib/ && "@$cmd" =~ /-Mblib/;
+    }   
 
     return $response;
 }
 
-
-
-# nonblock($fh) puts filehandle into nonblocking mode
-sub nonblock {
-  my $fh = shift;
-  my $flags = fcntl($fh, F_GETFL, 0)
-        or croak "Can't get flags for filehandle $fh: $!";
-  fcntl($fh, F_SETFL, $flags | O_NONBLOCK)
-        or croak "Can't make filehandle $fh nonblocking: $!";
+sub transport_timedout {
+    my $self = shift;
+    $self->_connection_kill;
+    return $self->SUPER::transport_timedout(@_);
 }
 
 1;

@@ -1,4 +1,4 @@
-#  $Id: Driver.xst 9153 2007-02-22 02:36:14Z timbo $
+#  $Id: Driver.xst 9454 2007-04-26 10:26:47Z timbo $
 #  Copyright (c) 1997-2002  Tim Bunce  Ireland
 #  Copyright (c) 2002       Jonathan Leffler
 #
@@ -111,7 +111,7 @@ selectall_arrayref(...)
 		(DBD_ATTRIB_TRUE(attr,"Slice",5,tmp_svp) || DBD_ATTRIB_TRUE(attr,"Columns",7,tmp_svp))
 	) {
 	    /* fallback to perl implementation */
-	    ST(0) = dbixst_bounce_method("DBD::~DRIVER~::db::SUPER::selectall_arrayref", items);
+	    ST(0) =dbixst_bounce_method("DBD::~DRIVER~::db::SUPER::selectall_arrayref", items);
 	    XSRETURN(1);
 	}
     }
@@ -121,6 +121,7 @@ selectall_arrayref(...)
     }
     else {
 	sth = dbixst_bounce_method("prepare", 3);
+        SPAGAIN; SP -= items; /* because stack might have been realloc'd */
 	if (!SvROK(sth))
 	    XSRETURN_UNDEF;
     }
@@ -157,6 +158,7 @@ selectrow_arrayref(...)
     else {
 	/* --- prepare --- */
 	sth = dbixst_bounce_method("prepare", 3);
+        SPAGAIN; SP -= items; /* because stack might have been realloc'd */
 	if (!SvROK(sth)) {
 	    if (is_selectrow_array) { XSRETURN_EMPTY; } else { XSRETURN_UNDEF; }
 	}
@@ -271,11 +273,6 @@ disconnect(dbh)
     if ( !DBIc_ACTIVE(imp_dbh) ) {
 	XSRETURN_YES;
     }
-    /* pre-disconnect checks and tidy-ups */
-    if (DBIc_CACHED_KIDS(imp_dbh)) {
-	SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));      /* cast them to the winds	*/
-	DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
-    }
     /* Check for disconnect() being called whilst refs to cursors	*/
     /* still exists. This possibly needs some more thought.		*/
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
@@ -331,11 +328,6 @@ DESTROY(dbh)
 		    SvPV(dbh,lna));
     }
     else {
-	/* pre-disconnect checks and tidy-ups */
-	if (DBIc_CACHED_KIDS(imp_dbh)) {
-	    SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));  /* cast them to the winds	*/
-	    DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
-	}
         if (DBIc_IADESTROY(imp_dbh)) {		  /* want's ineffective destroy	*/
             DBIc_ACTIVE_off(imp_dbh);
 	    if (DBIc_DBISTATE(imp_dbh)->debug)

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 9118 2007-02-17 01:22:41Z timbo $
+# $Id: Makefile.PL 9418 2007-04-16 18:37:58Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -49,6 +49,15 @@ if ($] < 5.008000) {
     prompt("Press return to continue...");
 }
 
+
+if (($ENV{LANG}||'') =~ m/utf-?8/i) {
+    print "\n";
+    print "*** Your LANG environment variable is set to '$ENV{LANG}'\a\n";
+    print "*** This is known to cause problems for some perl installations.\n";
+    print "*** If you get test failures please try again eith LANG unset.\n";
+    print "\a\n";
+    sleep 4;
+}
 
 if ($Config{useithreads}) {
     print "\n";
@@ -120,12 +129,17 @@ my %opts = (
     AUTHOR => 'Tim Bunce (dbi-users@perl.org)',
     VERSION_FROM  => 'DBI.pm',
     ABSTRACT_FROM => 'DBI.pm',
-    PREREQ_PM => { "Test::Simple" => 0.40, Storable => 1, "File::Spec" => 1 },
-    EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl" ],
+    PREREQ_PM => {
+        "Test::Simple" => 0.40,
+        "Storable" => 1,
+        "File::Spec" => 0,
+        "Scalar::Util" => 0,
+    },
+    EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl", "dbilogstrip$ext_pl" ],
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
     clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zv*_*.t"
-			." dbiproxy$ext_pl dbiprof$ext_pl dbitrace.log dbi.prof ndtest.prt" },
+                ." dbiproxy$ext_pl dbiprof$ext_pl dbilogstrip$ext_pl dbitrace.log dbi.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest tardist',
 	PREOP => '$(MAKE) -f Makefile.old distdir',
@@ -305,7 +319,7 @@ $(roadmap_pm): Roadmap.pod
 	$(CP) Roadmap.pod $(roadmap_pm)
 
 checkkeywords:
-	$(RM_F) blib
+	$(RM_RF) blib
 	find . -type f \( -name .svn -prune -o -name \*.pm -o -name \*.PL -o -name \*.pl \) \
             -exec bash -c '[ -z "$$(svn pg svn:keywords {})" ] && echo svn propset svn:keywords \"Id Revision\" {}' \;
 };

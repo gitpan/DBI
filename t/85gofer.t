@@ -6,11 +6,10 @@ use strict;
 use warnings;
 
 use Cwd;
-use Time::HiRes qw(time);
 use Data::Dumper;
 use Test::More;
 
-use DBI;
+use DBI qw(dbi_time);
 
 if (my $ap = $ENV{DBI_AUTOPROXY}) { # limit the insanity
     plan skip_all => "transport+policy tests skipped with non-gofer DBI_AUTOPROXY"
@@ -18,7 +17,6 @@ if (my $ap = $ENV{DBI_AUTOPROXY}) { # limit the insanity
     plan skip_all => "transport+policy tests skipped with non-pedantic policy in DBI_AUTOPROXY"
         if $ap !~ /policy=pedantic\b/i;
 }
-plan 'no_plan';
 
 # 0=SQL::Statement if avail, 1=DBI::SQL::Nano
 # next line forces use of Nano rather than default behaviour
@@ -28,10 +26,22 @@ my $perf_count = (@ARGV && $ARGV[0] =~ s/^-c=//) ? shift : (-t STDOUT) ? 100 : 0
 my %durations;
 
 # so users can try others from the command line
-my $dbm = $ARGV[0] || "SDBM_File";
+my $dbm = $ARGV[0];
+if (!$dbm) {
+    # pick first available, starting with SDBM_File
+    for (qw( SDBM_File GDBM_File DB_File BerkeleyDB )) {
+        if (eval { local $^W; require "$_.pm" }) {
+            $dbm = ($_);
+            last;
+        }
+    }
+    plan skip_all => 'No DBM modules available' if !$dbm;
+}
 my $remote_driver_dsn = "dbm_type=$dbm;lockfile=0";
 my $remote_dsn = "dbi:DBM:$remote_driver_dsn";
 my $timeout = 10;
+
+plan 'no_plan';
 
 if ($ENV{DBI_AUTOPROXY}) {
     # this means we have DBD::Gofer => DBD::Gofer => DBD::DBM!
@@ -90,8 +100,8 @@ while ( my ($activity, $stats_hash) = each %durations ) {
     print "\n";
     $stats_hash->{'~baseline~'} = delete $stats_hash->{"no+pedantic"};
     for my $perf_tag (reverse sort keys %$stats_hash) {
-        my $dur = $stats_hash->{$perf_tag};
-        printf "  %6s %-13s: %.6fsec (%5d/sec)",
+        my $dur = $stats_hash->{$perf_tag} || 0.0000001;
+        printf "  %6s %-16s: %.6fsec (%5d/sec)",
             $activity, $perf_tag, $dur/$perf_count, $perf_count/$dur;
         my $baseline_dur = $stats_hash->{'~baseline~'};
         printf " %+5.1fms", (($dur-$baseline_dur)/$perf_count)*1000
@@ -117,11 +127,11 @@ sub run_tests {
     $dsn = $remote_dsn if $transport eq 'no';
     print " $dsn\n";
 
-    my $dbh = DBI->connect($dsn, undef, undef, { } );
-    ok $dbh, sprintf "should connect to %s (%s)", $dsn, $DBI::errstr||'';
-    die "$test_run_tag aborted\n" unless $dbh;
+    my $dbh = DBI->connect($dsn, undef, undef, { RaiseError => 1, PrintError => 0 } );
+    die "$test_run_tag aborted: $DBI::errstr\n" unless $dbh; # no point continuing
+    ok $dbh, sprintf "should connect to %s", $dsn;
 
-    is $dbh->{Name}, ($policy->skip_connect_check or $policy->dbh_attribute_update eq 'none')
+    is $dbh->{Name}, ($policy->skip_connect_check)
         ? $driver_dsn
         : $remote_driver_dsn;
 
@@ -130,7 +140,7 @@ sub run_tests {
     die "$test_run_tag aborted\n" if $DBI::err;
 
     my $sth = do {
-        local $dbh->{PrintError} = 0;
+        local $dbh->{RaiseError} = 0;
         $dbh->prepare("complete non-sql gibberish");
     };
     ($policy->skip_prepare_check)
@@ -142,10 +152,11 @@ sub run_tests {
     ok $ins_sth->execute(2, 'oranges');
 
     my $rowset;
-    ok $rowset = $dbh->selectall_arrayref("SELECT dKey, dVal FROM fruit");
+    ok $rowset = $dbh->selectall_arrayref("SELECT dKey, dVal FROM fruit ORDER BY dKey");
     is_deeply($rowset, [ [ '1', 'oranges' ], [ '2', 'oranges' ] ]);
 
     ok $dbh->do("UPDATE fruit SET dVal='apples' WHERE dVal='oranges'");
+    ok $dbh->{go_response}->executed_flag_set, 'go_response executed flag should be true';
 
     ok $sth = $dbh->prepare("SELECT dKey, dVal FROM fruit");
     ok $sth->execute;
@@ -153,19 +164,57 @@ sub run_tests {
     is_deeply($rowset, { '1' => { dKey=>1, dVal=>'apples' }, 2 => { dKey=>2, dVal=>'apples' } });
 
     if ($perf_count and $transport ne 'pipeone') {
-        my $start = time();
+        print "performance check - $perf_count selects and inserts\n";
+        my $start = dbi_time();
         $dbh->selectall_arrayref("SELECT dKey, dVal FROM fruit")
             for (1000..1000+$perf_count);
-        $durations{select}{"$transport+$policy_name"} = time() - $start;
+        $durations{select}{"$transport+$policy_name"} = dbi_time() - $start;
 
         # some rows in to get a (*very* rough) idea of overheads
-        $start = time();
+        $start = dbi_time();
         $ins_sth->execute($_, 'speed')
             for (1000..1000+$perf_count);
-        $durations{insert}{"$transport+$policy_name"} = time() - $start;
+        $durations{insert}{"$transport+$policy_name"} = dbi_time() - $start;
     }
 
+    my $skip_go_request_count_check = ($transport eq 'no');
+
+    print "Testing go_request_count and caching of simple values\n";
+    my $go_request_count = $dbh->{go_request_count};
+    ok $go_request_count
+        unless $skip_go_request_count_check && pass();
+
     ok $dbh->do("DROP TABLE fruit");
+    is ++$go_request_count, $dbh->{go_request_count}
+        unless $skip_go_request_count_check && pass();
+
+    # tests go_request_count, caching, and skip_default_methods policy
+    my $use_remote = ($policy->skip_default_methods) ? 0 : 1;
+    printf "use_remote=%s (policy=%s, transport=%s) %s\n",
+        $use_remote, $policy_name, $transport, $dbh->{dbi_default_methods}||'';
+
+SKIP: {
+    skip "skip_default_methods checking doesn't work with Gofer over Gofer", 3
+        if $ENV{DBI_AUTOPROXY} or $skip_go_request_count_check;
+    $dbh->data_sources({ foo_bar => $go_request_count });
+    is $dbh->{go_request_count}, $go_request_count + 1*$use_remote;
+    $dbh->data_sources({ foo_bar => $go_request_count }); # should use cache
+    is $dbh->{go_request_count}, $go_request_count + 1*$use_remote;
+    @_=$dbh->data_sources({ foo_bar => $go_request_count }); # no cached yet due to wantarray
+    is $dbh->{go_request_count}, $go_request_count + 2*$use_remote;
+}
+
+SKIP: {
+    skip "caching of metadata methods returning sth not yet implemented", 2;
+    print "Testing go_request_count and caching of sth\n";
+    $go_request_count = $dbh->{go_request_count};
+    my $sth_ti1 = $dbh->table_info("%", "%", "%", "TABLE", { foo_bar => $go_request_count });
+    is $go_request_count + 1, $dbh->{go_request_count};
+
+    my $sth_ti2 = $dbh->table_info("%", "%", "%", "TABLE", { foo_bar => $go_request_count }); # should use cache
+    is $go_request_count + 1, $dbh->{go_request_count};
+}
+
     ok $dbh->disconnect;
 }
 

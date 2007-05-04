@@ -15,6 +15,7 @@ TODO_2005.txt			Old (but still mostly relevant) occasional random notes about wh
 dbd_xsh.h			Prototypes for standard Driver.xst interface
 dbi_sql.h			Definitions based on SQL CLI / ODBC (#inc'd by DBIXS.h)
 dbipport.h			Perl portability macros (from Devel::PPort)
+dbilogstrip.PL                  Utility to normalise DBI logs so they can be compared with diff
 dbiprof.PL
 dbiproxy.PL			Frontend for DBI::ProxyServer
 dbivport.h			DBI version portability macros (for drivers to copy)
@@ -30,7 +31,6 @@ lib/DBD/Gofer/Policy/pedantic.pm    Safest and most transparent, but also slowes
 lib/DBD/Gofer/Policy/classic.pm     Reasonable policy for typical usage
 lib/DBD/Gofer/Policy/rush.pm        Raw speed, fewest round trips, least transparent
 lib/DBD/Gofer/Transport/Base.pm Base class for DBD::Gofer driver transport classes
-lib/DBD/Gofer/Transport/http.pm
 lib/DBD/Gofer/Transport/null.pm DBD::Gofer transport that executes in same process (for testing)
 lib/DBD/Gofer/Transport/pipeone.pm DBD::Gofer transport to new subprocess for each request
 lib/DBD/Gofer/Transport/stream.pm DBD::Gofer transport for ssh etc
@@ -48,7 +48,6 @@ lib/DBI/Gofer/Execute.pm        Execution logic for DBD::Gofer server
 lib/DBI/Gofer/Request.pm        Request object from DBD::Gofer
 lib/DBI/Gofer/Response.pm       Response object for DBD::Gofer
 lib/DBI/Gofer/Transport/Base.pm Base class for DBD::Gofer server transport classes
-lib/DBI/Gofer/Transport/mod_perl.pm
 lib/DBI/Gofer/Transport/pipeone.pm  DBD::Gofer transport for single requests
 lib/DBI/Gofer/Transport/stream.pm   DBI::Gofer transport for ssh etc
 lib/DBI/Profile.pm		Manage DBI usage profile data
@@ -62,6 +61,7 @@ lib/DBI/SQL/Nano.pm		A 'smaller than micro' SQL parser
 lib/DBI/Util/_accessor.pm       A cut-down version of Class::Accessor::Fast
 lib/DBI/W32ODBC.pm		An experimental DBI emulation layer for Win32::ODBC
 lib/Win32/DBIODBC.pm		An experimental Win32::ODBC emulation layer for DBI
+goferperf.pl                    A performance test utility for DBD::Gofer
 t/01basics.t
 t/02dbidrv.t
 t/03handle.t
@@ -91,6 +91,7 @@ t/70callbacks.t
 t/72childhandles.t
 t/80proxy.t
 t/85gofer.t
+t/86gofer_fail.t
 t/pod.t
 test.pl			Assorted informal tests, including tests for memory leaks
 typemap

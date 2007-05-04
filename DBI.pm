@@ -1,4 +1,4 @@
-# $Id: DBI.pm 9152 2007-02-22 01:44:25Z timbo $
+# $Id: DBI.pm 9490 2007-05-02 10:30:21Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.54"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.55"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,8 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.54
-($Revision: 9152 $).
+This is the DBI specification that corresponds to the DBI version 1.55
+($Revision: 9490 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -288,6 +288,8 @@ my $HAS_WEAKEN = eval {
 
 %DBI::installed_drh = ();  # maps driver names to installed driver handles
 sub installed_drivers { %DBI::installed_drh }
+%DBI::installed_methods = (); # XXX undocumented, may change
+sub installed_methods { %DBI::installed_methods }
 
 # Setup special DBI dynamic variables. See DBI::var::FETCH for details.
 # These are dynamically associated with the last handle used.
@@ -367,7 +369,7 @@ my $keeperr = { O=>0x0004 };
 %DBI::DBI_methods = ( # Define the DBI interface methods per class:
 
     common => {		# Interface methods common to all DBI handle classes
-	'DESTROY'	=> $keeperr,
+	'DESTROY'	=> { O=>0x004|0x10000 },
 	'CLEAR'  	=> $keeperr,
 	'EXISTS' 	=> $keeperr,
 	'FETCH'		=> { O=>0x0404 },
@@ -400,7 +402,7 @@ my $keeperr = { O=>0x0004 };
     },
     db => {		# Database Session Class Interface
 	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
-	take_imp_data	=> { U =>[1,1], },
+	take_imp_data	=> { U =>[1,1], O=>0x10000 },
 	clone   	=> { U =>[1,2,'[\%attr]'] },
 	connected   	=> { U =>[1,0], O => 0x0004 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400 },
@@ -418,7 +420,7 @@ my $keeperr = { O=>0x0004 };
 	selectall_hashref=>{ U =>[3,0,'$statement, $keyfield [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	ping       	=> { U =>[1,1], O=>0x0404 },
-	disconnect 	=> { U =>[1,1], O=>0x0400|0x0800 },
+	disconnect 	=> { U =>[1,1], O=>0x0400|0x0800|0x10000 },
 	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
 	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ],    O=>0x0430 },
 	rows       	=> $keeperr,
@@ -495,7 +497,7 @@ while ( my ($class, $meths) = each %DBI::DBI_methods ) {
 END {
     return unless defined &DBI::trace_msg; # return unless bootstrap'd ok
     local ($!,$?);
-    DBI->trace_msg("    -- DBI::END\n", 2);
+    DBI->trace_msg(sprintf("    -- DBI::END (\$\@: %s, \$!: %s)\n", $@||'', $!||''), 2);
     # Let drivers know why we are calling disconnect_all:
     $DBI::PERL_ENDING = $DBI::PERL_ENDING = 1;	# avoid typo warning
     DBI->disconnect_all() if %DBI::installed_drh;
@@ -571,8 +573,10 @@ sub connect {
 
     # Set $driver. Old style driver, if specified, overrides new dsn style.
     $driver = $old_driver || $1 || $ENV{DBI_DRIVER}
-	or Carp::croak("Can't connect to data source $dsn, no database driver specified "
-		."and DBI_DSN env var not set");
+	or Carp::croak("Can't connect to data source '$dsn' "
+            ."because I can't work out what driver to use "
+            ."(it doesn't seem to contain a 'dbi:driver:' prefix "
+            ."and the DBI_DRIVER env var is not set)");
 
     my $proxy;
     if ($ENV{DBI_AUTOPROXY} && $driver ne 'Proxy' && $driver ne 'Sponge' && $driver ne 'Switch') {
@@ -610,8 +614,9 @@ sub connect {
 	or die "panic: $class->install_driver($driver) failed";
 
     # attributes in DSN take precedence over \%attr connect parameter
-    $user =        $attr->{Username} if defined $attr->{Username};
-    $pass = delete $attr->{Password} if defined $attr->{Password};
+    $user = $attr->{Username} if defined $attr->{Username};
+    $pass = $attr->{Password} if defined $attr->{Password};
+    delete $attr->{Password}; # always delete Password as closure stores it securely
     if ( !(defined $user && defined $pass) ) {
         ($user, $pass) = $drh->default_user($user, $pass, $attr);
     }
@@ -631,6 +636,7 @@ sub connect {
 	    # been called yet and so the dbh errstr would not have been copied
 	    # up to the drh errstr. Certainly true for connect_cached!
 	    my $errstr = $DBI::errstr;
+            # Getting '(no error string)' here is a symptom of a ref loop
 	    $errstr = '(no error string)' if !defined $errstr;
 	    my $msg = "$class connect('$dsn','$user',...) failed: $errstr";
 	    DBI->trace_msg("       $msg\n");
@@ -775,6 +781,7 @@ sub install_driver {		# croaks on failure
     $drh = eval { $driver_class->driver($attr || {}) };
     unless ($drh && ref $drh && !$@) {
 	my $advice = "";
+        $@ ||= "$driver_class->driver didn't return a handle";
 	# catch people on case in-sensitive systems using the wrong case
 	$advice = "\nPerhaps the capitalisation of DBD '$driver' isn't right."
 		if $@ =~ /locate object method/;
@@ -1133,13 +1140,14 @@ sub connect_test_perf {
     my $loops ||= $attr->{dbi_loops} || 5;
     my $par   ||= $attr->{dbi_par}   || 1;	# parallelism
     my $verb  ||= $attr->{dbi_verb}  || 1;
+    my $meth  ||= $attr->{dbi_meth}  || 'connect';
     print "$dsn: testing $loops sets of $par connections:\n";
-    require Benchmark;
     require "FileHandle.pm";	# don't let toke.c create empty FileHandle package
-    $| = 1;
-    my $t0 = new Benchmark;		# not currently used
+    local $| = 1;
     my $drh = $class->install_driver($dsn) or Carp::croak("Can't install $dsn driver\n");
-    my $t1 = new Benchmark;
+    # test the connection and warm up caches etc
+    $drh->connect($dsn,$dbuser,$dbpass) or Carp::croak("connect failed: $DBI::errstr");
+    my $t1 = dbi_time();
     my $loop;
     for $loop (1..$loops) {
 	my @cons;
@@ -1147,58 +1155,30 @@ sub connect_test_perf {
 	for (1..$par) {
 	    print "$_ ";
 	    push @cons, ($drh->connect($dsn,$dbuser,$dbpass)
-		    or Carp::croak("Can't connect # $_: $DBI::errstr\n"));
+		    or Carp::croak("connect failed: $DBI::errstr\n"));
 	}
 	print "\nDisconnecting...\n" if $verb;
 	for (@cons) {
-	    $_->disconnect or warn "bad disconnect $DBI::errstr"
+	    $_->disconnect or warn "disconnect failed: $DBI::errstr"
 	}
     }
-    my $t2 = new Benchmark;
-    my $td = Benchmark::timediff($t2, $t1);
-    printf "Made %2d connections in %s\n", $loops*$par, Benchmark::timestr($td);
-	print "\n";
+    my $t2 = dbi_time();
+    my $td = $t2 - $t1;
+    printf "$meth %d and disconnect them, %d times: %.4fs / %d = %.4fs\n",
+        $par, $loops, $td, $loops*$par, $td/($loops*$par);
     return $td;
 }
 
 
 # Help people doing DBI->errstr, might even document it one day
-# XXX probably best moved to cheaper XS code
+# XXX probably best moved to cheaper XS code if this gets documented
 sub err    { $DBI::err    }
 sub errstr { $DBI::errstr }
 
 
 # --- Private Internal Function for Creating New DBI Handles
 
-sub _new_handle {
-    my ($class, $parent, $attr, $imp_data, $imp_class) = @_;
-
-    Carp::croak('Usage: DBI::_new_handle'
-	    .'($class_name, parent_handle, \%attr, $imp_data)'."\n"
-	    .'got: ('.join(", ",$class, $parent, $attr, $imp_data).")\n")
-	unless (@_ == 5	and (!$parent or ref $parent)
-			and ref $attr eq 'HASH'
-			and $imp_class);
-
-    $attr->{ImplementorClass} = $imp_class
-	or Carp::croak("_new_handle($class): 'ImplementorClass' attribute not given");
-
-    DBI->trace_msg("    New $class (for $imp_class, parent=$parent, id=".($imp_data||'').")\n")
-	if $DBI::dbi_debug >= 3;
-
-    # This is how we create a DBI style Object:
-    my (%hash, $i, $h);
-    $i = tie    %hash, $class, $attr;  # ref to inner hash (for driver)
-    $h = bless \%hash, $class;         # ref to outer hash (for application)
-    # The above tie and bless may migrate down into _setup_handle()...
-    # Now add magic so DBI method dispatch works
-    DBI::_setup_handle($h, $imp_class, $parent, $imp_data);
-
-    return $h unless wantarray;
-    ($h, $i);
-}
-# XXX minimum constructors for the tie's (alias to XS version)
-sub DBI::st::TIEHASH { bless $_[1] => $_[0] };
+# XXX move to PurePerl?
 *DBI::dr::TIEHASH = \&DBI::st::TIEHASH;
 *DBI::db::TIEHASH = \&DBI::st::TIEHASH;
 
@@ -1206,7 +1186,7 @@ sub DBI::st::TIEHASH { bless $_[1] => $_[0] };
 # These three special constructors are called by the drivers
 # The way they are called is likely to change.
 
-my $profile;
+our $shared_profile;
 
 sub _new_drh {	# called by DBD::<drivername>::driver()
     my ($class, $initial_attr, $imp_data) = @_;
@@ -1231,12 +1211,12 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 	# The profile object created here when the first driver is loaded
 	# is shared by all drivers so we end up with just one set of profile
 	# data and thus the 'total time in DBI' is really the true total.
-	if (!$profile) {	# first time
+	if (!$shared_profile) {	# first time
 	    $h->{Profile} = $ENV{DBI_PROFILE};
-	    $profile = $h->{Profile};
+	    $shared_profile = $h->{Profile};
 	}
 	else {
-	    $h->{Profile} = $profile;
+	    $h->{Profile} = $shared_profile;
 	}
     }
     return $h unless wantarray;
@@ -1357,9 +1337,13 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $prefix = $1;
 	my $reg_info = $dbd_prefix_registry->{$prefix};
 	Carp::carp("method name prefix '$prefix' is not associated with a registered driver") unless $reg_info;
-	my %attr = %{$attr||{}}; # copy so we can edit
+
+	my $full_method = "DBI::${subtype}::$method";
+	$DBI::installed_methods{$full_method} = $attr;
+
+	my (undef, $filename, $line) = caller;
 	# XXX reformat $attr as needed for _install_method
-	my ($caller_pkg, $filename, $line) = caller;
+	my %attr = %{$attr||{}}; # copy so we can edit
 	DBI->_install_method("DBI::${subtype}::$method", "$filename at line $line", \%attr);
     }
 
@@ -1429,14 +1413,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
 
     sub connect_cached {
-	my $drh = shift;
-	my ($dsn, $user, $auth, $attr)= @_;
+        my $drh = shift;
+	my ($dsn, $user, $auth, $attr) = @_;
 
-	# Needs support at dbh level to clear cache before complaining about
-	# active children. The XS template code does this. Drivers not using
-	# the template must handle clearing the cache themselves.
-	my $cache = $drh->FETCH('CachedKids');
-	$drh->STORE('CachedKids', $cache = {}) unless $cache;
+	my $cache = $drh->{CachedKids} ||= {};
 
 	my @attr_keys = $attr ? sort keys %$attr : ();
 	my $key = do { local $^W; # silence undef warnings
@@ -1646,8 +1626,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# Needs support at dbh level to clear cache before complaining about
 	# active children. The XS template code does this. Drivers not using
 	# the template must handle clearing the cache themselves.
-	my $cache = $dbh->FETCH('CachedKids');
-	$dbh->STORE('CachedKids', $cache = {}) unless $cache;
+	my $cache = $dbh->{CachedKids} ||= {};
 	my @attr_keys = ($attr) ? sort keys %$attr : ();
 	my $key = ($attr) ? join("~~", $statement, @attr_keys, @{$attr}{@attr_keys}) : $statement;
 	my $sth = $cache->{$key};
@@ -2460,6 +2439,7 @@ work on various database engines:
   MS SQL           N  N  Y  N  Y  ?  Y
   Sybase           Y  N  N  N  N  N  Y
   AnyData,DBM,CSV  Y  N  N  N  Y  Y* Y
+  SQLite 3.3       N  N  N  N  Y  N  N
 
 * Works only because Example 0 works.
 
@@ -3106,7 +3086,7 @@ See L</set_err> for more information.
 Returns a state code in the standard SQLSTATE five character format.
 Note that the specific success code C<00000> is translated to any empty string
 (false). If the driver does not support SQLSTATE (and most don't),
-then state will return C<S1000> (General Error) for all errors.
+then state() will return C<S1000> (General Error) for all errors.
 
 The driver is free to return any value via C<state>, e.g., warning
 codes, even if it has not declared an error by returning a true value
@@ -3114,7 +3094,7 @@ via the L</err> method described above.
 
 The state() method should not be used to test for errors, use err()
 for that, because drivers may return a 'success with information' or
-warning state code via errstr() for methods that have not 'failed'.
+warning state code via state() for methods that have not 'failed'.
 
 =item C<set_err>
 
@@ -3363,11 +3343,10 @@ When it's set on a handle it is also set on the parent handle at the
 same time. So calling execute() on a $sth also sets the C<Executed>
 attribute on the parent $dbh.
 
-The C<Executed> attribute for a database handle is cleared by the
-commit() and rollback() methods. The C<Executed> attribute of a
-statement handle is not cleared by the DBI under any circumstances
-and so acts as a permanent record of whether the statement handle
-was ever used.
+The C<Executed> attribute for a database handle is cleared by the commit() and
+rollback() methods (even if they fail). The C<Executed> attribute of a
+statement handle is not cleared by the DBI under any circumstances and so acts
+as a permanent record of whether the statement handle was ever used.
 
 The C<Executed> attribute was added in DBI 1.41.
 
@@ -3826,6 +3805,28 @@ See the L<DBI::Profile> module documentation for I<much> more detail.
 
 The C<Profile> attribute was added in DBI 1.24.
 
+=item C<ReadOnly> (boolean, inherited)
+
+An application can set the C<ReadOnly> attribute of a handle to a true value to
+indicate that it will not be attempting to make any changes using that handle
+or any children of it.
+
+Note that the exact definition of 'read only' is rather fuzzy.
+For more details see the documentation for the driver you're using.
+
+If the driver can make the handle truly read-only (by issuing a statement like
+"C<set transaction read only>" as needed, for example) then it should.
+Otherwise the attribute is simply advisory.
+
+A driver can set the C<ReadOnly> attribute itself to indicate that the data it
+is connected to cannot be changed for some reason.
+
+Library modules and proxy drivers can use the attribute to influence their behavior.
+For example, the DBD::Gofer driver considers the C<ReadOnly> attribute when
+making a decison about whether to retry an operation that failed.
+
+The attribute should be set to 1 or 0 (or undef). Other values are reserved.
+
 =item C<private_your_module_name_*>
 
 The DBI provides a way to store extra information in a DBI handle as
@@ -3847,7 +3848,8 @@ you should use a two step approach like this:
   my $foo = $dbh->{private_yourmodname_foo};
   $foo ||= $dbh->{private_yourmodname_foo} = { ... };
 
-This attribute is primarily of interest to people sub-classing DBI.
+This attribute is primarily of interest to people sub-classing DBI,
+or for applications to piggy-back extra information onto DBI handles.
 
 =back
 
@@ -7220,16 +7222,21 @@ truncated if longer than C<$DBI::neat_maxlen>. See L</neat> for more details.
 
 =head2 Tracing Tips
 
-You can add tracing to your own application code using the
-L</trace_msg> method.
+You can add tracing to your own application code using the L</trace_msg> method.
 
-It can sometimes be handy to compare trace files from two different
-runs of the same script. However using a tool like C<diff> doesn't work
-well because the trace file is full of object addresses that may
-differ each run. Here's a handy little command to strip those out:
+It can sometimes be handy to compare trace files from two different runs of the
+same script. However using a tool like C<diff> on the original log output
+doesn't work well because the trace file is full of object addresses that may
+differ on each run.
 
-  perl -pe 's/\b0x[\da-f]{6,}/0xNNNN/gi; s/\b[\da-f]{6,}/<long number>/gi'
+The DBI includes a handy utility called dbilogstrip that can be used to
+'normalize' the log content. It can be used as a filter like this:
 
+    DBI_TRACE=2 perl yourscript.pl ...args1... 2>&1 | dbilogstrip > dbitrace1.log
+    DBI_TRACE=2 perl yourscript.pl ...args2... 2>&1 | dbilogstrip > dbitrace2.log
+    diff -u dbitrace1.log dbitrace2.log
+
+See L<dbilogstrip> for more information.
 
 =head1 DBI ENVIRONMENT VARIABLES
 

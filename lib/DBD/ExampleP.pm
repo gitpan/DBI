@@ -6,10 +6,10 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("12.%06d", q$Revision: 9153 $ =~ /(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 9455 $ =~ /(\d+)/o);
 
 
-#   $Id: ExampleP.pm 9153 2007-02-22 02:36:14Z timbo $
+#   $Id: ExampleP.pm 9455 2007-04-26 10:42:31Z timbo $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -96,7 +96,7 @@
 		unless $statement =~ m/^\s*set\s+/;
 	    # the SET syntax is just a hack so the ExampleP driver can
 	    # be used to test non-select statements.
-	    # No we have DBI::DBM etc ExampleP should be deprecated
+	    # Now we have DBI::DBM etc., ExampleP should be deprecated
 	}
 
 	my ($outer, $sth) = DBI::_new_sth($dbh, {

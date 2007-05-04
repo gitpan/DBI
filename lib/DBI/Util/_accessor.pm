@@ -1,9 +1,9 @@
 package DBI::Util::_accessor;
 use strict;
 use Carp;
-our $VERSION = sprintf("0.%06d", q$Revision: 9091 $ =~ /(\d+)/);
+our $VERSION = sprintf("0.%06d", q$Revision: 9478 $ =~ /(\d+)/);
 
-# heavily cut-down (but compatible) version of Class::Accessor::Fast to avoid the dependency
+# inspired by Class::Accessor::Fast
 
 sub new {
     my($proto, $fields) = @_;
@@ -19,10 +19,10 @@ sub new {
 
 sub mk_accessors {
     my($self, @fields) = @_;
-    $self->_mk_accessors('make_accessor', @fields);
+    $self->mk_accessors_using('make_accessor', @fields);
 }
 
-sub _mk_accessors {
+sub mk_accessors_using {
     my($self, $maker, @fields) = @_;
     my $class = ref $self || $self;
 
@@ -32,9 +32,14 @@ sub _mk_accessors {
     no strict 'refs';
     foreach my $field (@fields) {
         my $accessor = $self->$maker($field);
-        *{$class."\:\:$field"}  = $accessor
+        *{$class."\:\:$field"} = $accessor
             unless defined &{$class."\:\:$field"};
     }
+    #my $hash_ref = \%{$class."\:\:_accessors_hash};
+    #$hash_ref->{$_}++ for @fields;
+    # XXX also copy down _accessors_hash of base class(es)
+    # so one in this class is complete
+    return;
 }
 
 sub make_accessor {
@@ -42,7 +47,18 @@ sub make_accessor {
     return sub {
         my $self = shift;
         return $self->{$field} unless @_;
-        $self->{$field} = (@_ == 1 ? $_[0] : [@_]);
+        croak "Too many arguments to $field" if @_ > 1;
+        return $self->{$field} = shift;
+    };
+}
+
+sub make_accessor_autoviv_hashref {
+    my($class, $field) = @_;
+    return sub {
+        my $self = shift;
+        return $self->{$field} ||= {} unless @_;
+        croak "Too many arguments to $field" if @_ > 1;
+        return $self->{$field} = shift;
     };
 }
 

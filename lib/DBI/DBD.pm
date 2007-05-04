@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 9152 2007-02-22 01:44:25Z timbo $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 9451 2007-04-25 15:57:06Z timbo $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 9152 2007-02-22 01:44:25Z timbo $
+# $Id: DBD.pm 9451 2007-04-25 15:57:06Z timbo $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -1273,7 +1273,7 @@ for drivers written in C use this incantation:
 
     /* Adjust NUM_OF_FIELDS - which also adjusts the row buffer size */
     DBIc_NUM_FIELDS(imp_sth) = 0; /* for DBI <= 1.53 */
-    DBIS->set_attr_k(sth, sv_2mortal(newSVpvn("NUM_OF_FIELDS",13)), 0,
+    DBIc_STATE(imp_xxh)->set_attr_k(sth, sv_2mortal(newSVpvn("NUM_OF_FIELDS",13)), 0,
         sv_2mortal(newSViv(mysql_num_fields(imp_sth->result)))
     );
 

@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 9156 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 9478 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 9156 2007-02-23 17:34:39Z timbo $
+#   $Id: Gofer.pm 9478 2007-05-01 11:03:38Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -24,6 +24,7 @@
         Active
         CachedKids
         Callbacks
+        DbTypeSubclass
         ErrCount Executed
         FetchHashKeyName
         HandleError HandleSetErr
@@ -45,28 +46,29 @@
         dbi_connect_method
     );
 
-    our $drh = undef;	# holds driver handle once initialised
+    our $drh = undef;    # holds driver handle once initialised
     our $methods_already_installed;
 
     sub driver{
-	return $drh if $drh;
+        return $drh if $drh;
 
         DBI->setup_driver('DBD::Gofer');
 
         unless ($methods_already_installed++) {
             DBD::Gofer::db->install_method('go_dbh_method', { O=> 0x0004 }); # IMA_KEEP_ERR
             DBD::Gofer::st->install_method('go_sth_method', { O=> 0x0004 }); # IMA_KEEP_ERR
+            DBD::Gofer::st->install_method('go_clone_sth',  { O=> 0x0004 }); # IMA_KEEP_ERR
         }
 
-	my($class, $attr) = @_;
-	$class .= "::dr";
-	($drh) = DBI::_new_drh($class, {
-	    'Name' => 'Gofer',
-	    'Version' => $VERSION,
-	    'Attribution' => 'DBD Gofer by Tim Bunce',
+        my($class, $attr) = @_;
+        $class .= "::dr";
+        ($drh) = DBI::_new_drh($class, {
+            'Name' => 'Gofer',
+            'Version' => $VERSION,
+            'Attribution' => 'DBD Gofer by Tim Bunce',
         });
 
-	$drh;
+        $drh;
     }
 
 
@@ -75,14 +77,41 @@
     }
 
 
-    sub set_err_from_response {
+    sub set_err_from_response { # set error/warn/info and propagate warnings
         my ($h, $response) = @_;
-        # set error/warn/info
-        my $warnings = $response->warnings || [];
-        warn $_ for @$warnings;
+        if (my $warnings = $response->warnings) {
+            warn $_ for @$warnings;
+        }
         return $h->set_err($response->err, $response->errstr, $response->state);
     }
 
+
+    sub install_methods_proxy {
+        my ($installed_methods) = @_;
+        while ( my ($full_method, $attr) = each %$installed_methods ) {
+            # need to install both a DBI dispatch stub and a proxy stub
+            # (the dispatch stub may be already here due to local driver use)
+
+            DBI->_install_method($full_method, "", $attr||{})
+                unless defined &{$full_method};
+
+            # now install proxy stubs on the driver side
+            $full_method =~ m/^DBI::(\w\w)::(\w+)$/
+                or die "Invalid method name '$full_method' for install_method";
+            my ($type, $method) = ($1, $2);
+            my $driver_method = "DBD::Gofer::${type}::${method}";
+            next if defined &{$driver_method};
+            my $sub;
+            if ($type eq 'db') {
+                $sub = sub { return shift->go_dbh_method(undef, $method, @_) };
+            }
+            else {
+                $sub = sub { shift->set_err(1, "Can't call \$${type}h->$method when using DBD::Gofer"); return; };
+            }
+            no strict 'refs';
+            *$driver_method = $sub;
+        }
+    }
 }
 
 
@@ -90,6 +119,16 @@
 
     $imp_data_size = 0;
     use strict;
+
+    sub connect_cached {
+        my ($drh, $dsn, $user, $auth, $attr)= @_;
+        $attr ||= {};
+        return $drh->SUPER::connect_cached($dsn, $user, $auth, {
+            (%$attr),
+            go_connect_method => $attr->{go_connect_method} || 'connect_cached',
+        });
+    }
+
 
     sub connect {
         my($drh, $dsn, $user, $auth, $attr)= @_;
@@ -128,13 +167,16 @@
         # policy object is left in $go_attr{go_policy} so transport can see it
         my $go_policy = $go_attr{go_policy};
 
+        # but delete any other attributes that don't appy to transport
+        my $go_connect_method = delete $go_attr{go_connect_method};
+
         my $transport_class = delete $go_attr{go_transport}
             or return $drh->set_err(1, "No transport= argument in '$orig_dsn'");
         $transport_class = "DBD::Gofer::Transport::$transport_class"
             unless $transport_class =~ /::/;
         _load_class($transport_class)
             or return $drh->set_err(1, "Can't load $transport_class: $@");
-        my $go_trans = eval { $transport_class->new(\%go_attr) }
+        my $go_transport = eval { $transport_class->new(\%go_attr) }
             or return $drh->set_err(1, "Can't instanciate $transport_class: $@");
 
         my $request_class = "DBI::Gofer::Request";
@@ -147,15 +189,19 @@
             }
             # delete any attributes we can't serialize (or don't want to)
             delete @{$go_attr}{qw(Profile HandleError HandleSetErr Callbacks)};
+            # delete any attributes that should only apply to the client-side
+            delete @{$go_attr}{qw(RootClass DbTypeSubclass)};
+
+            $go_connect_method ||= $go_policy->connect_method($remote_dsn, $go_attr) || 'connect';
             $request_class->new({
-                connect_args => [ $remote_dsn, $go_attr ]
+                dbh_connect_call => [ $go_connect_method, $remote_dsn, $user, $auth, $go_attr ],
             })
-        } or return $drh->set_err(1, "Can't instanciate $request_class $@");
+        } or return $drh->set_err(1, "Can't instanciate $request_class: $@");
 
         my ($dbh, $dbh_inner) = DBI::_new_dbh($drh, {
             'Name' => $dsn,
             'USER' => $user,
-            go_trans => $go_trans,
+            go_transport => $go_transport,
             go_request => $go_request,
             go_policy => $go_policy,
         });
@@ -202,29 +248,40 @@
     sub go_dbh_method {
         my $dbh = shift;
         my $meta = shift;
-        # $method and @args left in @_
+        # @_ now contains ($method_name, @args)
 
         my $request = $dbh->{go_request};
-        $request->init_request(\@_, wantarray);
+        $request->init_request([ wantarray, @_ ], $dbh);
         ++$dbh->{go_request_count};
 
         my $go_policy = $dbh->{go_policy};
         my $dbh_attribute_update = $go_policy->dbh_attribute_update();
         $request->dbh_attributes( $go_policy->dbh_attribute_list() )
             if $dbh_attribute_update eq 'every'
-            or $dbh_attribute_update eq 'first' && $dbh->{go_request_count}==1;
+            or $dbh->{go_request_count}==1;
 
         $request->dbh_last_insert_id_args($meta->{go_last_insert_id_args})
             if $meta->{go_last_insert_id_args};
 
-        my $transport = $dbh->{go_trans}
+        my $transport = $dbh->{go_transport}
             or return $dbh->set_err(1, "Not connected (no transport)");
 
-        my $response = $transport->transmit_request($request);
-        $response ||= $transport->receive_response;
-        $dbh->{go_response} = $response;
+        my ($response, $retransmit_sub) = $transport->transmit_request($request);
+        $response ||= $transport->receive_response($request, $retransmit_sub);
+        $dbh->{go_response} = $response
+            or die "No response object returned by $transport";
+
+        die "response '$response' returned by $transport is not a response object"
+            unless UNIVERSAL::isa($response,"DBI::Gofer::Response");
 
         if (my $dbh_attributes = $response->dbh_attributes) {
+
+            # XXX installed_methods piggbacks on dbh_attributes for now
+            if (my $installed_methods = delete $dbh_attributes->{dbi_installed_methods}) {
+                DBD::Gofer::install_methods_proxy($installed_methods)
+                    if $dbh->{go_request_count}==1;
+            }
+
             # XXX we don't STORE here, we just stuff the value into the attribute cache
             $dbh->{$_} = $dbh_attributes->{$_}
                 for keys %$dbh_attributes;
@@ -250,27 +307,101 @@
         return (wantarray) ? @$rv : $rv->[0];
     }
 
-    # Methods that should be forwarded
-    # XXX get_info? special sub to lazy-cache individual values
+
+    # Methods that should be forwarded but can be cached
     for my $method (qw(
-        data_sources
-        table_info column_info primary_key_info foreign_key_info statistics_info
-        type_info_all get_info
+        tables table_info column_info primary_key_info foreign_key_info statistics_info
+        data_sources type_info_all get_info
         parse_trace_flags parse_trace_flag
         func
     )) {
+        my $policy_name = "cache_$method";
+        my $super_name  = "SUPER::$method";
+        my $sub = sub {
+            my $dbh = shift;
+            my $rv;
+
+            # if we know the remote side doesn't override the DBI's default method
+            # then we might as well just call the DBI's default method on the client
+            # (which may, in turn, call other methods that are forwarded, like get_info)
+            if ($dbh->{dbi_default_methods}{$method} && $dbh->{go_policy}->skip_default_methods()) {
+                $dbh->trace_msg("    !! $method: using local default as remote method is also default\n");
+                return $dbh->$super_name(@_);
+            }
+
+            my $cache;
+            my $cache_key;
+            if (my $cache_it = $dbh->{go_policy}->$policy_name(undef, $dbh, @_)) {
+                $cache = $dbh->{go_cache} ||= {};
+                $cache_key = sprintf "%s_wa%d(%s)", $policy_name, wantarray||0,
+                    join(",\t", map { # XXX basic but sufficient for now
+                         !ref($_)            ? DBI::neat($_,1e6)
+                        : ref($_) eq 'ARRAY' ? DBI::neat_list($_,1e6,",\001")
+                        : ref($_) eq 'HASH'  ? do { my @k = sort keys %$_; DBI::neat_list([@k,@{$_}{@k}],1e6,",\002") }
+                        : do { warn "unhandled argument type ($_)"; $_ }
+                    } @_);
+                if ($rv = $cache->{$cache_key}) {
+                    $dbh->trace_msg("$method(@_) returning previously cached value ($cache_key)\n",4);
+                    my @cache_rv = @$rv;
+                    # if it's an sth we have to clone it
+                    $cache_rv[0] = $cache_rv[0]->go_clone_sth if UNIVERSAL::isa($cache_rv[0],'DBI::st');
+                    return (wantarray) ? @cache_rv : $cache_rv[0];
+                }
+            }
+
+            $rv = [ (wantarray)
+                ?       ($dbh->go_dbh_method(undef, $method, @_))
+                : scalar $dbh->go_dbh_method(undef, $method, @_)
+            ];
+
+            if ($cache) {
+                $dbh->trace_msg("$method(@_) caching return value ($cache_key)\n",4);
+                my @cache_rv = @$rv;
+                # if it's an sth we have to clone it
+                #$cache_rv[0] = $cache_rv[0]->go_clone_sth
+                #   if UNIVERSAL::isa($cache_rv[0],'DBI::st');
+                $cache->{$cache_key} = \@cache_rv
+                    unless UNIVERSAL::isa($cache_rv[0],'DBI::st'); # XXX cloning sth not yet done
+            }
+
+            return (wantarray) ? @$rv : $rv->[0];
+        };
         no strict 'refs';
-        *$method = sub { return shift->go_dbh_method(undef, $method, @_) }
+        *$method = $sub;
     }
 
-    # Methods that should be forwarded if policy says so
+
+    # Methods that can use the DBI defaults for some situations/drivers
     for my $method (qw(
-        quote
-    )) {
+        quote quote_identifier
+    )) {    # XXX keep DBD::Gofer::Policy::Base in sync
+        my $policy_name = "locally_$method";
+        my $super_name  = "SUPER::$method";
+        my $sub = sub {
+            my $dbh = shift;
+
+            # if we know the remote side doesn't override the DBI's default method
+            # then we might as well just call the DBI's default method on the client
+            # (which may, in turn, call other methods that are forwarded, like get_info)
+            if ($dbh->{dbi_default_methods}{$method} && $dbh->{go_policy}->skip_default_methods()) {
+                $dbh->trace_msg("    !! $method: using local default as remote method is also default\n");
+                return $dbh->$super_name(@_);
+            }
+
+            # false:    use remote gofer
+            # 1:        use local DBI default method
+            # code ref: use the code ref
+            my $locally = $dbh->{go_policy}->$policy_name($dbh, @_);
+            if ($locally) {
+                return $locally->($dbh, @_) if ref $locally eq 'CODE';
+                return $dbh->$super_name(@_);
+            }
+            return $dbh->go_dbh_method(undef, $method, @_); # propagate context
+        };
         no strict 'refs';
-        # XXX add policy checks
-        *$method = sub { return shift->go_dbh_method(undef, $method, @_) }
+        *$method = $sub;
     }
+
 
     # Methods that should always fail
     for my $method (qw(
@@ -280,8 +411,6 @@
         *$method = sub { return shift->set_err(1, "$method not available with DBD::Gofer") }
     }
 
-    # for quote we rely on the default method + type_info_all
-    # for quote_identifier we rely on the default method + get_info
 
     sub do {
         my ($dbh, $sql, $attr, @args) = @_;
@@ -306,34 +435,40 @@
     }
 
     sub FETCH {
-	my ($dbh, $attrib) = @_;
+        my ($dbh, $attrib) = @_;
 
-        # forward driver-private attributes
-        if ($attrib =~ m/^[a-z]/) { # XXX policy? precache on connect?
+        # FETCH is effectively already cached because the DBI checks the
+        # attribute cache in the handle before calling FETCH
+        # and this FETCH copies the value into the attribute cache
+
+        # forward driver-private attributes (except ours)
+        if ($attrib =~ m/^[a-z]/ && $attrib !~ /^go_/) {
             my $value = $dbh->go_dbh_method(undef, 'FETCH', $attrib);
-            $dbh->{$attrib} = $value;
-            return $value;
+            $dbh->{$attrib} = $value; # XXX forces caching by DBI
+            return $dbh->{$attrib} = $value;
         }
 
-	# else pass up to DBI to handle
-	return $dbh->SUPER::FETCH($attrib);
+        # else pass up to DBI to handle
+        return $dbh->SUPER::FETCH($attrib);
     }
 
     sub STORE {
-	my ($dbh, $attrib, $value) = @_;
+        my ($dbh, $attrib, $value) = @_;
         if ($attrib eq 'AutoCommit') {
-            return $dbh->SUPER::STORE($attrib => -901) if $value;
-            croak "Can't enable transactions when using DBD::Gofer";
+            croak "Can't enable transactions when using DBD::Gofer" if !$value;
+            return $dbh->SUPER::STORE($attrib => ($value) ? -901 : -900);
         }
-	return $dbh->SUPER::STORE($attrib => $value)
+        return $dbh->SUPER::STORE($attrib => $value)
             # we handle this attribute locally
             if $dbh_local_store_attrib{$attrib}
-            # not yet connected (and being called by connect())
+            # or it's a private_ (application) attribute
+            or $attrib =~ /^private_/
+            # or not yet connected (ie being called by DBI->connect)
             or not $dbh->FETCH('Active');
 
-	return $dbh->SUPER::STORE($attrib => $value)
+        return $dbh->SUPER::STORE($attrib => $value)
             if $DBD::Gofer::xxh_local_store_attrib_if_same_value{$attrib}
-            && do { # return true if values are the same
+            && do { # values are the same
                 my $crnt = $dbh->FETCH($attrib);
                 local $^W;
                 (defined($value) ^ defined($crnt))
@@ -342,34 +477,41 @@
             };
 
         # dbh attributes are set at connect-time - see connect()
-        carp("Can't alter \$dbh->{$attrib}") if $dbh->FETCH('Warn');
-        return $dbh->set_err(1, "Can't alter \$dbh->{$attrib}");
+        carp("Can't alter \$dbh->{$attrib} after handle created with DBD::Gofer") if $dbh->FETCH('Warn');
+        return $dbh->set_err(1, "Can't alter \$dbh->{$attrib} after handle created with DBD::Gofer");
     }
 
     sub disconnect {
-	my $dbh = shift;
-        $dbh->{go_trans} = undef;
-	$dbh->STORE(Active => 0);
+        my $dbh = shift;
+        $dbh->{go_transport} = undef;
+        $dbh->STORE(Active => 0);
     }
 
-    # XXX + prepare_cached ?
-    #
     sub prepare {
-	my ($dbh, $statement, $attr)= @_;
+        my ($dbh, $statement, $attr)= @_;
 
         return $dbh->set_err(1, "Can't prepare when disconnected")
             unless $dbh->FETCH('Active');
 
-        my $policy = $attr->{go_policy} || $dbh->{go_policy};
+        $attr = { %$attr } if $attr; # copy so we can edit
 
-	my ($sth, $sth_inner) = DBI::_new_sth($dbh, {
-	    Statement => $statement,
-            go_prepare_call => [ 'prepare', $statement, $attr ],
+        my $policy     = delete($attr->{go_policy}) || $dbh->{go_policy};
+        my $lii_args   = delete $attr->{go_last_insert_id_args};
+        my $go_prepare = delete($attr->{go_prepare_method})
+                      || $dbh->{go_prepare_method}
+                      || $policy->prepare_method($dbh, $statement, $attr)
+                      || 'prepare'; # e.g. for code not using placeholders
+        # set to undef if there are no attributes left for the actual prepare call
+        $attr = undef if $attr and not %$attr;
+
+        my ($sth, $sth_inner) = DBI::_new_sth($dbh, {
+            Statement => $statement,
+            go_prepare_call => [ 0, $go_prepare, $statement, $attr ],
             # go_method_calls => [], # autovivs if needed
             go_request => $dbh->{go_request},
-            go_trans => $dbh->{go_trans},
+            go_transport => $dbh->{go_transport},
             go_policy => $policy,
-            go_last_insert_id_args => $attr->{go_last_insert_id_args},
+            go_last_insert_id_args => $lii_args,
         });
         $sth->STORE(Active => 0);
 
@@ -378,7 +520,16 @@
             $sth->go_sth_method() or return undef;
         }
 
-	return $sth;
+        return $sth;
+    }
+
+    sub prepare_cached {
+        my ($dbh, $sql, $attr, $if_active)= @_;
+        $attr ||= {};
+        return $dbh->SUPER::prepare_cached($sql, {
+            %$attr,
+            go_prepare_method => $attr->{go_prepare_method} || 'prepare_cached',
+        }, $if_active);
     }
 
 }
@@ -395,10 +546,20 @@
 
         if (my $ParamValues = $sth->{ParamValues}) {
             my $ParamAttr = $sth->{ParamAttr};
-            while ( my ($p, $v) = each %$ParamValues) {
+            # XXX the sort here is a hack to work around a DBD::Sybase bug
+            # but only works properly for params 1..9
+            # (reverse because of the unshift)
+            my @params = reverse sort keys %$ParamValues;
+            if (@params > 9 && $sth->{Database}{go_dsn} =~ /dbi:Sybase/) {
+                # if more than 9 then we need to do a proper numeric sort
+                # also warn to alert user of this issue
+                warn "Sybase param binding order hack in use";
+                @params = sort { $b <=> $a } @params;
+            }
+            for my $p (@params) {
                 # unshift to put binds before execute call
                 unshift @{ $sth->{go_method_calls} },
-                    [ 'bind_param', $p, $v, $ParamAttr->{$p} ];
+                    [ 'bind_param', $p, $ParamValues->{$p}, $ParamAttr->{$p} ];
             }
         }
 
@@ -406,8 +567,8 @@
         ++$dbh->{go_request_count};
 
         my $request = $sth->{go_request};
-        $request->init_request($sth->{go_prepare_call}, undef);
-        $request->sth_method_calls($sth->{go_method_calls})
+        $request->init_request($sth->{go_prepare_call}, $sth);
+        $request->sth_method_calls(delete $sth->{go_method_calls})
             if $sth->{go_method_calls};
         $request->sth_result_attr({}); # (currently) also indicates this is an sth request
 
@@ -418,22 +579,24 @@
         my $dbh_attribute_update = $go_policy->dbh_attribute_update();
         $request->dbh_attributes( $go_policy->dbh_attribute_list() )
             if $dbh_attribute_update eq 'every'
-            or $dbh_attribute_update eq 'first' && $dbh->{go_request_count}==1;
+            or $dbh->{go_request_count}==1;
 
-        my $transport = $sth->{go_trans}
+        my $transport = $sth->{go_transport}
             or return $sth->set_err(1, "Not connected (no transport)");
 
-        my $response = $transport->transmit_request($request);
-        $response ||= $transport->receive_response;
-        $sth->{go_response} = $response;
+        my ($response, $retransmit_sub) = $transport->transmit_request($request);
+        $response ||= $transport->receive_response($request, $retransmit_sub);
+        $sth->{go_response} = $response
+            or die "No response object returned by $transport";
         $dbh->{go_response} = $response; # mainly for last_insert_id
-
-        delete $sth->{go_method_calls};
 
         if (my $dbh_attributes = $response->dbh_attributes) {
             # XXX we don't STORE here, we just stuff the value into the attribute cache
             $dbh->{$_} = $dbh_attributes->{$_}
                 for keys %$dbh_attributes;
+            # record the values returned, so we know that we have fetched
+            # values are which we have fetched (see dbh->FETCH method)
+            $dbh->{go_dbh_attributes_fetched} = $dbh_attributes;
         }
 
         my $rv = $response->rv;
@@ -451,25 +614,18 @@
         return $response->rv;
     }
 
-    # sth methods that should always fail, at least for now
-    for my $method (qw(
-        bind_param_inout bind_param_array bind_param_inout_array execute_array execute_for_fetch
-    )) {
-        no strict 'refs';
-        *$method = sub { return shift->set_err(1, "$method not available with DBD::Gofer, yet (patches welcome)") }
-    }
-
 
     sub bind_param {
         my ($sth, $param, $value, $attr) = @_;
         $sth->{ParamValues}{$param} = $value;
-        $sth->{ParamAttr}{$param} = $attr;
+        $sth->{ParamAttr}{$param}   = $attr
+            if defined $attr; # attr is sticky if not explicitly set
         return 1;
     }
 
 
     sub execute {
-	my $sth = shift;
+        my $sth = shift;
         $sth->bind_param($_, $_[$_-1]) for (1..@_);
         push @{ $sth->{go_method_calls} }, [ 'execute' ];
         my $meta = { go_last_insert_id_args => $sth->{go_last_insert_id_args} };
@@ -478,11 +634,17 @@
 
 
     sub more_results {
-	my ($sth) = @_;
+        my $sth = shift;
 
-	$sth->finish if $sth->FETCH('Active');
+        $sth->finish;
 
-	my $resultset_list = $sth->{go_response}->sth_resultsets
+        my $response = $sth->{go_response} or do {
+            # e.g., we haven't sent a request yet (ie prepare then more_results)
+            $sth->trace_msg("    No response object present", 3);
+            return;
+        };
+
+        my $resultset_list = $response->sth_resultsets
             or return $sth->set_err(1, "No sth_resultsets");
 
         my $meta = shift @$resultset_list
@@ -507,33 +669,50 @@
             $sth->STORE(Active => 1) if $rowset;
         }
 
-	return $sth;
+        return $sth;
+    }
+
+
+    sub go_clone_sth {
+        my ($sth1) = @_;
+        # clone an (un-fetched-from) sth - effectively undoes the initial more_results
+        # not 100% so just for use in caching returned sth e.g. table_info
+        my $sth2 = $sth1->{Database}->prepare($sth1->{Statement}, { go_skip_prepare_check => 1 });
+        $sth2->STORE($_, $sth1->{$_}) for qw(NUM_OF_FIELDS Active);
+        my $sth2_inner = tied %$sth2;
+        $sth2_inner->{$_} = $sth1->{$_} for qw(NUM_OF_PARAMS FetchHashKeyName);
+        die "not fully implemented yet";
+        return $sth2;
     }
 
 
     sub fetchrow_arrayref {
-	my ($sth) = @_;
-	my $resultset = $sth->{go_current_rowset} || do {
+        my ($sth) = @_;
+        my $resultset = $sth->{go_current_rowset} || do {
             # should only happen if fetch called after execute failed
             my $rowset_err = $sth->{go_current_rowset_err}
                 || [ 1, 'no result set (did execute fail)' ];
             return $sth->set_err( @$rowset_err );
         };
         return $sth->_set_fbav(shift @$resultset) if @$resultset;
-	$sth->finish;     # no more data so finish
-	return undef;
+        $sth->finish;     # no more data so finish
+        return undef;
     }
     *fetch = \&fetchrow_arrayref; # alias
 
 
     sub fetchall_arrayref {
         my ($sth, $slice, $max_rows) = @_;
+        my $resultset = $sth->{go_current_rowset} || do {
+            # should only happen if fetch called after execute failed
+            my $rowset_err = $sth->{go_current_rowset_err}
+                || [ 1, 'no result set (did execute fail)' ];
+            return $sth->set_err( @$rowset_err );
+        };
         my $mode = ref($slice) || 'ARRAY';
         return $sth->SUPER::fetchall_arrayref($slice, $max_rows)
             if ref($slice) or defined $max_rows;
-	my $resultset = $sth->{go_current_rowset}
-            or return $sth->set_err( @{ $sth->{go_current_rowset_err} } );
-	$sth->finish;     # no more data so finish
+        $sth->finish;     # no more data after this so finish
         return $resultset;
     }
 
@@ -544,10 +723,12 @@
 
 
     sub STORE {
-	my ($sth, $attrib, $value) = @_;
+        my ($sth, $attrib, $value) = @_;
 
-	return $sth->SUPER::STORE($attrib => $value)
-            if $sth_local_store_attrib{$attrib}; # handle locally
+        return $sth->SUPER::STORE($attrib => $value)
+            if $sth_local_store_attrib{$attrib} # handle locally
+            # or it's a private_ (application) attribute
+            or $attrib =~ /^private_/;
 
         # otherwise warn but do it anyway
         # this will probably need refining later
@@ -562,9 +743,22 @@
         # next execution?
         # Could just always use go_method_calls I guess.
 
-	$sth->SUPER::STORE($attrib => $value);
+        # do the store locally anyway, just in case
+        $sth->SUPER::STORE($attrib => $value);
 
         return $sth->set_err(1, $msg);
+    }
+
+    # sub bind_param_array
+    # we use DBI's default, which sets $sth->{ParamArrays}{$param} = $value
+    # and calls bind_param($param, undef, $attr) if $attr.
+
+    sub execute_array {
+        my $sth = shift;
+        my $attr = shift;
+        $sth->bind_param_array($_, $_[$_-1]) for (1..@_);
+        push @{ $sth->{go_method_calls} }, [ 'execute_array', $attr ];
+        return $sth->go_sth_method($attr);
     }
 
 }
@@ -655,7 +849,7 @@ Not yet implemented, but the single request-response architecture lends itself t
 
 =head3 Fewer Network Round-trips
 
-DBD::Gofer sends as few requests as possible.
+DBD::Gofer sends as few requests as possible (dependent on the policy being used).
 
 =head3 Thin Clients / Unsupported Platforms
 
@@ -663,7 +857,8 @@ You no longer need drivers for your database on every system.  DBD::Gofer is pur
 
 =head1 CONSTRAINTS
 
-There are naturally some constraints imposed by DBD::Gofer. But not many:
+There are some natural constraints imposed by the DBD::Gofer 'stateless' approach.
+But not too many:
 
 =head2 You can't change database handle attributes after connect()
 
@@ -673,38 +868,43 @@ Use the connect() call to specify all the attribute settings you want.
 This is because it's critical that when a request is complete the database
 handle is left in the same state it was when first connected.
 
+An exception is made for attributes with names starting "C<private_>":
+They can be set after connect() but the change is only applied locally.
+
 =head2 You can't change statement handle attributes after prepare()
 
 You can't change statment handle attributes after prepare.
 
-=head2 You can't use transactions.
+An exception is made for attributes with names starting "C<private_>":
+They can be set after prepare() but the change is only applied locally.
+
+=head2 You can't use transactions
 
 AutoCommit only. Transactions aren't supported.
-
-=head2 You need to use func() to call driver-private dbh methods
-
-So instead of the new-style:
-
-    $dbh->foo_method_name(...)
-
-you need to use the old-style:
-
-    $dbh->func(..., 'foo_method_name');
-
-This constraint might be removed in future.
 
 =head2 You can't call driver-private sth methods
 
 But that's rarely needed anyway.
 
-=head2 Array Methods are not supported
+=head2 Per-row driver-private sth attributes aren't supported
 
-The array methods (bind_param_inout bind_param_array bind_param_inout_array execute_array execute_for_fetch)
-are not currently supported. Patches welcome, of course.
+Some drivers provide sth attributes that relate to the row that was just
+fetched (e.g., Sybase and syb_result_type). These aren't supported.
 
-=head1 CAVEATS
+=head1 GENERAL CAVEATS
 
-A few things to keep in mind when using DBD::Gofer:
+A few important things to keep in mind when using DBD::Gofer:
+
+=head2 You shouldn't use temporary tables, locks, or other per-connection persistent state
+
+Because the server-side may execute your requests via a different
+database connections, you can't rely on any per-connection persistent state,
+such as temporary tables, being available from one request to the next.
+
+This is an easy trap to fall into and a difficult one to debug.
+The pipeone transport may help as it forces a new connection for each request.
+(It is very slow though, so I plan to add a way for the stream driver to use
+connect instead of connect_cache to achive the same effect much more efficiently.)
 
 =head2 Driver-private Database Handle Attributes
 
@@ -720,9 +920,29 @@ implemented the private_attribute_info() method (added in DBI 1.54).
 
 =head2 Multiple Resultsets
 
-Multiple resultsets are supported if the driver supports the more_results() method.
+Multiple resultsets are supported only if the driver supports the more_results() method
+(an exception is made for DBD::Sybase).
 
-=head2 Use of last_insert_id requires a minor code change
+=head2 Statement activity that also updates dbh attributes
+
+Some drivers may update one or more dbh attributes after performing activity on
+a child sth.  For example, DBD::mysql provides $dbh->{mysql_insertid} in addition to
+$sth->{mysql_insertid}. Currently mysql_insertid is supported via a hack but a
+more general mechanism is needed for other drivers to use.
+
+=head2 Methods that report an error always return undef
+
+With DBD::Gofer a method that sets an error always return an undef or empty list.
+That shouldn't be a problem in practice because the DBI doesn't define any
+methods that return meaningful values while also reporting an error.
+
+=head2 Subclassing only applies to client-side
+
+The RootClass and DbTypeSubclass attributes are not passed to the Gofer server.
+
+=head1 CAVEATS FOR SPECIFIC METHODS
+
+=head2 last_insert_id
 
 To enable use of last_insert_id you need to indicate to DBD::Gofer that you'd
 like to use it.  You do that my adding a C<go_last_insert_id_args> attribute to
@@ -737,21 +957,15 @@ or
 The array reference should contains the args that you want passed to the
 last_insert_id() method.
 
-XXX needs testing
+=head2 execute_for_fetch
 
-XXX allow $dbh->{go_last_insert_id_args} = [] to enable it by default?
+The array methods bind_param_array() and execute_array() are supported.
+When execute_array() is called the data is serialized and executed in a single
+round-trip to the Gofer server.
 
-=head2 Statement activity that also updates dbh attributes
-
-Some drivers may update one or more dbh attributes after performing activity on
-a child sth.  For example, DBD::mysql provides $dbh->{mysql_insertid} in addition to
-$sth->{mysql_insertid}. Currently this isn't supported, but probably needs to be.
-
-=head2 Methods that report an error always return undef
-
-With DBD::Gofer a method that sets an error always return an undef or empty list.
-That shouldn't be a problem in practice because the DBI doesn't define any
-methods that do return meaningful values while also reporting an error.
+The execute_for_fetch() method currently isn't optimised, it uses the DBI
+fallback behaviour of executing each tuple individually.
+(It could be implemented as a wrapper for execute_array() - patches welcome.)
 
 =head1 TRANSPORTS
 
@@ -766,6 +980,8 @@ driver to use and one for the remote 'server' end. They have very similar names:
 
 Sometimes the transports on the DBD and DBI sides may have different names. For
 example DBD::Gofer::Transport::http is typically used with DBI::Gofer::Transport::mod_perl
+(DBD::Gofer::Transport::http and DBI::Gofer::Transport::mod_perl modules are
+part of the GoferTransport-http distribution).
 
 =head2 Bundled Transports
 
@@ -787,10 +1003,15 @@ It doesn't take any parameters.
 =head3 pipeone
 
 The pipeone transport launches a subprocess for each request. It passes in the
-request and reads the response. The fact that a new subprocess is started for
-each request proves that the server side is truly stateless. It also makes
-this transport very slow. It's useful, however, both as a proof of concept and
-as a base class for the stream driver.
+request and reads the response.
+
+The fact that a new subprocess is started for each request ensures that the
+server side is truly stateless. While this does make the transport very slow it
+is useful as a way to test that your application doesn't depend on
+per-connection state, such as temporary tables, persisting between requests.
+
+It's also useful both as a proof of concept and as a base class for the stream
+driver.
 
 This transport supports a timeout parameter in the dsn which specifies
 the maximum time it can take to send a requestor receive a response.
@@ -811,16 +1032,13 @@ maximum time it can take to send a requestor receive a response.
 
 See L</DBI_AUTOPROXY> below for an example.
 
+=head2 Other Transports
+
 =head3 http
 
-The http driver uses the http protocol to send Gofer requests and receive replies.
+See the GoferTransport-http distribution on CPAN.
 
-It's also very likely that this transport will support safe timeouts in future. XXX
-
-The DBI::Gofer::Transport::mod_perl module implements the corresponding server-side
-transport.
-
-=head2 Other Transports
+=head3 Gearman
 
 I know Ask Bjørn Hansen has implemented a transport for the gearman distributed
 job system. (Not yet on CPAN.)
@@ -883,9 +1101,15 @@ L<DBI::Gofer::Transport::Base>, L<DBD::Gofer::Policy::Base>.
 
 L<DBI>
 
+=head1 Caveats for specific drivers
+
+This section aims to record issues to be aware of when using Gofer with specific drivers.
+It usually only documents issues that are not natural consequences of the limitations
+of the Gofer approach - as documented avove.
+
 =head1 TODO
 
-Random brain dump...
+This is just a random brain dump... (There's more in Changes)
 
 Document policy mechanism
 
@@ -893,15 +1117,7 @@ Add mechanism for transports to list config params and for Gofer to apply any th
 
 Driver-private sth attributes - set via prepare() - change DBI spec
 
-Timeout for stream and http drivers.
-
 Caching of get_info values
-
-prepare vs prepare_cached
-
-Driver-private sth methods via func? Can't be sure of state?
-
-track installed_methods and install proxies on client side after connect?
 
 add hooks into transport base class for checking & updating a result set cache
    ie via a standard cache interface such as:
@@ -915,5 +1131,16 @@ so that web caches (squid etc) could be used to implement the caching.
 (MUST require the use of GET rather than POST requests.)
 
 Neat way for $h->trace to enable transport tracing.
+
+Rework handling of installed_methods to not piggback on dbh_attributes?
+
+Perhaps support transactions for transports where it's possible (ie null and stream)?
+Would make stream transport (ie ssh) more useful to more people.
+
+Make sth_result_attr more like dbh_attributes (using '*' etc)
+
+Add @val = FETCH_many(@names) to DBI in C and use in Gofer/Execute?
+
+Implement DBI::st::TIEHASH etc in C.
 
 =cut

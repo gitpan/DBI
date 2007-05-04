@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::stream;
 
-#   $Id: stream.pm 9139 2007-02-19 16:45:56Z timbo $
+#   $Id: stream.pm 9497 2007-05-03 16:21:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -10,11 +10,12 @@ package DBI::Gofer::Transport::stream;
 use strict;
 use warnings;
 
+use DBI qw(dbi_time);
 use DBI::Gofer::Execute;
 
 use base qw(DBI::Gofer::Transport::pipeone Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9139 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9497 $ =~ /(\d+)/o);
 
 our @EXPORT = qw(run_stdio_hex);
 
@@ -22,20 +23,32 @@ my $executor = DBI::Gofer::Execute->new();
 
 sub run_stdio_hex {
 
-    my $self = DBI::Gofer::Transport::stream->new();
+    my $transport = DBI::Gofer::Transport::stream->new();
     local $| = 1;
 
-    #warn "STARTED $$";
+    DBI->trace_msg("$0 started (pid $$)\n");
 
-    while ( my $frozen_request = <STDIN> ) {
+    local $\; # OUTPUT_RECORD_SEPARATOR
+    local $/ = "\012"; # INPUT_RECORD_SEPARATOR
+    while ( defined( my $encoded_request = <STDIN> ) ) {
+        my $time_received = dbi_time();
+        $encoded_request =~ s/\015?\012$//;
 
-        my $request = $self->thaw_data( pack "H*", $frozen_request );
+        my $frozen_request = pack "H*", $encoded_request;
+        my $request = $transport->thaw_request( $frozen_request );
+
         my $response = $executor->execute_request( $request );
 
-        my $frozen_response = unpack "H*", $self->freeze_data($response);
+        my $frozen_response = $transport->freeze_response($response);
+        my $encoded_response = unpack "H*", $frozen_response;
 
-        print $frozen_response, "\n"; # autoflushed due to $|=1
+        print $encoded_response, "\015\012"; # autoflushed due to $|=1
+
+        # there's no way to access the stats currently
+        # so this just serves as a basic test and illustration of update_stats()
+        $executor->update_stats($request, $response, $frozen_request, $frozen_response, $time_received);
     }
+    DBI->trace_msg("$0 ending (pid $$)\n");
 }
 
 1;

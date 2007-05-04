@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::Base;
 
-#   $Id: Base.pm 9145 2007-02-20 23:41:12Z timbo $
+#   $Id: Base.pm 9465 2007-04-27 12:25:17Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -10,70 +10,123 @@ package DBI::Gofer::Transport::Base;
 use strict;
 use warnings;
 
-use Storable qw(freeze thaw);
-
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9145 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9465 $ =~ /(\d+)/o);
 
 
 __PACKAGE__->mk_accessors(qw(
     trace
     go_policy
+    serializer_obj
 ));
 
 
-sub _init_trace { $ENV{DBI_GOFER_TRACE} || 0 }
+# see also $ENV{DBI_GOFER_TRACE} in DBI::Gofer::Execute
+sub _init_trace { (split(/=/,$ENV{DBI_GOFER_TRACE}||0))[0] }
 
 
 sub new {
     my ($class, $args) = @_;
     $args->{trace} ||= $class->_init_trace;
+    $args->{serializer_obj} ||= DBI::Gofer::Serializer->new();
     my $self = bless {}, $class;
     $self->$_( $args->{$_} ) for keys %$args;
+    $self->trace_msg("$class->new({ @{[ %$args ]} })\n") if $self->trace;
     return $self;
 }
 
-
-
-sub freeze_data {
-    my ($self, $data, $skip_trace) = @_;
-    $self->_dump("freezing ".ref($data), $data)
-        if !$skip_trace and $self->trace;
-    local $Storable::forgive_me = 1; # for CODE refs etc
-    my $frozen = eval { freeze($data) };
-    if ($@) {
-        die "Error freezing ".ref($data)." object: $@";
+{   package DBI::Gofer::Serializer;
+    # a very minimal subset of Data::Serializer
+    use Storable qw(nfreeze thaw);
+    sub new {
+        return bless {} => shift;
     }
-    return $frozen;
-}   
-
-sub thaw_data {
-    my ($self, $frozen_data, $skip_trace) = @_;
-    my $data = eval { thaw($frozen_data) };
-    if ($@) {
-        my $err = $@;
-        $self->_dump("bad data",$frozen_data);
-        die "Error thawing object: $err";
+    sub serializer {
+        my $self = shift;
+        local $Storable::forgive_me = 1; # for CODE refs etc
+        return nfreeze(shift);
     }
-    $self->_dump("thawing ".ref($data), $data)
-        if !$skip_trace and $self->trace;
-    return $data;
+    sub deserializer {
+        my $self = shift;
+        return thaw(shift);
+    }
 }
 
 
+my $packet_header_text  = "GoFER1:";
+my $packet_header_regex = qr/^GoFER(\d):/;
 
+
+sub _freeze_data {
+    my ($self, $data, $skip_trace) = @_;
+    my $frozen = eval {
+        $self->_dump("freezing $self->{trace} ".ref($data), $data)
+            if !$skip_trace and $self->trace;
+
+        local $data->{meta}; # don't include _meta in serialization
+        my $data = $self->{serializer_obj}->serializer($data);
+
+        $packet_header_text . $data;
+    };
+    if ($@) {
+        chomp $@;
+        die "Error freezing ".ref($data)." object: $@";
+    }
+    return $frozen;
+}
+# public aliases used by subclasses
+*freeze_request  = \&_freeze_data;
+*freeze_response = \&_freeze_data;
+
+
+sub _thaw_data {
+    my ($self, $frozen_data, $skip_trace) = @_;
+    my $data;
+    eval {
+        # check for and extract our gofer header and the info it contains
+        $frozen_data =~ s/$packet_header_regex//o
+            or die "does not have gofer header\n";
+        my ($t_version) = $1;
+        $data = $self->{serializer_obj}->deserializer($frozen_data)
+            and $data->{_transport}{version} = $t_version;
+    };
+    if ($@) {
+        chomp(my $err = $@);
+        # remove extra noise from Storable
+        $err =~ s{ at \S+?/Storable.pm \(autosplit into \S+?/Storable/thaw.al\) line \d+(, \S+ line \d+)?}{};
+        my $msg = sprintf "Error thawing: %s (data=%s)", $err, DBI::neat($frozen_data,50);
+        Carp::cluck("$msg, pid $$ stack trace follows:"); # XXX if $self->trace;
+        die $msg;
+    }
+    $self->_dump("thawing $self->{trace} ".ref($data), $data)
+        if !$skip_trace and $self->trace;
+    return $data;
+}
+# public aliases used by subclasses
+*thaw_request  = \&_thaw_data;
+*thaw_response = \&_thaw_data;
+
+
+# this should probably live in the request and response classes
+# and the tace level passed in
 sub _dump {
     my ($self, $label, $data) = @_;
-    require Data::Dumper;
-    local $Data::Dumper::Indent    = 1;
-    local $Data::Dumper::Terse     = 1;
-    local $Data::Dumper::Useqq     = 1;
-    local $Data::Dumper::Sortkeys  = 1;
-    local $Data::Dumper::Quotekeys = 0;
-    local $Data::Dumper::Deparse   = 0;
-    local $Data::Dumper::Purity    = 0;
-    $self->trace_msg("$label=".Data::Dumper::Dumper($data));
+    if ($self->trace >= 2) {
+        require Data::Dumper;
+        local $Data::Dumper::Indent    = 1;
+        local $Data::Dumper::Terse     = 1;
+        local $Data::Dumper::Useqq     = 1;
+        local $Data::Dumper::Sortkeys  = 1;
+        local $Data::Dumper::Quotekeys = 0;
+        local $Data::Dumper::Deparse   = 0;
+        local $Data::Dumper::Purity    = 0;
+        $self->trace_msg("$label: ".Data::Dumper::Dumper($data));
+    }
+    else {
+        my $summary = eval { $data->summary_as_text } || $@ || "no summary available\n";
+        $self->trace_msg("$label: $summary");
+    }
 }
 
 
