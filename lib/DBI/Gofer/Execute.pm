@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 9498 2007-05-03 16:27:56Z timbo $
+#   $Id: Execute.pm 9537 2007-05-09 20:18:11Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,7 +16,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9498 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9537 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => DBD::_::db->can($_) } @all_dbh_methods;
@@ -32,18 +32,26 @@ our $current_dbh;   # the dbh we're using for this request
 DBI->trace(split /=/, $ENV{DBI_GOFER_TRACE}, 2) if $ENV{DBI_GOFER_TRACE};
 
 
-__PACKAGE__->mk_accessors(qw(
-    check_request_sub
-    default_connect_dsn
-    forced_connect_dsn
-    default_connect_attributes
-    forced_connect_attributes
-    forced_single_resultset
-    max_cached_dbh_per_drh
-    max_cached_sth_per_dbh
-    track_recent
-    stats
-)); 
+# define valid configuration attributes (args to new())
+# the values here indicate the basic type of values allowed
+my %configuration_attributes = (
+    default_connect_dsn => 1,
+    forced_connect_dsn  => 1,
+    default_connect_attributes => {},
+    forced_connect_attributes  => {},
+    track_recent => 1,
+    check_request_sub => sub {},
+    forced_single_resultset => 1,
+    max_cached_dbh_per_drh => 1,
+    max_cached_sth_per_dbh => 1,
+    forced_response_attributes => {},
+    stats => {},
+);
+
+__PACKAGE__->mk_accessors(
+    keys %configuration_attributes
+);
+
 
 
 sub new {
@@ -56,19 +64,15 @@ sub new {
 }
 
 
-my @sth_std_attr = qw(
-    NUM_OF_PARAMS
-    NUM_OF_FIELDS
-    NAME
-    TYPE
-    NULLABLE
-    PRECISION
-    SCALE
-);
+sub valid_configuration_attributes {
+    my $self = shift;
+    return { %configuration_attributes };
+}
+
 
 my %extra_attr = (
     # Only referenced if the driver doesn't support private_attribute_info method.
-    # what driver-specific attributes should be returned for the driver being used?
+    # What driver-specific attributes should be returned for the driver being used?
     # keyed by $dbh->{Driver}{Name}
     # XXX for sth should split into attr specific to resultsets (where NUM_OF_FIELDS > 0) and others
     # which would reduce processing/traffic for non-select statements
@@ -111,6 +115,17 @@ my %extra_attr = (
             sqlite_version
         )],
         sth => [qw(
+        )],
+    },
+    ExampleP => {
+        dbh => [qw(
+            examplep_private_dbh_attrib
+        )],
+        sth => [qw(
+            examplep_private_sth_attrib
+        )],
+        dbh_after_sth => [qw(
+            examplep_insertid
         )],
     },
 );
@@ -185,10 +200,10 @@ sub _connect {
 
     $dbh->{ShowErrorStatement} = 1 if $local_log;
 
-    # note that this affects previously cached handles because $ENV{DBI_GOFER_RANDOM_FAIL}
+    # note that this affects previously cached handles because $ENV{DBI_GOFER_RANDOM}
     # isn't included in the cache key. Could add a go_rand_fail=>... attribute.
-    $self->_install_rand_fail_callbacks($dbh, $ENV{DBI_GOFER_RANDOM_FAIL})
-        if $ENV{DBI_GOFER_RANDOM_FAIL};
+    $self->_install_rand_callbacks($dbh, $ENV{DBI_GOFER_RANDOM})
+        if $ENV{DBI_GOFER_RANDOM};
 
     my $CK = $dbh->{CachedKids};
     if ($CK && keys %$CK > $self->{max_cached_sth_per_dbh}) {
@@ -323,10 +338,10 @@ sub gather_dbh_attributes {
     my @req_attr_names = @$dbh_attributes;
     if ($req_attr_names[0] eq '*') { # auto include std + private
         shift @req_attr_names;
-        push @req_attr_names, @{ $self->_get_std_attributes($dbh) };
+        push @req_attr_names, @{ $self->_std_response_attribute_names($dbh) };
     }
     my %dbh_attr_values;
-    $dbh_attr_values{$_} = $dbh->FETCH($_) for @req_attr_names;
+    @dbh_attr_values{@req_attr_names} = $dbh->FETCH_many(@req_attr_names);
 
     # XXX piggyback installed_methods onto dbh_attributes for now
     $dbh_attr_values{dbi_installed_methods} = { DBI->installed_methods };
@@ -338,24 +353,48 @@ sub gather_dbh_attributes {
 }
 
 
-sub _get_std_attributes {
+sub _std_response_attribute_names {
     my ($self, $h) = @_;
     $h = tied(%$h) || $h; # switch to inner handle
-    my $attr_names = $h->{private_gofer_std_attr_names};
-    return $attr_names if $attr_names;
-    # add some extra because drivers may have different defaults
-    # add Name so the client gets the real Name of the connection
-    my @attr_names = qw(ChopBlanks LongReadLen LongTruncOk ReadOnly Name);
+
+    # cache the private_attribute_info data for each handle
+    # XXX might be better to cache it in the executor
+    # as it's unlikely to change
+    # or perhaps at least cache it in the dbh even for sth
+    # as the sth are typically very short lived
+
+    my ($dbh, $h_type, $driver_name, @attr_names);
+
+    if ($dbh = $h->{Database}) {    # is an sth
+
+        # does the dbh already have the answer cached?
+        return $dbh->{private_gofer_std_attr_names_sth} if $dbh->{private_gofer_std_attr_names_sth};
+
+        ($h_type, $driver_name) = ('sth', $dbh->{Driver}{Name});
+        push @attr_names, qw(NUM_OF_PARAMS NUM_OF_FIELDS NAME TYPE NULLABLE PRECISION SCALE);
+    }
+    else {                          # is a dbh
+        return $h->{private_gofer_std_attr_names_dbh} if $h->{private_gofer_std_attr_names_dbh};
+
+        ($h_type, $driver_name, $dbh) = ('dbh', $h->{Driver}{Name}, $h);
+        # explicitly add these because drivers may have different defaults
+        # add Name so the client gets the real Name of the connection
+        push @attr_names, qw(ChopBlanks LongReadLen LongTruncOk ReadOnly Name);
+    }
+
     if (my $pai = $h->private_attribute_info) {
         push @attr_names, keys %$pai;
     }
-    elsif (my $drh = $h->{Driver}) { # is a dbh
-        push @attr_names, @{ $extra_attr{ $drh->{Name} }{dbh} || []};
+    else {
+        push @attr_names, @{ $extra_attr{ $driver_name }{$h_type} || []};
     }
-    elsif ($drh = $h->{Driver}{Database}) { # is an sth
-        push @attr_names, @{ $extra_attr{ $drh->{Name} }{sth} || []};
+    if (my $fra = $self->{forced_response_attributes}) {
+        push @attr_names, @{ $fra->{ $driver_name }{$h_type} || []}
     }
-    return $h->{private_gofer_std_attr_names} = \@attr_names;
+    $dbh->trace_msg("_std_response_attribute_names for $driver_name $h_type: @attr_names\n");
+
+    # cache into the dbh even for sth, as the dbh is usually longer lived
+    return $dbh->{"private_gofer_std_attr_names_$h_type"} = \@attr_names;
 }
 
 
@@ -412,8 +451,9 @@ sub execute_sth_request {
     if (my $dbh_attributes = $request->dbh_attributes) {
         $dbh_attr_set = $self->gather_dbh_attributes($dbh, $dbh_attributes);
     }
+    # XXX needs to be integrated with private_attribute_info() etc
     if (my $dbh_attr = $extra_attr{$dbh->{Driver}{Name}}{dbh_after_sth}) {
-        $dbh_attr_set->{$_} = $dbh->FETCH($_) for @$dbh_attr;
+        @{$dbh_attr_set}{@$dbh_attr} = $dbh->FETCH_many(@$dbh_attr);
     }
     $response->dbh_attributes($dbh_attr_set) if $dbh_attr_set && %$dbh_attr_set;
 
@@ -426,22 +466,22 @@ sub execute_sth_request {
 sub gather_sth_resultsets {
     my ($self, $sth, $request, $response) = @_;
     my $resultsets = eval {
-        my $driver_name = $sth->{Database}{Driver}{Name};
-        my $extra_sth_attr = $extra_attr{$driver_name}{sth} || [];
 
+        my $attr_names = $self->_std_response_attribute_names($sth);
         my $sth_attr = {};
-        $sth_attr->{$_} = 1 for (@sth_std_attr, @$extra_sth_attr);
+        $sth_attr->{$_} = 1 for @$attr_names;
 
         # let the client add/remove sth atributes
         if (my $sth_result_attr = $request->sth_result_attr) {
             $sth_attr->{$_} = $sth_result_attr->{$_}
                 for keys %$sth_result_attr;
         }
+        my @sth_attr = grep { $sth_attr->{$_} } keys %$sth_attr;
 
         my $row_count = 0;
         my $rs_list = [];
         while (1) {
-            my $rs = $self->fetch_result_set($sth, $sth_attr);
+            my $rs = $self->fetch_result_set($sth, \@sth_attr);
             push @$rs_list, $rs;
             if (my $rows = $rs->{rowset}) {
                 $row_count += @$rows;
@@ -463,24 +503,23 @@ sub gather_sth_resultsets {
 
 
 sub fetch_result_set {
-    my ($self, $sth, $extra_sth_attr) = @_;
+    my ($self, $sth, $sth_attr) = @_;
     my %meta;
-    while ( my ($attr,$use) = each %$extra_sth_attr ) {
-        next unless $use;
-        my $v = eval { $sth->FETCH($attr) };
-        if (defined $v) {
-            $meta{ $attr } = $v;
-        }
-        else {
-            warn $@ if $@;
-        }
-    }
-    my $NUM_OF_FIELDS = $meta{NUM_OF_FIELDS};
-    $NUM_OF_FIELDS = $sth->FETCH('NUM_OF_FIELDS') unless defined $NUM_OF_FIELDS;
-    if ($NUM_OF_FIELDS) { # is a select
-        $meta{rowset} = eval { $sth->fetchall_arrayref() };
-        $meta{err}    = $DBI::err;
-        $meta{errstr} = $DBI::errstr;
+    eval {
+        @meta{ @$sth_attr } = $sth->FETCH_many(@$sth_attr);
+        # we assume @$sth_attr contains NUM_OF_FIELDS
+        $meta{rowset}       = $sth->fetchall_arrayref()
+            if (($meta{NUM_OF_FIELDS}||0) > 0); # is SELECT
+        # the fetchall_arrayref may fail with a 'not executed' kind of error
+        # because gather_sth_resultsets/fetch_result_set are called even if
+        # execute() failed, or even if there was no execute() call at all.
+        # The corresponding error goes into the resultset err, not the top-level
+        # response err, so in most cases this resultset err is never noticed.
+    };
+    if ($@) {
+        chomp $@;
+        $meta{err}    = $DBI::err    || 1;
+        $meta{errstr} = $DBI::errstr || $@;
         $meta{state}  = $DBI::state;
     }
     return \%meta;
@@ -504,38 +543,66 @@ sub _get_default_methods {
 }
 
 
-sub _install_rand_fail_callbacks {
-    my ($self, $dbh, $dbi_gofer_random_fail) = @_;
-    my ($rand_fail_pct, @rand_fail_methods) = split /,/, $dbi_gofer_random_fail;
-    @rand_fail_methods = qw(do prepare) if !@rand_fail_methods; # only works for dbh methods
-    if ($rand_fail_pct) {
-        warn "DBI_GOFER_RANDOM_FAIL set to '$ENV{DBI_GOFER_RANDOM_FAIL}' "
-            ."so random failures will be generated! "
-            ."(approx $rand_fail_pct% of calls to methods: @rand_fail_methods)\n";
-        my $callbacks = $dbh->{Callbacks} || {};
-        my $prev      = $dbh->{private_gofer_rand_fail_callbacks} || {};
-        for my $method (@rand_fail_methods) {
-            if ($callbacks->{$method} && $callbacks->{$method} != $prev->{$method}) {
-                warn "Callback for $method method already installed so DBI_GOFER_RANDOM_FAIL callback not installed\n";
-                next;
-            }
-            $callbacks->{$method} = $self->_mk_rand_fail_sub($rand_fail_pct, $method);
+sub _install_rand_callbacks {
+    my ($self, $dbh, $dbi_gofer_random) = @_;
+
+    my $callbacks = $dbh->{Callbacks} || {};
+    my $prev      = $dbh->{private_gofer_rand_fail_callbacks} || {};
+
+    # return if we've already setup this handle with callbacks for these specs
+    return if (($prev->{_dbi_gofer_random_spec}||'') eq $dbi_gofer_random);
+    $prev->{_dbi_gofer_random_spec} = $dbi_gofer_random;
+
+    my ($fail_percent, $delay_percent, $delay_duration);
+    my @specs = split /,/, $dbi_gofer_random;
+    for my $spec (@specs) {
+        if ($spec =~ m/^fail=([.\d]+)%?$/) {
+            $fail_percent = $1;
+            next;
         }
-        $dbh->{Callbacks} = $callbacks;
-        $dbh->{private_gofer_rand_fail_callbacks} = $callbacks;
+        if ($spec =~ m/^delay([.\d]+)=([.\d]+)%?$/) {
+            $delay_duration = $1;
+            $delay_percent  = $2;
+            next;
+        }
+        elsif ($spec !~ m/^(\w+|\*)$/) {
+            warn "Ignored DBI_GOFER_RANDOM item '$spec' which isn't a config or a dbh method name";
+            next;
+        }
+        my $method = $spec;
+        if ($callbacks->{$method} && $callbacks->{$method} != $prev->{$method}) {
+            warn "Callback for $method method already installed so DBI_GOFER_RANDOM callback not installed\n";
+            next;
+        }
+        unless (defined $fail_percent or defined $delay_percent) {
+            warn "Ignored DBI_GOFER_RANDOM item '$spec' because not preceeded by 'fail=N' and/or 'delayN=N'";
+            next;
+        }
+        warn "DBI_GOFER_RANDOM enabled for $method() - random failures/delays will be generated!\n";
+        $callbacks->{$method} = $self->_mk_rand_callback($method, $fail_percent, $delay_percent, $delay_duration);
     }
+    $dbh->{Callbacks} = $callbacks;
+    $dbh->{private_gofer_rand_fail_callbacks} = $callbacks;
 }
 
-sub _mk_rand_fail_sub {
-    my ($self, $rand_fail_pct, $method) = @_;
-    my $rand_fail_ratio = $rand_fail_pct/100;
-    # $method may be "*"
+
+sub _mk_rand_callback {
+    my ($self, $method, $fail_percent, $delay_percent, $delay_duration) = @_;
+    # note that $method may be "*"
     return sub {
-        my $rand = rand();
-        #warn sprintf "DBI_GOFER_RANDOM_FAIL($rand_fail_pct) %f - %f\n", $rand, 1/$rand_fail_pct;
-        return if $rand >= $rand_fail_ratio;
-        undef $_; # tell DBI to not call the method
-        return $_[0]->set_err(1, "fake error induced by DBI_GOFER_RANDOM_FAIL env var");
+        my ($h) = @_;
+        if ($delay_percent && rand(100) < $delay_percent) {
+            my $msg = "DBI_GOFER_RANDOM delaying execution of $method by $delay_duration seconds\n";
+            # Note what's happening in a trace message. If the delay percent is an odd
+            # number then use warn() so it's sent back to the client
+            ($delay_percent % 2 == 0) ? $h->trace_msg($msg) : warn($msg);
+            select undef, undef, undef, $delay_duration; # allows floating point value
+        }
+        if ($fail_percent && rand(100) < $fail_percent) {
+            undef $_; # tell DBI to not call the method
+            return $h->set_err(1, "fake error induced by DBI_GOFER_RANDOM env var");
+        }
+        return;
     }
 }
 
@@ -641,12 +708,25 @@ kept by the update_stats() method for diagnostics. See L<DBI::Gofer::Transport::
 
 Note that this setting can significantly increase memory use. Use with caution.
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 DRIVER-SPECIFIC ISSUES
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+Gofer needs to know about any driver-private attributes that should have their
+values sent back to the client.
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+If the driver doesn't support private_attribute_info() method, and very few do,
+then the module fallsback to using some hard-coded details, if available, for
+the driver being used. Currently hard-coded details are available for the
+mysql, Pg, Sybase, and SQLite drivers.
+
+=head1 AUTHOR
+
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
 
 =cut

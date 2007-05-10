@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::pipeone;
 
-#   $Id: pipeone.pm 9395 2007-04-11 15:57:46Z timbo $
+#   $Id: pipeone.pm 9530 2007-05-09 13:05:23Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use DBI::Gofer::Execute;
 
 use base qw(DBI::Gofer::Transport::Base Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9530 $ =~ /(\d+)/o);
 
 our @EXPORT = qw(run_one_stdio);
 
@@ -39,7 +39,7 @@ __END__
 =head1 NAME
     
 DBI::Gofer::Transport::pipeone - DBD::Gofer server-side transport for pipeone
-    
+
 =head1 SYNOPSIS
 
 See L<DBD::Gofer::Transport::pipeone>.

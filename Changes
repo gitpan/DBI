@@ -2,11 +2,13 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-05-02 11:30:21 +0100 (Wed, 02 May 2007) $ $Revision: 9490 $)
+(As of $Date: 2007-05-08 16:39:27 +0100 (Tue, 08 May 2007) $ $Revision: 9526 $)
 
 =cut
 
 Assorted TODO notes:
+
+XXX write up DBI_GOFER_RANDOM
 
 Policy principle:
     Designed to influence behaviour of unaltered programs

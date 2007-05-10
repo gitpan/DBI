@@ -6,10 +6,10 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("12.%06d", q$Revision: 9455 $ =~ /(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 9532 $ =~ /(\d+)/o);
 
 
-#   $Id: ExampleP.pm 9455 2007-04-26 10:42:31Z timbo $
+#   $Id: ExampleP.pm 9532 2007-05-09 15:24:30Z timbo $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -59,14 +59,17 @@
 
     sub connect { # normally overridden, but a handy default
         my($drh, $dbname, $user, $auth)= @_;
-        my ($outer, $dbh) = DBI::_new_dbh($drh, { Name => $dbname });
-        $dbh->STORE('Active', 1);
+        my ($outer, $dbh) = DBI::_new_dbh($drh, {
+            Name => $dbname,
+            examplep_private_dbh_attrib => 42, # an example, for testing
+        });
         $dbh->{examplep_get_info} = {
             29 => '"',  # SQL_IDENTIFIER_QUOTE_CHAR
             41 => '.',  # SQL_CATALOG_NAME_SEPARATOR
             114 => 1,   # SQL_CATALOG_LOCATION
         };
-        $dbh->{Name} = $dbname;
+        #$dbh->{Name} = $dbname;
+        $dbh->STORE('Active', 1);
         return $outer;
     }
 
@@ -101,6 +104,7 @@
 
 	my ($outer, $sth) = DBI::_new_sth($dbh, {
 	    'Statement'     => $statement,
+            examplep_private_sth_attrib => 24, # an example, for testing
 	}, ['example implementors private data '.__PACKAGE__]);
 
 	my @bad = map {
@@ -111,7 +115,7 @@
 
 	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
 
-	$sth->{dbd_ex_dir} = $dir if defined($dir) && $dir !~ /\?/;
+	$sth->{examplep_ex_dir} = $dir if defined($dir) && $dir !~ /\?/;
 	$outer->STORE('NUM_OF_PARAMS' => ($dir) ? $dir =~ tr/?/?/ : 0);
 
 	if (@fields) {
@@ -307,7 +311,7 @@
 
 	return 0 unless $sth->{NUM_OF_FIELDS}; # not a select
 
-	$dir = $dbd_param->[0] || $sth->{dbd_ex_dir};
+	$dir = $dbd_param->[0] || $sth->{examplep_ex_dir};
 	return $sth->set_err(2, "No bind parameter supplied")
 	    unless defined $dir;
 

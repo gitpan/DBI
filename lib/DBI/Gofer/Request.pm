@@ -1,6 +1,6 @@
 package DBI::Gofer::Request;
 
-#   $Id: Request.pm 9499 2007-05-03 16:34:48Z timbo $
+#   $Id: Request.pm 9532 2007-05-09 15:24:30Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -13,7 +13,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9499 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9532 $ =~ /(\d+)/o);
 
 use constant GOf_REQUEST_IDEMPOTENT => 0x0001;
 use constant GOf_REQUEST_READONLY   => 0x0002;
@@ -151,11 +151,15 @@ sub summary_as_text {
 
 1;
 
-=head1 AUTHOR AND COPYRIGHT
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+=head1 AUTHOR
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
 

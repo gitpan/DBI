@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 9418 2007-04-16 18:37:58Z timbo $
+# $Id: Makefile.PL 9530 2007-05-09 13:05:23Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -54,7 +54,8 @@ if (($ENV{LANG}||'') =~ m/utf-?8/i) {
     print "\n";
     print "*** Your LANG environment variable is set to '$ENV{LANG}'\a\n";
     print "*** This is known to cause problems for some perl installations.\n";
-    print "*** If you get test failures please try again eith LANG unset.\n";
+    print "*** If you get test failures, please try again with LANG unset.\n";
+    print "*** Please also email dbi-dev\@perl.org and include the output of 'perl -V'\n";
     print "\a\n";
     sleep 4;
 }
@@ -158,7 +159,7 @@ if (my $gccversion = $Config{gccversion}) {	# ask gcc to be more pedantic
     $opts{DEFINE} .= ' -Wmissing-noreturn -Wno-unused-parameter' if $gccversion ge "3.0";
     if ($is_developer && $::opt_g) {
         $opts{DEFINE} .= ' -DPERL_GCC_PEDANTIC -ansi -pedantic' if $gccversion ge "3.0";
-        $opts{DEFINE} .= ' -Wdisabled-optimization'             if $gccversion ge "3.0";
+        $opts{DEFINE} .= ' -Wdisabled-optimization -Wformat'    if $gccversion ge "3.0";
         $opts{DEFINE} .= ' -Wmissing-prototypes';
     }
 }
@@ -322,6 +323,11 @@ checkkeywords:
 	$(RM_RF) blib
 	find . -type f \( -name .svn -prune -o -name \*.pm -o -name \*.PL -o -name \*.pl \) \
             -exec bash -c '[ -z "$$(svn pg svn:keywords {})" ] && echo svn propset svn:keywords \"Id Revision\" {}' \;
+
+checkpod:
+	$(RM_RF) blib
+	find . -type f \( -name .svn -prune -o -name \*.pm -o -name \*.PL -o -name \*.pl \) \
+            -exec podchecker {} \; 2>&1 | grep -v 'pod syntax OK'
 };
 
     return $xst;
