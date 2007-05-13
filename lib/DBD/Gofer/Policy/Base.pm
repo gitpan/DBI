@@ -1,6 +1,6 @@
 package DBD::Gofer::Policy::Base;
 
-#   $Id: Base.pm 9391 2007-04-10 15:16:05Z timbo $
+#   $Id: Base.pm 9563 2007-05-13 21:17:43Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -11,7 +11,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9391 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9563 $ =~ /(\d+)/o);
 our $AUTOLOAD;
 
 my %policy_defaults = (
@@ -83,11 +83,80 @@ sub DESTROY { };
 
 1;
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 NAME
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+DBD::Gofer::Policy::Base - Base class for DBD::Gofer policies
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+=head1 SYNOPSIS
+
+  $dbh = DBI->connect("dbi:Gofer:transport=...;policy=...", ...)
+
+=head1 DESCRIPTION
+
+DBD::Gofer can be configured via a 'policy' mechanism that allows you to
+fine-tune the number of round-trips to the Gofer server.  The policies are
+grouped into classes (which may be subclassed) and referenced by the name of
+the class.
+
+The L<DBD::Gofer::Policy::Base> class is the base class for all the policy
+classes and describes all the individual policy items.
+
+The Base policy is not used directly. You should use a policy class derived from it.
+
+=head1 POLICY CLASSES
+
+Three policy classes are supplied with DBD::Gofer:
+    
+L<DBD::Gofer::Policy::pedantic> is most 'transparent' but slowest because it
+makes more  round-trips to the Gofer server.
+
+L<DBD::Gofer::Policy::classic> is a reasonable compromise - it's the default policy.
+    
+L<DBD::Gofer::Policy::rush> is fastest, but may require code changes in your applications.
+
+Generally the default C<classic> policy is fine. When first testing an existing
+application with Gofer it is a good idea to start with the C<pedantic> policy
+first and then switch to C<classic> or a custom policy, for final testing.
+
+=head1 POLICY ITEMS
+
+These are temporary docs: See the source code for list of policies and their defaults.
+
+In a future version the policies and their defaults will be defined in the pod and parsed out at load-time.
+
+See the source code to this module for more details.
+
+=head1 POLICY CUSTOMIZATION
+
+XXX This area of DBD::Gofer is subject to change.
+
+There are three ways to customize policies:
+
+Policy classes are designed to influence the overall behaviour of DBD::Gofer
+with existing, unaltered programs, so they work in a reasonably optimal way
+without requiring code changes. You can implement new policy classes as
+subclasses of existing policies.
+
+In many cases individual policy items can be overridden on a case-by-case basis
+within your application code. You do this by passing a corresponding
+C<<go_<policy_name>>> attribute into DBI methods by your application code.
+This let's you fine-tune the behaviour for special cases.
+
+The policy items are implemented as methods. In many cases the methods are
+passed parameters relating to the DBD::Gofer code being executed. This means
+the policy can implement dynamic behaviour that varies depending on the
+particular circumstances, such as the particular statement being executed.
+
+=head1 AUTHOR
+
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+=cut
 

@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::Base;
 
-#   $Id: Base.pm 9465 2007-04-27 12:25:17Z timbo $
+#   $Id: Base.pm 9560 2007-05-13 15:45:04Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -12,12 +12,11 @@ use warnings;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9465 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
 
 
 __PACKAGE__->mk_accessors(qw(
     trace
-    go_policy
     serializer_obj
 ));
 
@@ -140,11 +139,28 @@ sub trace_msg {
 
 1;
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 NAME
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+DBI::Gofer::Transport::Base - Base class for Gofer transports
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+=head1 DESCRIPTION
+
+This is the base class for server-side Gofer transports.
+
+It's also the base class for the client-side base class L<DBD::Gofer::Transport::Base>.
+
+This is an internal class.
+
+=head1 AUTHOR
+
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+=cut
 

@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 9395 2007-04-11 15:57:46Z timbo $
+#   $Id: stream.pm 9560 2007-05-13 15:45:04Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use Carp;
 
 use base qw(DBD::Gofer::Transport::pipeone);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     go_persist
@@ -211,7 +211,7 @@ sub transport_timedout {
 __END__
 
 =head1 NAME
-    
+
 DBD::Gofer::Transport::stream - DBD::Gofer transport for stdio streaming
 
 =head1 SYNOPSIS
@@ -270,17 +270,21 @@ Automatically reconnect (within reason) if there's a transport error.
 
 Decide on default for persistent connection - on or off? limits? ttl?
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 AUTHOR
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
 
 =head1 SEE ALSO
+
+L<DBD::Gofer::Transport::Base>
 
 L<DBD::Gofer>
 
 =cut
-

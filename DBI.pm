@@ -1,4 +1,4 @@
-# $Id: DBI.pm 9537 2007-05-09 20:18:11Z timbo $
+# $Id: DBI.pm 9564 2007-05-13 21:54:00Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -121,7 +121,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.56
-($Revision: 9537 $).
+($Revision: 9564 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -235,7 +235,7 @@ BEGIN {
 	data_string_diff data_string_desc data_diff
    ) ],
    profile   => [ qw(
-	dbi_profile dbi_profile_merge dbi_time
+	dbi_profile dbi_profile_merge dbi_profile_merge_nodes dbi_time
    ) ], # notionally "in" DBI::Profile and normally imported from there
 );
 
@@ -1323,7 +1323,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
     sub EXISTS   { defined($_[0]->FETCH($_[1])) } # XXX undef?
     sub CLEAR    { Carp::carp "Can't CLEAR $_[0] (DBI)" }
 
-    sub FETCH_many {    # should move to C one day
+    sub FETCH_many {    # XXX should move to C one day
         my $h = shift;
         return map { $h->FETCH($_) } @_;
     }

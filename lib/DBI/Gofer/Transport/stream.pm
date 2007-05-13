@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::stream;
 
-#   $Id: stream.pm 9530 2007-05-09 13:05:23Z timbo $
+#   $Id: stream.pm 9560 2007-05-13 15:45:04Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -15,7 +15,7 @@ use DBI::Gofer::Execute;
 
 use base qw(DBI::Gofer::Transport::pipeone Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9530 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
 
 our @EXPORT = qw(run_stdio_hex);
 
@@ -55,21 +55,22 @@ sub run_stdio_hex {
 __END__
 
 =head1 NAME
-    
+
 DBI::Gofer::Transport::stream - DBD::Gofer server-side transport for stream
 
 =head1 SYNOPSIS
 
 See L<DBD::Gofer::Transport::stream>.
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 AUTHOR
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+=head1 LICENCE AND COPYRIGHT
 
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
 
 =cut
-

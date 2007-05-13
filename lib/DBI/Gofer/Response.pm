@@ -1,6 +1,6 @@
 package DBI::Gofer::Response;
 
-#   $Id: Response.pm 9478 2007-05-01 11:03:38Z timbo $
+#   $Id: Response.pm 9560 2007-05-13 15:45:04Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9478 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
 
 use constant GOf_RESPONSE_EXECUTED => 0x0001;
 
@@ -155,11 +155,24 @@ sub summary_as_text {
 
 1;
 
-=head1 AUTHOR AND COPYRIGHT
+=head1 NAME
 
-The DBD::Gofer, DBD::Gofer::* and DBI::Gofer::* modules are
-Copyright (c) 2007 Tim Bunce. Ireland.  All rights reserved.
+DBI::Gofer::Response - Encapsulate a response from DBI::Gofer::Execute to DBD::Gofer
 
-You may distribute under the terms of either the GNU General Public License or
-the Artistic License, as specified in the Perl README file.
+=head1 DESCRIPTION
+
+This is an internal class.
+
+=head1 AUTHOR
+
+Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2007, Tim Bunce, Ireland. All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+=cut
 
