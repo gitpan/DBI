@@ -22,7 +22,7 @@ BEGIN {
     # tie methods (STORE/FETCH etc) get called different number of times
     plan skip_all => "test results assume perl >= 5.8.2"
         if $] <= 5.008001;
-    plan tests => 51;
+    plan tests => 55;
 }
 
 $Data::Dumper::Indent = 1;
@@ -214,23 +214,41 @@ is_deeply $tmp, bless {
         },
 	'usrnam' => {
 	    '' => {
-		    'foo' => { },
+                'foo' => { },
 	    },
 	    'select name from .' => {
-		    'foo' => {
-			'execute' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
-		    },
-		    'bar' => {
-			'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
-			'finish' => [ 1, 0, 0, 0, 0, 0, 0 ],
-		    },
+                'foo' => {
+                    'execute' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                    'fetchrow_hashref' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                    'prepare' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                },
+                'bar' => {
+                    'DESTROY' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                    'finish' => [ 1, 0, 0, 0, 0, 0, 0 ],
+                },
 	    },
 	},
     },
 } => 'DBI::Profile';
 
+$tmp = [ $dbh->{Profile}->as_node_path_list() ];
+is @$tmp, 9, 'should have 9 nodes';
+sanitize_profile_data_nodes($_->[0]) for @$tmp;
+#warn Dumper($dbh->{Profile}->{Data});
+is_deeply $tmp, [
+  [ [ 3, 0, 0, 0, 0, 0, 0 ], '', '', 'foo', 'STORE' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', '', 'foo', 'FETCH' ],
+  [ [ 2, 0, 0, 0, 0, 0, 0 ], 'usrnam', '', 'foo', 'STORE' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', '', 'foo', 'connected' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', 'select name from .', 'bar', 'DESTROY' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', 'select name from .', 'bar', 'finish' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', 'select name from .', 'foo', 'execute' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', 'select name from .', 'foo', 'fetchrow_hashref' ],
+  [ [ 1, 0, 0, 0, 0, 0, 0 ], 'usrnam', 'select name from .', 'foo', 'prepare' ]
+];
+
+
+print "testing '!File', '!Caller' and their variants in Path\n";
 
 $dbh->{Profile}->{Path} = [ '!File', '!File2', '!Caller', '!Caller2' ];
 $dbh->{Profile}->{Data} = undef;
@@ -255,6 +273,26 @@ is_deeply $tmp, {
 };
 
 
+print "testing '!Time' and variants in Path\n";
+
+undef $sth;
+my $factor = 100_000; # ~27 hours
+$dbh->{Profile}->{Path} = [ '!Time', "!Time~$factor", '!MethodName' ];
+$dbh->{Profile}->{Data} = undef;
+
+$t1 = time()+1; 1 while time() < $t1; # spin till new second starts
+$sth = $dbh->prepare("select name from .");
+$t2 = int($t1/$factor)*$factor;
+
+$tmp = sanitize_profile_data_nodes($dbh->{Profile}{Data});
+#warn Dumper($tmp);
+is_deeply $tmp, {
+    $t1 => { $t2 => { prepare => [ 1, 0, 0, 0, 0, 0, 0 ] }}
+}, "!Time and !Time~$factor should work";
+
+
+print "testing &norm_std_n3 in Path\n";
+
 $dbh->{Profile} = '&norm_std_n3'; # assign as string to get magic
 is_deeply $dbh->{Profile}{Path}, [
     \&DBI::ProfileSubs::norm_std_n3
@@ -266,7 +304,7 @@ $tmp = $dbh->{Profile}{Data};
 #warn Dumper($tmp);
 is_deeply $tmp, {
     'insert into foo<N> (a,b) values (<N>,"<S>")' => [ 1, '2', '2', '2', '2', '100000000', '100000000' ]
-};
+}, '&norm_std_n3 should normalize statement';
 
 
 # -----------------------------------------------------------------------------------
@@ -285,7 +323,9 @@ sub run_test1 {
     $sth->fetchrow_hashref;
     $sth->finish;
     undef $sth; # DESTROY
-    return sanitize_profile_data_nodes($dbh->{Profile}{Data});
+    my $data = sanitize_profile_data_nodes($dbh->{Profile}{Data}, 1);
+    return ($data, $dbh) if wantarray;
+    return $data;
 }
 
 $tmp = run_test1( { Path => [ 'foo', sub { 'bar' }, 'baz' ] });
@@ -330,6 +370,24 @@ ok(-s $LOG_FILE, 'output should go to log file');
 
 # -----------------------------------------------------------------------------------
 
+print "testing as_text\n";
+
+($tmp, $dbh) = run_test1( { Path => [ 'foo', '!MethodName', 'baz' ] });
+my $as_text = $dbh->{Profile}->as_text();
+$as_text =~ s/\.00+/.0/g;
+#warn "[$as_text]";
+is $as_text, q{foo > DESTROY > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > FETCH > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > STORE > baz: 0.0s / 5 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > connected > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > execute > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > fetchrow_hashref > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > finish > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+foo > prepare > baz: 0.0s / 1 = 0.0s avg (first 0.0s, min 0.0s, max 0.0s)
+};
+
+# -----------------------------------------------------------------------------------
+
 print "dbi_profile_merge_nodes\n";
 my $total_time = dbi_profile_merge_nodes(
     my $totals=[],
@@ -355,8 +413,9 @@ exit 0;
 
 sub sanitize_tree {
     my $data = shift;
+    my $skip_clone = shift;
     return $data unless ref $data;
-    $data = dclone($data);
+    $data = dclone($data) unless $skip_clone;
     sanitize_profile_data_nodes($data->{Data}) if $data->{Data};
     return $data;
 }

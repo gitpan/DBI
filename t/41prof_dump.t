@@ -14,12 +14,12 @@ use DBI;
 use Test::More;
 
 BEGIN {
-	if ($DBI::PurePerl) {
-		plan skip_all => 'profiling not supported for DBI::PurePerl';
-	}
-	else {
-		plan tests => 15;
-	}
+    if ($DBI::PurePerl) {
+        plan skip_all => 'profiling not supported for DBI::PurePerl';
+    }
+    else {
+        plan tests => 16;
+    }
 }
 
 BEGIN {
@@ -63,13 +63,15 @@ open(PROF, "dbi.prof") or die $!;
 my @prof = <PROF>;
 close PROF;
 
+print @prof;
+
 # has a header?
-ok( $prof[0] =~ /^DBI::ProfileDumper\s+([\d.]+)/, 'Found a version number' );
-# Can't use like() because we need $1
+like( $prof[0], '/^DBI::ProfileDumper\s+([\d.]+)/', 'Found a version number' );
 
 # version matches VERSION? (DBI::ProfileDumper uses $self->VERSION so
 # it's a stringified version object that looks like N.N.N)
-is( $1, DBI::ProfileDumper->VERSION, 'Version numbers match' );
+$prof[0] =~ /^DBI::ProfileDumper\s+([\d.]+)/;
+is( $1, DBI::ProfileDumper->VERSION, "Version numbers match in $prof[0]" );
 
 like( $prof[1], qr{^Path\s+=\s+\[\s+\]}, 'Found the Path');
 ok( $prof[2] =~ m{^Program\s+=\s+(\S+)}, 'Found the Program');
@@ -80,5 +82,9 @@ is( $1, $0, 'Program matches' );
 like(join('', @prof), qr/\+\s+1\s+\Q$sql\E/m);
 
 # unlink("dbi.prof"); # now done by 'make clean'
+
+# should be able to load DBI::ProfileDumper::Apache outside apache
+# this also naturally checks for syntax errors etc.
+require_ok('DBI::ProfileDumper::Apache');
 
 1;

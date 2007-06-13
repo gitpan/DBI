@@ -2,11 +2,16 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-05-13 22:54:00 +0100 (Sun, 13 May 2007) $ $Revision: 9564 $)
+(As of $Date: 2007-06-13 15:55:42 +0100 (Wed, 13 Jun 2007) $ $Revision: 9648 $)
 
 =cut
 
 Assorted TODO notes:
+
+Protect trace_msg from SIGPIPE?
+
+Add count of identical frozen_request (plus sum(results size)) to Gofer status
+Highlight those seen before.
 
 Move post-request cleanup into separate method and enable hooks so
     it can be done after the response has been sent
@@ -23,7 +28,6 @@ Policy for dbh attr FETCH (ie example_driver_path)
     or piggyback on skip_connect_check
     could also remember which attr have been returned to us
     so not bother FETCHing them (unless pedantic)
-Refactor http transport like the others re timeout
 Call method on transport failure so transport can cleanup/reset it it wants
 
 prepare(...,{ Err=>\my $isolated_err, ...})
@@ -32,6 +36,46 @@ Implement FETCH_many() in C
 Or call _new_child and move to DBI::common?
 Add trace modules that just records the last N trace messages into an array
 and prepends them to any error message.
+
+=head2 Changes in DBI 1.57 (svn rev 9639),  13th June 2007
+
+  Fixed XS versions of select*_*() methods to call execute()
+    fetch() etc., with inner handle instead of outer.
+  Fixed execute_for_fetch() to not cache errstr values
+    thanks to Bart Degryse.
+  Fixed unused var compiler warning thanks to JDHEDDEN.
+  Fixed t/86gofer_fail tests to be less likely to fail falsely.
+
+  Corrected timeout example in docs thanks to Egmont Koblinger.
+  Changed t/01basic.t to warn instead of failing when it detects
+    a problem with Math::BigInt (some recent versions have been buggy).
+
+  Added support for !Time and !Time~N to DBI::Profile Path.
+  Added extra trace info to connect_cached thanks to Walery Studennikov.
+  Added non-random (deterministic) mode to DBI_GOFER_RANDOM mechanism.
+  Added DBIXS_REVISION macro that drivers can use.
+
+  DBI::Profile changes:
+    Don't profile DESTROY during global destruction.
+    Added as_node_path_list() and as_text() methods and tests.
+  DBI::ProfileDumper changes:
+    Don't write file if there's no profile data.
+    Uses full natural precision when saving data (was using %.6f)
+    Optimized flush_to_disk().
+    Locks the data file while writing.
+    Enabled filename to be a code ref for dynamic names.
+  DBI::ProfileDumper::Apache changes:
+    Added Quiet=>1 to avoid write to STDERR in flush_to_disk().
+    Added Dir=>... to specify a writable destination directory.
+    Enabled DBI_PROFILE_APACHE_LOG_DIR for mod_perl 1 as well as 2.
+    Added parent pid to default data file name.
+  DBI::ProfileData changes:
+    Added DeleteFiles option to delete files once read.
+    Locks the data files while reading.
+    Added ability to sort by Path elements.
+  dbiprof changes:
+    Added --dumpnodes and --delete options.
+  Added/updated docs for both DBI::ProfileDumper && ::Apache.
 
 =head2 Changes in DBI 1.56 (svn rev 9561),  13th May 2007
 
@@ -44,6 +88,8 @@ and prepends them to any error message.
   Changed tests to workaround Math::BigInt broken versions.
   Changed dbi_profile_merge() to dbi_profile_merge_nodes()
     old name still works as an alias for the new one.
+  Removed old DBI internal sanity check that's no longer valid
+    causing "panic: DESTROY (dbih_clearcom)" when tracing enabled
 
   Added DBI_GOFER_RANDOM env var that can be use to trigger random
     failures and delays when executing gofer requests. Designed to help

@@ -1,4 +1,4 @@
-# $Id: DBI.pm 9564 2007-05-13 21:54:00Z timbo $
+# $Id: DBI.pm 9632 2007-06-07 16:46:08Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.56"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.57"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,8 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.56
-($Revision: 9564 $).
+This is the DBI specification that corresponds to the DBI version 1.57
+($Revision: 9632 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -1426,9 +1426,11 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
 	my @attr_keys = $attr ? sort keys %$attr : ();
 	my $key = do { local $^W; # silence undef warnings
-	    join "~~", $dsn, $user||'', $auth||'', $attr ? (@attr_keys,@{$attr}{@attr_keys}) : ()
+	    join "~~", $dsn, $user, $auth, $attr ? (@attr_keys,@{$attr}{@attr_keys}) : ()
 	};
 	my $dbh = $cache->{$key};
+        $drh->trace_msg(sprintf("    connect_cached: key '$key', cached dbh $dbh\n", DBI::neat($key), DBI::neat($dbh)))
+            if $DBI::dbi_debug >= 4;
         my $cb = $attr->{Callbacks}; # take care not to autovivify
 	if ($dbh && $dbh->FETCH('Active') && eval { $dbh->ping }) {
             # If the caller has provided a callback then call it
@@ -1919,7 +1921,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	($tuple_status) ? @$tuple_status = () : $tuple_status = [];
 
         my $rc_total = 0;
-	my ($err_count, %errstr_cache);
+	my $err_count;
 	while ( my $tuple = &$fetch_tuple_sub() ) {
 	    if ( my $rc = $sth->execute(@$tuple) ) {
 		push @$tuple_status, $rc;
@@ -1927,10 +1929,9 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    }
 	    else {
 		$err_count++;
-		my $err = $sth->err;
-		push @$tuple_status, [ $err, $errstr_cache{$err} ||= $sth->errstr, $sth->state ];
+		push @$tuple_status, [ $sth->err, $sth->errstr, $sth->state ];
                 # XXX drivers implementing execute_for_fetch could opt to "last;" here
-                # if the know the error code means no further executes will work.
+                # if they know the error code means no further executes will work.
 	    }
 	}
         my $tuples = @$tuple_status;
@@ -6731,7 +6732,7 @@ to be delivered $seconds in the future. For example:
     alarm(0);  # cancel alarm (if code ran fast)
   };
   alarm(0);    # cancel alarm (if eval failed)
-  if ( $@ eq "TIMEOUT" ) { ... }
+  if ( $@ eq "TIMEOUT\n" ) { ... }
 
 Unfortunately, as described above, this won't always work as expected,
 depending on your perl version and the underlying database code.

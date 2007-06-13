@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 9530 2007-05-09 13:05:23Z timbo $
+# $Id: Makefile.PL 9637 2007-06-11 12:49:27Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -297,6 +297,9 @@ sub post_constants {
     my $xst = main::dbd_postamble();
     $xst =~ s/\$\(BASEEXT\)/Perl/g;
     $xst .= '
+dbixs_rev.h: DBIXS.h Driver_xst.h dbipport.h dbivport.h dbixs_rev.pl
+	$(PERL) dbixs_rev.pl
+
 DBI.c: Perl$(OBJ_EXT)
 
 # make Changes file available as installed pod docs "perldoc DBI::Changes"

@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 9564 2007-05-13 21:54:00Z timbo $
+ * $Id: DBI.xs 9641 2007-06-12 21:22:13Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -2313,6 +2313,7 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
     HV *dbh_outer_hv = NULL;
     HV *dbh_inner_hv = NULL;
     char *statement_pv;
+    char *method_pv;
     SV *profile;
     SV *tmp;
     SV *dest_node;
@@ -2327,6 +2328,14 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
 
     if (!DBIc_has(imp_xxh, DBIcf_Profile))
 	return;
+
+    method_pv = (SvTYPE(method)==SVt_PVCV)
+        ? GvNAME(CvGV(method))
+        : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
+
+    /* we don't profile DESTROY during global destruction */
+    if (dirty && instr(method_pv, "DESTROY"))
+        return;
 
     h_hv = (HV*)SvRV(dbih_inner(aTHX_ h, "dbi_profile"));
 
@@ -2349,9 +2358,8 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
     statement_pv = SvPV_nolen(statement_sv);
 
     if (DBIc_DBISTATE(imp_xxh)->debug >= 4)
-	PerlIO_printf(DBIc_LOGPIO(imp_xxh), "       dbi_profile %s %fs %s\n",
-            neatsvpv((SvTYPE(method)==SVt_PVCV) ? (SV*)CvGV(method) : method, 0),
-            ti, neatsvpv(statement_sv,0));
+	PerlIO_printf(DBIc_LOGPIO(imp_xxh), "       dbi_profile +%fs %s %s\n",
+            ti, method_pv, neatsvpv(statement_sv,0));
 
     dest_node = _profile_next_node(profile, "Data");
 
@@ -2372,9 +2380,6 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
                 SV *code_sv = SvRV(pathsv);
                 I32 items;
                 I32 item_idx;
-                char *method_pv = (SvTYPE(method)==SVt_PVCV)
-                    ? GvNAME(CvGV(method))
-                    : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
                 EXTEND(SP, 4);
                 PUSHMARK(SP);
                 PUSHs(h);   /* push inner handle, then others params */
@@ -2414,10 +2419,7 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
                         dest_node = _profile_next_node(dest_node, statement_pv);
                     }
                     else if (p[1] == 'M' && strEQ(p, "!MethodName")) {
-                        p = (SvTYPE(method)==SVt_PVCV)
-			    ? GvNAME(CvGV(method))
-			    : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
-                        dest_node = _profile_next_node(dest_node, p);
+                        dest_node = _profile_next_node(dest_node, method_pv);
                     }
                     else if (p[1] == 'M' && strEQ(p, "!MethodClass")) {
                         if (SvTYPE(method) == SVt_PVCV) {
@@ -2436,7 +2438,7 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
                             if (*p == '*') ++p; /* skip past leading '*' glob sigil */
                         }
                         else {
-                            p = SvPV_nolen(method);
+                            p = method_pv;
                         }
                         dest_node = _profile_next_node(dest_node, p);
                     }
@@ -2451,6 +2453,17 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
                     }
                     else if (p[1] == 'C' && strEQ(p, "!Caller2")) {
                         dest_node = _profile_next_node(dest_node, log_where(0, 0, "", "", 1, 1, 0));
+                    }
+                    else if (p[1] == 'T' && (strEQ(p, "!Time") || strnEQ(p, "!Time~", 6))) {
+                        char timebuf[20];
+                        int factor = 1;
+                        if (p[5] == '~') {
+                            factor = atoi(&p[6]);
+                            if (factor == 0) /* sanity check to avoid div by zero error */
+                                factor = 3600;
+                        }
+                        sprintf(timebuf, "%ld", ((long)(dbi_time()/factor))*factor);
+                        dest_node = _profile_next_node(dest_node, timebuf);
                     }
                     else {
                         warn("Unknown ! element in DBI::Profile Path: %s", p);
@@ -4175,7 +4188,8 @@ dbi_profile_merge_nodes(dest, ...)
 	if (!SvROK(dest) || SvTYPE(SvRV(dest)) != SVt_PVAV)
 	    croak("dbi_profile_merge_nodes(%s,...) not an array reference", neatsvpv(dest,0));
 	if (items <= 1) {
-	    (void)cv;
+	    (void)cv;   /* avoid unused var warnings */
+	    (void)ix;
 	    RETVAL = 0;
 	}
 	else {

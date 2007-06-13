@@ -22,10 +22,10 @@ You can also activate DBI::ProfileDumper from within your code:
   use DBI;
 
   # profile with default path (2) and output file (dbi.prof)
-  $dbh->{Profile} = "2/DBI::ProfileDumper";
+  $dbh->{Profile} = "!Statement/DBI::ProfileDumper";
 
   # same thing, spelled out
-  $dbh->{Profile} = "2/DBI::ProfileDumper/File:dbi.prof";
+  $dbh->{Profile} = "!Statement/DBI::ProfileDumper/File:dbi.prof";
 
   # another way to say it
   use DBI::Profile;
@@ -34,8 +34,10 @@ You can also activate DBI::ProfileDumper from within your code:
                         File => 'dbi.prof' );
 
   # using a custom path
-  $dbh->{Profile} = DBI::ProfileDumper->new( Path => [ "foo", "bar" ],
-                                             File => 'dbi.prof' );
+  $dbh->{Profile} = DBI::ProfileDumper->new(
+      Path => [ "foo", "bar" ],
+      File => 'dbi.prof',
+  );
 
 
 =head1 DESCRIPTION
@@ -61,8 +63,9 @@ can construct the DBI::ProfileDumper object yourself:
 
   use DBI::Profile;
   $dbh->{Profile} = DBI::ProfileDumper->new(
-                        Path => [ '!Statement' ]
-                        File => 'dbi.prof' );
+      Path => [ '!Statement' ],
+      File => 'dbi.prof'
+  );
 
 The C<Path> option takes the same values as in
 L<DBI::Profile>.  The C<File> option gives the name of the
@@ -84,18 +87,36 @@ in any DBI handle:
 
   my $profile = $dbh->{Profile};
 
-=over 4
+=head2 flush_to_disk
 
-=item $profile->flush_to_disk()
+  $profile->flush_to_disk()
 
-Flushes all collected profile data to disk and empties the Data hash.
+Flushes all collected profile data to disk and empties the Data hash.  Returns
+the filename writen to.  If no profile data has been collected then the file is
+not written and flush_to_disk() returns undef.
+
+The file is locked while it's being written. A process 'consuming' the files
+while they're being written to, should rename the file first, then lock it,
+then read it, then close and delete it. The C<DeleteFiles> option to
+L<DBI::ProfileData> does the right thing.
+
 This method may be called multiple times during a program run.
 
-=item $profile->empty()
+=head2 empty
+
+  $profile->empty()
 
 Clears the Data hash without writing to disk.
 
-=back
+=head2 filename
+
+  $filename = $profile->filename();
+
+Get or set the filename.
+
+The filename can be specified as a CODE reference, in which case the referenced
+code should return the filename to be used. The code will be called with the
+profile object as its first argument.
 
 =head1 DATA FORMAT
 
@@ -104,7 +125,7 @@ containing the version number of the module used to generate it.  Then
 a block of variable declarations describes the profile.  After two
 newlines, the profile data forms the body of the file.  For example:
 
-  DBI::ProfileDumper 1.0
+  DBI::ProfileDumper 2.003762
   Path = [ '!Statement', '!MethodName' ]
   Program = t/42profile_data.t
 
@@ -154,61 +175,92 @@ it under the same terms as Perl 5 itself.
 # inherit from DBI::Profile
 use DBI::Profile;
 
-our $VERSION = sprintf("2.%06d", q$Revision: 9395 $ =~ /(\d+)/o);
+our $VERSION = sprintf("2.%06d", q$Revision: 9628 $ =~ /(\d+)/o);
 
 our @ISA = ("DBI::Profile");
 
 use Carp qw(croak);
+use Fcntl qw(:flock);
 use Symbol;
+
+my $program_header;
+
 
 # validate params and setup default
 sub new {
     my $pkg = shift;
     my $self = $pkg->SUPER::new(@_);
 
-    # File defaults to dbi.prof
-    $self->{File} = "dbi.prof" unless exists $self->{File};
+    # provide a default filename
+    $self->filename("dbi.prof") unless $self->filename;
 
     return $self;
 }
 
+
+# get/set filename to use
+sub filename {
+    my $self = shift;
+    $self->{File} = shift if @_;
+    my $filename = $self->{File};
+    $filename = $filename->($self) if ref($filename) eq 'CODE';
+    return $filename;
+}
+
+
 # flush available data to disk
 sub flush_to_disk {
     my $self = shift;
+    my $class = ref $self;
+    my $filename = $self->filename;
     my $data = $self->{Data};
 
-    my $fh = gensym;
-    if ($self->{_wrote_header}) {
-        # append more data to the file
-        open($fh, ">>$self->{File}") 
-          or croak("Unable to open '$self->{File}' for profile output: $!");
-    } else {
-        # create new file and write the header
-        open($fh, ">$self->{File}") 
-          or croak("Unable to open '$self->{File}' for profile output: $!");
-        $self->write_header($fh);
-        $self->{_wrote_header} = 1;
+    if (1) { # make an option
+        if (not $data or ref $data eq 'HASH' && !%$data) {
+            DBI->trace_msg("flush_to_disk skipped for empty profile\n",0) if $self->{Trace};
+            return undef;
+        }
     }
 
-    $self->write_data($fh, $self->{Data}, 1);
+    my $fh = gensym;
+    if (($self->{_wrote_header}||'') eq $filename) {
+        # append more data to the file
+        # XXX assumes that Path hasn't changed
+        open($fh, ">>", $filename) 
+          or croak("Unable to open '$filename' for $class output: $!");
+    } else {
+        # create new file (or overwrite existing)
+        open($fh, ">", $filename) 
+          or croak("Unable to open '$filename' for $class output: $!");
+    }
+    # lock the file (before checking size and writing the header)
+    flock($fh, LOCK_EX);
+    # write header if file is empty - typically because we just opened it
+    # in '>' mode, or perhaps we used '>>' but the file had been truncated externally.
+    if (-s $fh == 0) {
+        DBI->trace_msg("flush_to_disk wrote header to $filename\n",0) if $self->{Trace};
+        $self->write_header($fh);
+        $self->{_wrote_header} = $filename;
+    }
 
-    close($fh) or croak("Error closing '$self->{File}': $!");
+    my $lines = $self->write_data($fh, $self->{Data}, 1);
+    DBI->trace_msg("flush_to_disk wrote $lines lines to $filename\n",0) if $self->{Trace};
+
+    close($fh)  # unlocks the file
+        or croak("Error closing '$filename': $!");
 
     $self->empty();
+
+
+    return $filename;
 }
+
 
 # empty out profile data
 sub empty {
-    shift->{Data} = {};
-}
-
-sub _print {
-	my($fh) = shift;
-	
-	# isolate us against globals which effect print
-	local($\, $,);
-	
-	print $fh @_;
+    my $self = shift;
+    DBI->trace_msg("profile data discarded\n",0) if $self->{Trace};
+    $self->{Data} = undef;
 }
 
 
@@ -216,50 +268,64 @@ sub _print {
 sub write_header {
     my ($self, $fh) = @_;
 
-    # module name and version number
-    _print $fh, ref($self), " ", $self->VERSION, "\n";
+    # isolate us against globals which effect print
+    local($\, $,);
 
-    # print out Path
-    my @path_words;
-    if ($self->{Path}) {
-        foreach (@{$self->{Path}}) {
-            push @path_words, $_;
-        }
-    }
-    _print $fh, "Path = [ ", join(', ', @path_words), " ]\n";
+    # $self->VERSION can return undef during global destruction
+    my $version = $self->VERSION || $VERSION;
+
+    # module name and version number
+    print $fh ref($self)." $version\n";
+
+    # print out Path (may contain CODE refs etc)
+    my @path_words = map { escape_key($_) } @{ $self->{Path} || [] };
+    print $fh "Path = [ ", join(', ', @path_words), " ]\n";
 
     # print out $0 and @ARGV
-    _print $fh, "Program = $0";
-    _print $fh, " ", join(", ", @ARGV) if @ARGV;
-    _print $fh, "\n";
+    if (!$program_header) {
+        # XXX should really quote as well as escape
+        $program_header = "Program = "
+            . join(" ", map { escape_key($_) } $0, @ARGV)
+            . "\n";
+    }
+    print $fh $program_header;
 
     # all done
-    _print $fh, "\n";
+    print $fh "\n";
 }
+
 
 # write data in the proscribed format
 sub write_data {
     my ($self, $fh, $data, $level) = @_;
 
+    # XXX it's valid for $data to be an ARRAY ref, i.e., Path is empty.
     # produce an empty profile for invalid $data
-    return unless $data and UNIVERSAL::isa($data,'HASH');
+    return 0 unless $data and UNIVERSAL::isa($data,'HASH');
     
+    # isolate us against globals which affect print
+    local ($\, $,);
+
+    my $lines = 0;
     while (my ($key, $value) = each(%$data)) {
         # output a key
-        _print $fh, "+ ", $level, " ", quote_key($key), "\n";
+        print $fh "+ $level ". escape_key($key). "\n";
         if (UNIVERSAL::isa($value,'ARRAY')) {
             # output a data set for a leaf node
-            _print $fh, sprintf "= %4d %.6f %.6f %.6f %.6f %.6f %.6f\n", @$value;
+            print $fh "= ".join(' ', @$value)."\n";
+            $lines += 1;
         } else {
             # recurse through keys - this could be rewritten to use a
             # stack for some small performance gain
-            $self->write_data($fh, $value, $level + 1);
+            $lines += $self->write_data($fh, $value, $level + 1);
         }
     }
+    return $lines;
 }
 
-# quote a key for output
-sub quote_key {
+
+# escape a key for output
+sub escape_key {
     my $key = shift;
     $key =~ s!\\!\\\\!g;
     $key =~ s!\n!\\n!g;
@@ -267,6 +333,7 @@ sub quote_key {
     $key =~ s!\0!!g;
     return $key;
 }
+
 
 # flush data to disk when profile object goes out of scope
 sub on_destroy {

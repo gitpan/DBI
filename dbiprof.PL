@@ -7,8 +7,9 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 9418 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision: 9628 $ =~ /(\d+)/o);
 
+use Data::Dumper;
 use DBI::ProfileData;
 use Getopt::Long;
 
@@ -26,6 +27,7 @@ GetOptions(
            'help'           => sub { exit usage() },
            'number=i'       => \$number,
            'sort=s'         => \$sort,
+           'dumpnodes!'     => \my $dumpnodes,
            'reverse'        => \$reverse,
            'match=s'        => \%match,
            'exclude=s'      => \%exclude,
@@ -36,7 +38,7 @@ sub usage {
     print <<EOS;
 dbiprof [options] [files]
 
-Merges DBI profile data contain in files and prints a summary.
+Reads and merges DBI profile data from files and prints a summary.
 
 files: defaults to $filename
 
@@ -48,6 +50,7 @@ options:
     -match=K=V       for filtering, see docs
     -exclude=K=V     for filtering, see docs
     -case_sensitive  for -match and -exclude
+    -delete          rename files before reading then delete afterwards
     -version         print version number and exit
     -help            print this help
 
@@ -60,8 +63,12 @@ my @files = @ARGV ? @ARGV : ('dbi.prof');
 
 
 # instantiate ProfileData object
-my $prof;
-eval { $prof = DBI::ProfileData->new(Files => \@files) };
+my $prof = eval {
+    $prof = DBI::ProfileData->new(
+        Files => \@files,
+        DeleteFiles => $opt_delete,
+    );
+};
 die "Unable to load profile data: $@\n" if $@;
 
 if (%match) { # handle matches
@@ -86,7 +93,16 @@ if (%exclude) { # handle excludes
 $prof->sort(field => $sort, reverse => $reverse);
 
 # all done, print it out
-print $prof->report(number => $number);
+if ($dumpnodes) {
+    $Data::Dumper::Indent    = 1;
+    $Data::Dumper::Terse     = 1;
+    $Data::Dumper::Useqq     = 1;
+    $Data::Dumper::Deparse   = 0;
+    print Dumper($prof->nodes);
+}
+else {
+    print $prof->report(number => $number);
+}
 exit 0;
 
 __END__
@@ -130,7 +146,8 @@ Produce this many items in the report.  Defaults to 10.  If set to
 
 =item --sort field
 
-Sort results by the given field.  The available sort fields are:
+Sort results by the given field. Sorting by multiple fields isn't currently
+supported (patches welcome).  The available sort fields are:
 
 =over 4
 
@@ -154,6 +171,11 @@ Sorts by the time taken in the first run.
 =item shortest
 
 Sorts by the shortest single run.
+
+=item key1
+
+Sorts by the value of the first element in the Path, which should be numeric.
+You can also sort by C<key2> and C<key3>.
 
 =back
 
@@ -208,6 +230,16 @@ this can be changed with the --case-sensitive option.
 
 Using this option causes --match and --exclude to work
 case-sensitively.  Defaults to off.
+
+=item --delete
+
+Sets the C<DeleteFiles> option to L<DBI::ProfileData> which causes the
+files to be deleted after reading. See L<DBI::ProfileData> for more details.
+
+=item --dumpnodes
+
+Print the list of nodes in the form of a perl data structure.
+Use the C<-sort> option if you want the list sorted.
 
 =item --version
 

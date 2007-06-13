@@ -220,11 +220,14 @@ A reference to a hash containing the collected profile data.
 The Path value is a reference to an array. Each element controls the
 value to use at the corresponding level of the profile Data tree.
 
+If the value of Path is anything other than an array reference,
+it is treated as if it was:
+
+	[ '!Statement' ]
+
 The elements of Path array can be one of the following types:
 
-=over 4
-
-=item Special Constant
+=head3 Special Constant
 
 B<!Statement>
 
@@ -283,7 +286,22 @@ B<!File2>
 
 Same as !Caller2 above except that only the filenames are included, not the line number.
 
-=item Code Reference
+B<!Time>
+
+Use the current value of time(). Rarely used. See the more useful C<!Time~N> below.
+
+B<!Time~N>
+
+Where C<N> is an integer. Use the current value of time() but with reduced precision.
+The value used is determined in this way:
+
+    int( time() / N ) * N
+
+This is a useful way to segregate a profile into time slots. For example:
+
+    [ '!Time~60', '!Statement' ]
+
+=head3 Code Reference
 
 The subroutine is passed the handle it was called on and the DBI method name.
 The current Statement is in $_. The statement string should not be modified,
@@ -295,7 +313,7 @@ The sub can 'veto' (reject) a profile sample by including a reference to undef
 in the returned list. That can be useful when you want to only profile
 statements that match a certain pattern, or only profile certain methods.
 
-=item Subroutine Specifier
+=head3 Subroutine Specifier
 
 A Path element that begins with 'C<&>' is treated as the name of a subroutine
 in the DBI::ProfileSubs namespace and replaced with the corresponding code reference.
@@ -307,32 +325,23 @@ Also, currently, the only subroutine in the DBI::ProfileSubs namespace is
 C<'&norm_std_n3'>. That's a very handy subroutine when profiling code that
 doesn't use placeholders. See L<DBI::ProfileSubs> for more information.
 
-=item Attribute Specifier
+=head3 Attribute Specifier
 
 A string enclosed in braces, such as 'C<{Username}>', specifies that the current
 value of the corresponding database handle attribute should be used at that
 point in the Path.
 
-=item Reference to a Scalar
+=head3 Reference to a Scalar
 
 Specifies that the current value of the referenced scalar be used at that point
 in the Path.  This provides an efficient way to get 'contextual' values into
 your profile.
 
-=item Other Values
+=head3 Other Values
 
 Any other values are stringified and used literally.
 
 (References, and values that begin with punctuation characters are reserved.)
-
-=back
-
-Only the first 100 elements in Path are used.
-
-If the value of Path is anything other than an array reference,
-it is treated as if it was:
-
-	[ DBI::Profile::!Statement ]
 
 
 =head1 REPORTING
@@ -430,6 +439,84 @@ of their parent.  So if profiling is enabled for a database handle
 then by default the statement handles created from it all contribute
 to the same merged profile data tree.
 
+
+=head1 PROFILE OBJECT METHODS
+
+=head2 format
+
+See L</REPORTING>.
+
+=head2 as_node_path_list
+
+  @ary = $dbh->{Profile}->as_node_path_list();
+  @ary = $dbh->{Profile}->as_node_path_list($node, $path);
+
+Returns the collected data ($dbh->{Profile}{Data}) restructured into a list of
+array refs, one for each leaf node in the Data tree. This 'flat' structure is
+often much simpler for applications to work with.
+
+The first element of each array ref is a reference to the leaf node.
+The remaining elements are the 'path' through the data tree to that node.
+
+For example, given a data tree like this:
+
+    {key1a}{key2a}[node1]
+    {key1a}{key2b}[node2]
+    {key1b}{key2a}{key3a}[node3]
+
+The as_node_path_list() method  will return this list:
+
+    [ [node1], 'key1a', 'key2a' ]
+    [ [node2], 'key1a', 'key2b' ]
+    [ [node3], 'key1b', 'key2a', 'key3a' ]
+
+The nodes are ordered by key, depth-first.
+
+The $node argument can be used to focus on a sub-tree.
+If not specified it defaults to $dbh->{Profile}{Data}.
+
+The $path argument can be used to specify a list of path elements that will be
+added to each element of the returned list. If not specified it defaults to a a
+ref to an empty array.
+
+=head2 as_text
+
+  @txt = $dbh->{Profile}->as_text();
+  $txt = $dbh->{Profile}->as_text({
+      node      => undef,
+      path      => [],
+      separator => " > ",
+      format    => '%1$s: %11$fs / %10$d = %2$fs avg (first %12$fs, min %13$fs, max %14$fs)'."\n";
+      sortsub   => sub { ... },
+  );
+
+Returns the collected data ($dbh->{Profile}{Data}) reformatted into a list of formatted strings.
+In scalar context the list is returned as a single contatenated string.
+
+A hashref can be used to pass in arguments, the default values are shown in the example above.
+
+The C<node> and <path> arguments are passed to as_node_path_list().
+
+The C<separator> argument is used to join the elemets of the path for each leaf node.
+
+The C<sortsub> argument is used to pass in a ref to a sub that will order the list.
+The subroutine will be passed a reference to the array returned by as_node_path_list().
+
+The C<format> argument is a C<sprintf> format string that specifies the format
+to use for each leaf node.  It uses the explicit format parameter index
+mechanism to specify which of the arguments should appear where in the string.
+The arguments to sprintf are:
+
+     1:  path to node, joined with the separator
+     2:  average duration (total/count)
+         (3 thru 9 are currently unused)
+    10:  count
+    11:  total duration
+    12:  first_duration
+    13:  smallest duration
+    14:  largest duration
+    15:  time of first call
+    16:  time of first call
 
 =head1 CUSTOM DATA MANIPULATION
 
@@ -587,7 +674,7 @@ use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge_nodes dbi_profile_merge);
 
-$VERSION = sprintf("2.%06d", q$Revision: 9564 $ =~ /(\d+)/o);
+$VERSION = sprintf("2.%06d", q$Revision: 9647 $ =~ /(\d+)/o);
 
 
 @ISA = qw(Exporter);
@@ -670,6 +757,61 @@ sub _auto_new {
 }
 
 
+sub as_node_path_list {
+    my ($self, $node, $path) = @_;
+    # convert the tree into an array of arrays
+    # from 
+    #   {key1a}{key2a}[node1]
+    #   {key1a}{key2b}[node2]
+    #   {key1b}{key2a}{key3a}[node3]
+    # to
+    #   [ [node1], 'key1a', 'key2a' ]
+    #   [ [node2], 'key1a', 'key2b' ]
+    #   [ [node3], 'key1b', 'key2a', 'key3a' ]
+
+    $node ||= $self->{Data} or return;
+    $path ||= [];
+    if (ref $node eq 'HASH') {    # recurse
+        $path = [ @$path, undef ];
+        return map {
+            $path->[-1] = $_;
+            ($node->{$_}) ? $self->as_node_path_list($node->{$_}, $path) : ()
+        } sort keys %$node;
+    }
+    return [ $node, @$path ];
+}
+
+
+sub as_text {
+    my ($self, $args_ref) = @_;
+    my $separator = $args_ref->{separator} || " > ";
+    my $format    = $args_ref->{format}
+        || '%1$s: %11$fs / %10$d = %2$fs avg (first %12$fs, min %13$fs, max %14$fs)'."\n";
+    
+    my @node_path_list = $self->as_node_path_list(undef, $args_ref->{path});
+
+    $args_ref->{sortsub}->(\@node_path_list) if $args_ref->{sortsub};
+
+    my $eval = "qr/".quotemeta($separator)."/";
+    my $separator_re = eval($eval) || quotemeta($separator);
+    #warn "[$eval] = [$separator_re]";
+    my @text;
+    for my $node_path (@node_path_list) {
+        my ($node, @path) = @$node_path;
+        s/[\r\n]+/ /g for @path;
+        s/$separator_re/ /g for @path;
+        my $path_str = join($separator, @path);
+        push @text, sprintf $format,
+            $path_str,                                # 1=path
+            ($node->[0] ? $node->[4]/$node->[0] : 0), # 2=avg
+            (undef) x 7,                              # spare slots
+            @$node; # 10=count, 11=dur, 12=first_dur, 13=min, 14=max, 15=first_called, 16=last_called
+    }       
+    return @text if wantarray;
+    return join "", @text;
+}   
+
+
 sub format {
     my $self = shift;
     my $class = ref($self) || $self;
@@ -709,10 +851,6 @@ sub format_profile_leaf {
 	unless UNIVERSAL::isa($thingy,'ARRAY');
 
     push @$leaves, $thingy if $leaves;
-    if (0) {
-	use Data::Dumper;
-	return Dumper($thingy);
-    }
     my ($count, $total_time, $first_time, $min, $max, $first_called, $last_called) = @$thingy;
     return sprintf "%s%fs\n", ($pad x $depth), $total_time
 	if $count <= 1;
@@ -765,6 +903,7 @@ sub DESTROY {
     local $@;
     eval { $self->on_destroy };
     if ($@) {
+        chomp $@;
         my $class = ref($self) || $self;
         DBI->trace_msg("$class on_destroy failed: $@", 0);
     }

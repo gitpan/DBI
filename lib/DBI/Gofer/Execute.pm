@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 9563 2007-05-13 21:17:43Z timbo $
+#   $Id: Execute.pm 9632 2007-06-07 16:46:08Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,7 +16,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9563 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9632 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => DBD::_::db->can($_) } @all_dbh_methods;
@@ -273,7 +273,7 @@ sub execute_request {
     my $response = eval {
 
         if (my $check_request_sub = $self->check_request_sub) {
-            $request = $check_request_sub->($request)
+            $request = $check_request_sub->($request, $self)
                 or die "check_request_sub failed";
         }
 
@@ -563,11 +563,11 @@ sub _install_rand_callbacks {
     my ($fail_percent, $delay_percent, $delay_duration);
     my @specs = split /,/, $dbi_gofer_random;
     for my $spec (@specs) {
-        if ($spec =~ m/^fail=([.\d]+)%?$/) {
+        if ($spec =~ m/^fail=(-?[.\d]+)%?$/) {
             $fail_percent = $1;
             next;
         }
-        if ($spec =~ m/^delay([.\d]+)=([.\d]+)%?$/) {
+        if ($spec =~ m/^delay([.\d]+)=(-?[.\d]+)%?$/) {
             $delay_duration = $1;
             $delay_percent  = $2;
             next;
@@ -592,20 +592,30 @@ sub _install_rand_callbacks {
     $dbh->{private_gofer_rand_fail_callbacks} = $callbacks;
 }
 
+my %_mk_rand_callback_seqn;
 
 sub _mk_rand_callback {
     my ($self, $method, $fail_percent, $delay_percent, $delay_duration) = @_;
+    $fail_percent  ||= 0;  my $fail_modrate  = int(1/(-$fail_percent )*100) if $fail_percent;
+    $delay_percent ||= 0;  my $delay_modrate = int(1/(-$delay_percent)*100) if $delay_percent;
     # note that $method may be "*"
     return sub {
         my ($h) = @_;
-        if ($delay_percent && rand(100) < $delay_percent) {
+        my $seqn = ++$_mk_rand_callback_seqn{$method};
+        my $delay = ($delay_percent > 0) ? rand(100) < $delay_percent :
+                    ($delay_percent < 0) ? !($seqn % $delay_modrate): 0;
+        my $fail  = ($fail_percent  > 0) ? rand(100) < $fail_percent  :
+                    ($fail_percent  < 0) ? !($seqn % $fail_modrate) : 0;
+        #no warnings 'uninitialized';
+        #warn "_mk_rand_callback($fail_percent:$fail_modrate, $delay_percent:$delay_modrate): seqn=$seqn fail=$fail delay=$delay";
+        if ($delay) {
             my $msg = "DBI_GOFER_RANDOM delaying execution of $method by $delay_duration seconds\n";
             # Note what's happening in a trace message. If the delay percent is an odd
             # number then use warn() so it's sent back to the client
             ($delay_percent % 2 == 0) ? $h->trace_msg($msg) : warn($msg);
             select undef, undef, undef, $delay_duration; # allows floating point value
         }
-        if ($fail_percent && rand(100) < $fail_percent) {
+        if ($fail) {
             undef $_; # tell DBI to not call the method
             return $h->set_err(1, "fake error induced by DBI_GOFER_RANDOM env var");
         }
@@ -667,6 +677,7 @@ Examples include: L<DBI::Gofer::Transport::stream> and L<DBI::Gofer::Transport::
 =head2 check_request_sub
 
 If defined, it must be a reference to a subroutine that will 'check' the request.
+It is pass the request object and the executor as its only arguments.
 
 The subroutine can either return the original request object or die with a
 suitable error message (which will be turned into a Gofer response).
@@ -766,13 +777,15 @@ The tokens can be one of three types:
 
 =item fail=R%
 
-Set the current random failure rate to R where R is a percentage. The value R can be floating point, e.g., C<fail=0.05%>.
+Set the current failure rate to R where R is a percentage.
+The value R can be floating point, e.g., C<fail=0.05%>.
+Negative values for R have special meaning, see below.
 
 =item delayN=R%
 
 Set the current random delay rate to R where R is a percentage, and set the
 current delay duration to N seconds. The values of R and N can be floating point,
-e.g., C<delay120=0.1%>.
+e.g., C<delay120=0.1%>.  Negative values for R have special meaning, see below.
 
 =item methodname
 
@@ -789,6 +802,11 @@ For example:
 
 will cause the do() method to fail for 0.01% of calls, and the execute() method to
 fail 0.01% of calls and be delayed by 60 seconds on 1% of calls.
+
+If the percentage value (C<R>) is negative then instead of the failures being
+triggered randomly (via the rand() function) they are triggered via a sequence
+number. In other words "C<fail=-20%>" will mean every fifth call will fail.
+Each method has a distinct sequence number.
 
 =head1 AUTHOR
 

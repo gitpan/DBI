@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h 9461 2007-04-26 23:28:15Z timbo $
+/* $Id: DBIXS.h 9637 2007-06-11 12:49:27Z timbo $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -27,6 +27,9 @@
 #undef std
 #endif
 
+/* define DBIXS_REVISION */
+#include "dbixs_rev.h"
+
 /* Perl backwards compatibility definitions */
 #include "dbipport.h"
 
@@ -41,6 +44,7 @@
  * and learns from the needs of various drivers.  See also the
  * DBISTATE_VERSION macro below. You can think of DBIXS_VERSION as
  * being a compile time check and DBISTATE_VERSION as a runtime check.
+ * By contract, DBIXS_REVISION is a driver source compatibility tool.
  */
 #define DBIXS_VERSION 93
 
