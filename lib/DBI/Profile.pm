@@ -674,7 +674,7 @@ use Carp;
 
 use DBI qw(dbi_time dbi_profile dbi_profile_merge_nodes dbi_profile_merge);
 
-$VERSION = sprintf("2.%06d", q$Revision: 9647 $ =~ /(\d+)/o);
+$VERSION = sprintf("2.%06d", q$Revision: 9656 $ =~ /(\d+)/o);
 
 
 @ISA = qw(Exporter);
@@ -757,6 +757,21 @@ sub _auto_new {
 }
 
 
+sub empty {             # empty out profile data
+    my $self = shift;
+    DBI->trace_msg("profile data discarded\n",0) if $self->{Trace};
+    $self->{Data} = undef;
+}   
+
+sub filename {          # baseclass method, see DBI::ProfileDumper
+    return undef;
+}
+
+sub flush_to_disk {     # baseclass method, see DBI::ProfileDumper
+    return undef;
+}
+
+
 sub as_node_path_list {
     my ($self, $node, $path) = @_;
     # convert the tree into an array of arrays
@@ -785,6 +800,8 @@ sub as_node_path_list {
 sub as_text {
     my ($self, $args_ref) = @_;
     my $separator = $args_ref->{separator} || " > ";
+    my $format_path_element = $args_ref->{format_path_element}
+        || "%s"; # or e.g., " key%2$d='%s'"
     my $format    = $args_ref->{format}
         || '%1$s: %11$fs / %10$d = %2$fs avg (first %12$fs, min %13$fs, max %14$fs)'."\n";
     
@@ -798,11 +815,14 @@ sub as_text {
     my @text;
     for my $node_path (@node_path_list) {
         my ($node, @path) = @$node_path;
-        s/[\r\n]+/ /g for @path;
-        s/$separator_re/ /g for @path;
-        my $path_str = join($separator, @path);
+        my $idx = 0;
+        for (@path) {
+            s/[\r\n]+/ /g;
+            s/$separator_re/ /g;
+            $_ = sprintf $format_path_element, $_, ++$idx;
+        }
         push @text, sprintf $format,
-            $path_str,                                # 1=path
+            join($separator, @path),                  # 1=path
             ($node->[0] ? $node->[4]/$node->[0] : 0), # 2=avg
             (undef) x 7,                              # spare slots
             @$node; # 10=count, 11=dur, 12=first_dur, 13=min, 14=max, 15=first_called, 16=last_called

@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-06-13 15:55:42 +0100 (Wed, 13 Jun 2007) $ $Revision: 9648 $)
+(As of $Date: 2007-06-15 12:40:30 +0100 (Fri, 15 Jun 2007) $ $Revision: 9655 $)
 
 =cut
 
@@ -54,8 +54,10 @@ and prepends them to any error message.
   Added extra trace info to connect_cached thanks to Walery Studennikov.
   Added non-random (deterministic) mode to DBI_GOFER_RANDOM mechanism.
   Added DBIXS_REVISION macro that drivers can use.
+  Added more docs for private_attribute_info() method.
 
   DBI::Profile changes:
+    dbi_profile() now returns ref to relevant leaf node.
     Don't profile DESTROY during global destruction.
     Added as_node_path_list() and as_text() methods and tests.
   DBI::ProfileDumper changes:

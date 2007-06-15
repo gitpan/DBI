@@ -1,4 +1,4 @@
-# $Id: DBI.pm 9632 2007-06-07 16:46:08Z timbo $
+# $Id: DBI.pm 9655 2007-06-15 11:40:30Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -121,7 +121,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.57
-($Revision: 9632 $).
+($Revision: 9655 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -3234,8 +3234,27 @@ The parse_trace_flag() method was added in DBI 1.42.
   $hash_ref = $h->private_attribute_info();
 
 Returns a reference to a hash whose keys are the names of driver-private
-attributes available for that kind of handle (driver, database, statement).
-(The values should be undef. Meanings may be assigned to particular values in future.)
+attributes available for the kind of handle (driver, database, statement)
+that the method was called on.
+
+For example, the return value when called with a DBD::Sybase $dbh could look like this:
+
+  {
+      syb_dynamic_supported => undef,
+      syb_oc_version => undef,
+      syb_server_version => undef,
+      syb_server_version_string => undef,
+  }
+
+and when called with a DBD::Sybase $sth they could look like this:
+
+  {
+      syb_types => undef,
+      syb_proc_status => undef,
+      syb_result_type => undef,
+  }
+
+The values should be undef. Meanings may be assigned to particular values in future.
 
 =head3 C<swap_inner_handle>
 

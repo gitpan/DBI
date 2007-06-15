@@ -175,7 +175,7 @@ it under the same terms as Perl 5 itself.
 # inherit from DBI::Profile
 use DBI::Profile;
 
-our $VERSION = sprintf("2.%06d", q$Revision: 9628 $ =~ /(\d+)/o);
+our $VERSION = sprintf("2.%06d", q$Revision: 9655 $ =~ /(\d+)/o);
 
 our @ISA = ("DBI::Profile");
 
@@ -253,14 +253,6 @@ sub flush_to_disk {
 
 
     return $filename;
-}
-
-
-# empty out profile data
-sub empty {
-    my $self = shift;
-    DBI->trace_msg("profile data discarded\n",0) if $self->{Trace};
-    $self->{Data} = undef;
 }
 
 
