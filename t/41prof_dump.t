@@ -86,7 +86,10 @@ like(join('', @prof), qr/\+\s+1\s+\Q$sql\E/m);
 # should be able to load DBI::ProfileDumper::Apache outside apache
 # this also naturally checks for syntax errors etc.
 SKIP: {
-    skip "developer-only test", 1, unless -d ".svn" && -f "MANIFEST.SKIP";
+    skip "developer-only test", 1
+        unless -d ".svn" && -f "MANIFEST.SKIP";
+    skip "Apache module not installed", 1
+        unless eval { require Apache };
     require_ok('DBI::ProfileDumper::Apache')
 }
 
