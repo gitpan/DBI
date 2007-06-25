@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-06-18 15:19:45 +0100 (Mon, 18 Jun 2007) $ $Revision: 9659 $)
+(As of $Date: 2007-06-25 22:49:03 +0100 (Mon, 25 Jun 2007) $ $Revision: 9678 $)
 
 =cut
 
@@ -37,11 +37,19 @@ Or call _new_child and move to DBI::common?
 Add trace modules that just records the last N trace messages into an array
 and prepends them to any error message.
 
+=head2 Changes in DBI 1.58 (svn rev 9678),  25th June 2007
+
+  Fixed code triggering fatal error in bleadperl, thanks to Steve Hay.
+  Fixed compiler warning thanks to Jerry D. Hedden.
+  Fixed t/40profile.t to use int(dbi_time()) for systems like Cygwin where
+    time() seems to be rounded not truncated from the high resolution time.
+  Removed dump_results() test from t/80proxy.t.
+
 =head2 Changes in DBI 1.57 (svn rev 9639),  13th June 2007
 
   Note: this release includes a change to the DBI::hash() function which will
   now produce different values than before *if* your perl was built with 64-bit
-  'int' type (i.e. "perl -V:intsize" says intsize='4').  It's relatively rare
+  'int' type (i.e. "perl -V:intsize" says intsize='8').  It's relatively rare
   for perl to be configured that way, even on 64-bit systems.
 
   Fixed XS versions of select*_*() methods to call execute()

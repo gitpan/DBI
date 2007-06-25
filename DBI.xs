@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 9659 2007-06-18 14:19:45Z timbo $
+ * $Id: DBI.xs 9668 2007-06-21 21:40:01Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -4175,9 +4175,9 @@ dbi_profile(h, statement, method, t1, t2)
 	t1, t2
     );
     if (DBIc_TRACE_LEVEL(imp_xxh) >= 9)
-        warn("dbi_profile(%s, %s, %f, %f) =%s, gimme=%d",
+        warn("dbi_profile(%s, %s, %f, %f) =%s, gimme=%ld",
                 neatsvpv(statement,0), neatsvpv(method,0), t1, t2,
-                neatsvpv(leaf,0), GIMME_V);
+                neatsvpv(leaf,0), (long)GIMME_V);
     (void)cv;   /* avoid unused var warnings */
     if (GIMME_V == G_VOID)
         ST(0) = &sv_undef;  /* skip sv_mortalcopy if not needed */

@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 9632 2007-06-07 16:46:08Z timbo $
+#   $Id: Execute.pm 9668 2007-06-21 21:40:01Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,7 +16,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9632 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9668 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => DBD::_::db->can($_) } @all_dbh_methods;
@@ -596,8 +596,9 @@ my %_mk_rand_callback_seqn;
 
 sub _mk_rand_callback {
     my ($self, $method, $fail_percent, $delay_percent, $delay_duration) = @_;
-    $fail_percent  ||= 0;  my $fail_modrate  = int(1/(-$fail_percent )*100) if $fail_percent;
-    $delay_percent ||= 0;  my $delay_modrate = int(1/(-$delay_percent)*100) if $delay_percent;
+    my ($fail_modrate, $delay_modrate);
+    $fail_percent  ||= 0;  $fail_modrate  = int(1/(-$fail_percent )*100) if $fail_percent;
+    $delay_percent ||= 0;  $delay_modrate = int(1/(-$delay_percent)*100) if $delay_percent;
     # note that $method may be "*"
     return sub {
         my ($h) = @_;
