@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 9637 2007-06-11 12:49:27Z timbo $
+# $Id: Makefile.PL 9689 2007-06-28 13:12:22Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -321,6 +321,12 @@ $(roadmap_pm): Roadmap.pod
 	$(MKPATH) $(inst_libdbi)
 	$(RM_F) $(roadmap_pm)
 	$(CP) Roadmap.pod $(roadmap_pm)
+
+faq:
+	: checkin any local changes not already checked in before overwriting
+	svn commit --message "dbi.tiddlyspot.com FAQ update" dbi.tiddlyspot.com.html
+	wget --ignore-length --output-document=dbi.tiddlyspot.com.html --timestamping http://dbi.tiddlyspot.com/download
+	svn commit --message "dbi.tiddlyspot.com FAQ update" dbi.tiddlyspot.com.html
 
 checkkeywords:
 	$(RM_RF) blib

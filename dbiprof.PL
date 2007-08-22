@@ -7,7 +7,7 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 9628 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision: 9746 $ =~ /(\d+)/o);
 
 use Data::Dumper;
 use DBI::ProfileData;
@@ -32,6 +32,7 @@ GetOptions(
            'match=s'        => \%match,
            'exclude=s'      => \%exclude,
            'case-sensitive' => \$case_sensitive,
+           'delete!'        => \my $opt_delete,
 ) or exit usage();
 
 sub usage {
@@ -64,7 +65,7 @@ my @files = @ARGV ? @ARGV : ('dbi.prof');
 
 # instantiate ProfileData object
 my $prof = eval {
-    $prof = DBI::ProfileData->new(
+    DBI::ProfileData->new(
         Files => \@files,
         DeleteFiles => $opt_delete,
     );
@@ -280,3 +281,5 @@ if (!(open(FILE, ">$file"))  ||
 }
 chmod 0755, $file;
 print "Extracted $file from ",__FILE__," with variable substitutions.\n";
+# syntax check resulting file
+exit 1 unless system($^X, '-wc', $file) == 0;

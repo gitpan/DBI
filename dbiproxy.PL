@@ -7,7 +7,7 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 9530 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision: 9746 $ =~ /(\d+)/o);
 
 my $arg_test    = shift(@ARGV)		if $ARGV[0] eq '--test';
 $ENV{DBI_TRACE} = shift(@ARGV) || 2	if $ARGV[0] =~ s/^--dbitrace=?//;
@@ -202,3 +202,5 @@ if (!(open(FILE, ">$file"))  ||
 }
 chmod 0755, $file;
 print "Extracted $file from ",__FILE__," with variable substitutions.\n";
+# syntax check resulting file
+exit 1 unless system($^X, '-wc', $file) == 0;

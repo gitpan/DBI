@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 9668 2007-06-21 21:40:01Z timbo $
+ * $Id: DBI.xs 9838 2007-08-15 16:23:37Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -2331,9 +2331,10 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
     if (!DBIc_has(imp_xxh, DBIcf_Profile))
 	return &sv_undef;
 
-    method_pv = (SvTYPE(method)==SVt_PVCV)
-        ? GvNAME(CvGV(method))
-        : (isGV(method) ? GvNAME(method) : SvPV_nolen(method));
+    method_pv = (SvTYPE(method)==SVt_PVCV) ? GvNAME(CvGV(method))
+                : isGV(method) ? GvNAME(method)
+                : SvOK(method) ? SvPV_nolen(method)
+                : "";
 
     /* we don't profile DESTROY during global destruction */
     if (dirty && instr(method_pv, "DESTROY"))
@@ -2586,7 +2587,7 @@ dbi_profile_merge_nodes(SV *dest, SV *increment)
     }
 
     if (!SvROK(increment) || SvTYPE(SvRV(increment)) != SVt_PVAV)
-	croak("dbi_profile_merge_nodes: increment not an array or hash ref");
+	croak("dbi_profile_merge_nodes: increment %s not an array or hash ref", neatsvpv(increment,0));
     i_av = (AV*)SvRV(increment);
 
     tmp = *av_fetch(d_av, DBIprof_COUNT, 1);
@@ -3204,8 +3205,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    else
 		PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
 	    if (items >= 3)
-		PerlIO_printf(logfp," %s", neatsvpv(st2,0));
-	    PerlIO_printf(logfp,"%s)", (items > 3) ? " ..." : "");
+		PerlIO_printf(logfp,", %s", neatsvpv(st2,0));
+	    PerlIO_printf(logfp,"%s)", (items > 3) ? ", ..." : "");
 	}
 
 	if (gimme & G_ARRAY)
@@ -4193,7 +4194,7 @@ dbi_profile_merge_nodes(dest, ...)
     CODE:
     {
 	if (!SvROK(dest) || SvTYPE(SvRV(dest)) != SVt_PVAV)
-	    croak("dbi_profile_merge_nodes(%s,...) not an array reference", neatsvpv(dest,0));
+	    croak("dbi_profile_merge_nodes(%s,...) destination is not an array reference", neatsvpv(dest,0));
 	if (items <= 1) {
 	    (void)cv;   /* avoid unused var warnings */
 	    (void)ix;

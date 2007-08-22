@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::Base;
 
-#   $Id: Base.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: Base.pm 9866 2007-08-22 16:32:32Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -12,7 +12,7 @@ use warnings;
 
 use base qw(DBI::Gofer::Transport::Base);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9866 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     trace
@@ -58,7 +58,7 @@ sub transmit_request {
         if ($@) {
             return $self->transport_timedout("transmit_request", $to)
                 if $@ eq "TIMEOUT\n";
-            return self->new_response({ err => 1, errstr => $@ });
+            return $self->new_response({ err => 1, errstr => $@ });
         }
 
         return $response;
@@ -135,7 +135,7 @@ sub response_needs_retransmit {
 
     if (not defined $retry) {
         my $errstr = $response->errstr || '';
-        $retry = 1 if $errstr =~ m/fake error induced by DBI_GOFER_RANDOM/;
+        $retry = 1 if $errstr =~ m/induced by DBI_GOFER_RANDOM/;
     }
 
     if (not defined $retry) {

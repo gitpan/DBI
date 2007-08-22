@@ -1,4 +1,4 @@
-# $Id: DBI.pm 9678 2007-06-25 21:49:03Z timbo $
+# $Id: DBI.pm 9833 2007-08-09 21:50:55Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.58"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.59"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -120,8 +120,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.58
-($Revision: 9678 $).
+This is the DBI specification that corresponds to the DBI version 1.59
+($Revision: 9833 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -348,6 +348,7 @@ my $dbd_prefix_registry = {
   tmplss_  => { class => 'DBD::TemplateSS',	},
   tuber_   => { class => 'DBD::Tuber',		},
   uni_     => { class => 'DBD::Unify',		},
+  vt_      => { class => 'DBD::Vt',		},
   wmi_     => { class => 'DBD::WMI',		},
   x_       => { }, # for private use
   xbase_   => { class => 'DBD::XBase',		},
@@ -3400,14 +3401,13 @@ statement handles:
 
     sub show_child_handles {
         my ($h, $level) = @_;
-        $level ||= 0;
         printf "%sh %s %s\n", $h->{Type}, "\t" x $level, $h;
         show_child_handles($_, $level + 1)
             for (grep { defined } @{$h->{ChildHandles}});
     }
 
     my %drivers = DBI->installed_drivers();
-    show_child_handles($_) for (values %drivers);
+    show_child_handles($_, 0) for (values %drivers);
 
 =head3 C<CompatMode> (boolean, inherited)
 
@@ -6208,6 +6208,9 @@ called. Typically the attribute will be C<undef> in these situations.
 Some attributes, like NAME, are not appropriate to some types of
 statement, like SELECT. Typically the attribute will be C<undef>
 in these situations.
+
+For drivers which support stored procedures and multiple result sets
+(see L</more_results>) these attributes relate to the I<current> result set.
 
 See also L</finish> to learn more about the effect it
 may have on some attributes.
