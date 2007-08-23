@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::null;
 
-#   $Id: null.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: null.pm 9873 2007-08-23 13:37:05Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use base qw(DBD::Gofer::Transport::Base);
 
 use DBI::Gofer::Execute;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9873 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     pending_response
@@ -32,7 +32,7 @@ sub transmit_request_by_transport {
     # the request is magically transported over to ... ourselves
     # ...
 
-    my $response = $executor->execute_request( $self->thaw_request($frozen_request,1) );
+    my $response = $executor->execute_request( $self->thaw_request($frozen_request, undef, 1) );
 
     # put response 'on the shelf' ready for receive_response()
     $self->pending_response( $response );
@@ -46,7 +46,7 @@ sub receive_response_by_transport {
 
     my $response = $self->pending_response;
 
-    my $frozen_response = $self->freeze_response($response,1);
+    my $frozen_response = $self->freeze_response($response, undef, 1);
 
     # ...
     # the response is magically transported back to ... ourselves
@@ -60,7 +60,7 @@ sub receive_response_by_transport {
 __END__
 
 =head1 NAME
-    
+
 DBD::Gofer::Transport::null - DBD::Gofer client transport for testing
 
 =head1 SYNOPSIS

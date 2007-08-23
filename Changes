@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-08-22 20:58:42 +0100 (Wed, 22 Aug 2007) $ $Revision: 9871 $)
+(As of $Date: 2007-08-23 14:39:12 +0100 (Thu, 23 Aug 2007) $ $Revision: 9874 $)
 
 =cut
 
@@ -41,7 +41,7 @@ Policy for dbh attr FETCH (ie example_driver_path)
 Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
 
-=head2 Changes in DBI 1.59 (svn rev XXX),  XXth June 2007
+=head2 Changes in DBI 1.59 (svn rev 9874),  23rd August 2007
 
   Fixed DBI::ProfileData to unescape headers lines read from data file.
   Fixed DBI::ProfileData to not clobber $_, thanks to Alexey Tourbin.

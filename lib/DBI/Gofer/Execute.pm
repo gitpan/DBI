@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 9838 2007-08-15 16:23:37Z timbo $
+#   $Id: Execute.pm 9847 2007-08-16 19:08:08Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,7 +16,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9838 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 9847 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => DBD::_::db->can($_) } @all_dbh_methods;
@@ -633,7 +633,7 @@ sub _mk_rand_callback {
 
 
 sub update_stats {
-    my ($self, $request, $response, $frozen_request, $frozen_response, $time_received) = @_;
+    my ($self, $request, $response, $frozen_request, $frozen_response, $time_received, $meta) = @_;
 
     my $stats = $self->{stats};
     $stats->{frozen_request_max_bytes} = length($frozen_request)
@@ -648,6 +648,7 @@ sub update_stats {
             response => $frozen_response,
             time_received => $time_received,
             duration => dbi_time()-$time_received,
+	    ($meta) ? (meta => $meta) : (), # for any other info
         };
         shift @$recent_requests if @$recent_requests > $track_recent;
     }
