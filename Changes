@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-08-09 22:50:55 +0100 (Thu, 09 Aug 2007) $ $Revision: 9833 $)
+(As of $Date: 2007-08-22 20:58:42 +0100 (Wed, 22 Aug 2007) $ $Revision: 9871 $)
 
 =cut
 
@@ -48,9 +48,10 @@ Gofer: gearman - need to disable coallesing for non-idempotent requests
   Fixed DBI::SQL::Nano to not clobber $_, thanks to Alexey Tourbin.
   Fixed DBI::PurePerl to return undef for ChildHandles if weaken not available.
   Fixed DBD::Proxy disconnect error thanks to Philip Dye.
+  Fixed DBD::Gofer::Transport::Base bug (typo) in timeout code.
+  Fixed DBD::Proxy rows method thanks to Philip Dye.
   Fixed dbiprof compile errors, thanks to Alexey Tourbin.
   Fixed t/03handle.t to skip some tests if ChildHandles not available.
-  Fixed DBD::Gofer::Transport::Base bug (typo) in timeout code.
 
   Added check_response_sub to DBI::Gofer::Execute
 

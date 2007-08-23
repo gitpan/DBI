@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 9838 2007-08-15 16:23:37Z timbo $
+ * $Id: DBI.xs 9871 2007-08-22 19:58:42Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
