@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: Gofer.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -55,9 +55,12 @@
         DBI->setup_driver('DBD::Gofer');
 
         unless ($methods_already_installed++) {
-            DBD::Gofer::db->install_method('go_dbh_method', { O=> 0x0004 }); # IMA_KEEP_ERR
-            DBD::Gofer::st->install_method('go_sth_method', { O=> 0x0004 }); # IMA_KEEP_ERR
-            DBD::Gofer::st->install_method('go_clone_sth',  { O=> 0x0004 }); # IMA_KEEP_ERR
+            my $opts = { O=> 0x0004 }; # IMA_KEEP_ERR
+            DBD::Gofer::db->install_method('go_dbh_method', $opts);
+            DBD::Gofer::st->install_method('go_sth_method', $opts);
+            DBD::Gofer::st->install_method('go_clone_sth',  $opts);
+            DBD::Gofer::db->install_method('go_cache',      $opts);
+            DBD::Gofer::st->install_method('go_cache',      $opts);
         }
 
         my($class, $attr) = @_;
@@ -74,6 +77,16 @@
 
     sub CLONE {
         undef $drh;
+    }
+
+
+    sub go_cache {
+        my $h = shift;
+        $h->{go_cache} = shift if @_;
+        # return handle's override go_cache, if it has one
+        return $h->{go_cache} if defined $h->{go_cache};
+        # or else the transports default go_cache
+        return $h->{go_transport}->{go_cache};
     }
 
 
@@ -106,7 +119,7 @@
                 $sub = sub { return shift->go_dbh_method(undef, $method, @_) };
             }
             else {
-                $sub = sub { shift->set_err(1, "Can't call \$${type}h->$method when using DBD::Gofer"); return; };
+                $sub = sub { shift->set_err($DBI::stderr, "Can't call \$${type}h->$method when using DBD::Gofer"); return; };
             }
             no strict 'refs';
             *$driver_method = $sub;
@@ -136,7 +149,7 @@
 
         # first remove dsn= and everything after it
         my $remote_dsn = ($dsn =~ s/;?\bdsn=(.*)$// && $1)
-            or return $drh->set_err(1, "No dsn= argument in '$orig_dsn'");
+            or return $drh->set_err($DBI::stderr, "No dsn= argument in '$orig_dsn'");
 
         if ($attr->{go_bypass}) { # don't use DBD::Gofer for this connection
             # useful for testing with DBI_AUTOPROXY, e.g., t/03handle.t
@@ -159,25 +172,34 @@
             $policy_class = "DBD::Gofer::Policy::$policy_class"
                 unless $policy_class =~ /::/;
             _load_class($policy_class)
-                or return $drh->set_err(1, "Can't load $policy_class: $@");
+                or return $drh->set_err($DBI::stderr, "Can't load $policy_class: $@");
             # replace policy name in %go_attr with policy object
             $go_attr{go_policy} = eval { $policy_class->new(\%go_attr) }
-                or return $drh->set_err(1, "Can't instanciate $policy_class: $@");
+                or return $drh->set_err($DBI::stderr, "Can't instanciate $policy_class: $@");
         }
         # policy object is left in $go_attr{go_policy} so transport can see it
         my $go_policy = $go_attr{go_policy};
 
-        # but delete any other attributes that don't appy to transport
+        if ($go_attr{go_cache} and not ref $go_attr{go_cache}) { # if not a cache object already
+            my $cache_class = $go_attr{go_cache};
+            $cache_class = "DBI::Util::CacheMemory" if $cache_class eq '1';
+            _load_class($cache_class)
+                or return $drh->set_err($DBI::stderr, "Can't load $cache_class $@");
+            $go_attr{go_cache} = eval { $cache_class->new() }
+                or $drh->set_err(0, "Can't instanciate $cache_class: $@"); # warning
+        }
+
+        # delete any other attributes that don't apply to transport
         my $go_connect_method = delete $go_attr{go_connect_method};
 
         my $transport_class = delete $go_attr{go_transport}
-            or return $drh->set_err(1, "No transport= argument in '$orig_dsn'");
+            or return $drh->set_err($DBI::stderr, "No transport= argument in '$orig_dsn'");
         $transport_class = "DBD::Gofer::Transport::$transport_class"
             unless $transport_class =~ /::/;
         _load_class($transport_class)
-            or return $drh->set_err(1, "Can't load $transport_class: $@");
+            or return $drh->set_err($DBI::stderr, "Can't load $transport_class: $@");
         my $go_transport = eval { $transport_class->new(\%go_attr) }
-            or return $drh->set_err(1, "Can't instanciate $transport_class: $@");
+            or return $drh->set_err($DBI::stderr, "Can't instanciate $transport_class: $@");
 
         my $request_class = "DBI::Gofer::Request";
         my $go_request = eval {
@@ -196,7 +218,7 @@
             $request_class->new({
                 dbh_connect_call => [ $go_connect_method, $remote_dsn, $user, $auth, $go_attr ],
             })
-        } or return $drh->set_err(1, "Can't instanciate $request_class: $@");
+        } or return $drh->set_err($DBI::stderr, "Can't instanciate $request_class: $@");
 
         my ($dbh, $dbh_inner) = DBI::_new_dbh($drh, {
             'Name' => $dsn,
@@ -215,7 +237,7 @@
         if (not $skip_connect_check) {
             if (not $dbh->go_dbh_method(undef, 'ping')) {
                 return undef if $dbh->err; # error already recorded, typically
-                return $dbh->set_err(1, "ping failed");
+                return $dbh->set_err($DBI::stderr, "ping failed");
             }
         }
 
@@ -264,7 +286,10 @@
             if $meta->{go_last_insert_id_args};
 
         my $transport = $dbh->{go_transport}
-            or return $dbh->set_err(1, "Not connected (no transport)");
+            or return $dbh->set_err($DBI::stderr, "Not connected (no transport)");
+
+        local $transport->{go_cache} = $dbh->{go_cache}
+            if defined $dbh->{go_cache};
 
         my ($response, $retransmit_sub) = $transport->transmit_request($request);
         $response ||= $transport->receive_response($request, $retransmit_sub);
@@ -332,7 +357,7 @@
             my $cache;
             my $cache_key;
             if (my $cache_it = $dbh->{go_policy}->$policy_name(undef, $dbh, @_)) {
-                $cache = $dbh->{go_cache} ||= {};
+                $cache = $dbh->{go_meta_cache} ||= {}; # keep separate from go_cache
                 $cache_key = sprintf "%s_wa%d(%s)", $policy_name, wantarray||0,
                     join(",\t", map { # XXX basic but sufficient for now
                          !ref($_)            ? DBI::neat($_,1e6)
@@ -408,7 +433,7 @@
         begin_work commit rollback
     )) {
         no strict 'refs';
-        *$method = sub { return shift->set_err(1, "$method not available with DBD::Gofer") }
+        *$method = sub { return shift->set_err($DBI::stderr, "$method not available with DBD::Gofer") }
     }
 
 
@@ -478,7 +503,7 @@
 
         # dbh attributes are set at connect-time - see connect()
         carp("Can't alter \$dbh->{$attrib} after handle created with DBD::Gofer") if $dbh->FETCH('Warn');
-        return $dbh->set_err(1, "Can't alter \$dbh->{$attrib} after handle created with DBD::Gofer");
+        return $dbh->set_err($DBI::stderr, "Can't alter \$dbh->{$attrib} after handle created with DBD::Gofer");
     }
 
     sub disconnect {
@@ -490,7 +515,7 @@
     sub prepare {
         my ($dbh, $statement, $attr)= @_;
 
-        return $dbh->set_err(1, "Can't prepare when disconnected")
+        return $dbh->set_err($DBI::stderr, "Can't prepare when disconnected")
             unless $dbh->FETCH('Active');
 
         $attr = { %$attr } if $attr; # copy so we can edit
@@ -501,6 +526,7 @@
                       || $dbh->{go_prepare_method}
                       || $policy->prepare_method($dbh, $statement, $attr)
                       || 'prepare'; # e.g. for code not using placeholders
+        my $go_cache = delete $attr->{go_cache};
         # set to undef if there are no attributes left for the actual prepare call
         $attr = undef if $attr and not %$attr;
 
@@ -512,6 +538,7 @@
             go_transport => $dbh->{go_transport},
             go_policy => $policy,
             go_last_insert_id_args => $lii_args,
+            go_cache => $go_cache,
         });
         $sth->STORE(Active => 0);
 
@@ -532,6 +559,7 @@
         }, $if_active);
     }
 
+    *go_cache = \&DBD::Gofer::go_cache;
 }
 
 
@@ -582,7 +610,10 @@
             or $dbh->{go_request_count}==1;
 
         my $transport = $sth->{go_transport}
-            or return $sth->set_err(1, "Not connected (no transport)");
+            or return $sth->set_err($DBI::stderr, "Not connected (no transport)");
+
+        local $transport->{go_cache} = $sth->{go_cache}
+            if defined $sth->{go_cache};
 
         my ($response, $retransmit_sub) = $transport->transmit_request($request);
         $response ||= $transport->receive_response($request, $retransmit_sub);
@@ -645,7 +676,7 @@
         };
 
         my $resultset_list = $response->sth_resultsets
-            or return $sth->set_err(1, "No sth_resultsets");
+            or return $sth->set_err($DBI::stderr, "No sth_resultsets");
 
         my $meta = shift @$resultset_list
             or return undef; # no more result sets
@@ -746,7 +777,7 @@
         # do the store locally anyway, just in case
         $sth->SUPER::STORE($attrib => $value);
 
-        return $sth->set_err(1, $msg);
+        return $sth->set_err($DBI::stderr, $msg);
     }
 
     # sub bind_param_array
@@ -761,6 +792,7 @@
         return $sth->go_sth_method($attr);
     }
 
+    *go_cache = \&DBD::Gofer::go_cache;
 }
 
 1;
@@ -849,7 +881,8 @@ DBD::Gofer to connect them to your smaller pool of 'dbi execute' web servers ins
 
 =head3 Caching
 
-Not yet implemented, but the single request-response architecture lends itself to caching.
+Client-side caching is as simple as adding "C<cache=1>" to the DSN.
+This feature alone can be worth using DBD::Gofer for.
 
 =head3 Fewer Network Round-trips
 
@@ -1040,7 +1073,7 @@ Just take a look at any existing transports that are similar to your needs.
 
 =head3 http
 
-See the GoferTransport-http distribution on CPAN.
+See the GoferTransport-http distribution on CPAN: http://search.cpan.org/dist/GoferTransport-http/
 
 =head3 Gearman
 
@@ -1055,7 +1088,7 @@ The C<transport> and C<dsn> attributes must be specified and the C<dsn> attribut
 
 Other attributes can be specified in the DSN to configure DBD::Gofer and/or the
 Gofer transport module being used. The main attributes after C<transport>, are
-C<url> and C<policy>. These are described below.
+C<url> and C<policy>. These and other attributes are described below.
 
 =head2 Using DBI_AUTOPROXY
 
@@ -1068,8 +1101,92 @@ or, for a more useful example, try:
 
     export DBI_AUTOPROXY="dbi:Gofer:transport=stream;url=ssh:user@example.com"
 
+=head2 Connection Attributes
 
-=head1 CONFIGURING VIA POLICY
+These attributes can be specified in the DSN. They can also be passed in the
+\%attr parameter of the DBI connect method by adding a "C<go_>" prefix to the name.
+
+=head3 transport
+
+Specifies the Gofer transport class to use. Required. See L</TRANSPORTS> above.
+
+If the value does not include C<::> then "C<DBD::Gofer::Transport::>" is prefixed.
+
+The transport object can be accessed via $h->{go_transport}.
+
+=head3 dsn
+
+Specifies the DSN for the remote side to connect to. Required, and must be last.
+
+=head3 url
+
+Used to tell the transport where to connect to. The exact form of the value depends on the transport used.
+
+=head3 policy
+
+Specifies the policy to use. See L</CONFIGURING BEHAVIOUR POLICY>.
+
+If the value does not include C<::> then "C<DBD::Gofer::Policy>" is prefixed.
+
+The policy object can be accessed via $h->{go_policy}.
+
+=head3 timeout
+
+Specifies a timeout, in seconds, to use when waiting for responses from the server side.
+
+=head3 retry_limit
+
+Specifies the number of times a failed request will be retried. Default is 0.
+
+=head3 retry_hook
+
+Specifies a code reference to be called to decide if a failed request should be retried.
+The code reference is called like this:
+
+  $transport = $h->{go_transport};
+  $retry = $transport->go_retry_hook->($request, $response, $transport);
+
+If it returns true then the request will be retried, upto the C<retry_limit>.
+If it returns a false but defined value then the request will not be retried.
+If it returns undef then the default behaviour will be used, as if C<retry_hook>
+had not been specified.
+
+The default behaviour is to retry requests where $request->is_idempotent is true,
+or the error message matches C</induced by DBI_GOFER_RANDOM/>.
+    
+=head3 cache
+
+Specifies that client-side caching should be performed.  The value is the name
+of a cache class to use.
+
+Any class implementing get($key) and set($key, $value) methods can be used.
+That includes a great many powerful caching classes on CPAN, including the
+Cache and Cache::Cache distributions.
+
+You can use "C<cache=1>" is a shortcut for "C<cache=DBI::Util::CacheMemory>".
+See L<DBI::Util::CacheMemory> for a description of this simple fast default cache.
+
+The cache object can be accessed via $h->go_cache. For example:
+
+    $dbh->go_cache->clear; # free up memory being used by the cache
+
+The cache keys are the frozen (serialized) requests, and the values are the
+frozen responses.
+
+The default behaviour is to only use the cache for requests where
+$request->is_idempotent is true (i.e., the dbh has the ReadOnly attribute set
+or the SQL statement is obviously a SELECT without a FOR UPDATE clause.)
+
+For even more control you can use the C<go_cache> attribute to pass in an
+instanciated cache object. Individual methods, including prepare(), can also
+specify alternative caches via the C<go_cache> attribute. For example, to
+specify no caching for a particular query, you could use
+
+    $sth = $dbh->prepare( $sql, { go_cache => 0 } );
+
+This can be used to implement different caching policies for different statements.
+
+=head1 CONFIGURING BEHAVIOUR POLICY
 
 DBD::Gofer supports a 'policy' mechanism that allows you to fine-tune the number of round-trips to the Gofer server.
 The policies are grouped into classes (which may be subclassed) and referenced by the name of the class.
@@ -1093,7 +1210,7 @@ first and then switch to C<classic> or a custom policy, for final testing.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::Base;
 
-#   $Id: Base.pm 9847 2007-08-16 19:08:08Z timbo $
+#   $Id: Base.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -10,13 +10,20 @@ package DBI::Gofer::Transport::Base;
 use strict;
 use warnings;
 
+use DBI;
+
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9847 $ =~ /(\d+)/o);
+use DBI::Gofer::Serializer::Storable;
+use DBI::Gofer::Serializer::DataDumper;
+
+
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 
 __PACKAGE__->mk_accessors(qw(
     trace
+    keep_meta_frozen
     serializer_obj
 ));
 
@@ -35,55 +42,6 @@ sub new {
     return $self;
 }
 
-{   package DBI::Gofer::Serializer::Storable;
-    # a very minimal subset of Data::Serializer
-    use Storable qw(nfreeze thaw);
-    sub new {
-        return bless {} => shift;
-    }
-    sub serialize {
-        my $self = shift;
-        local $Storable::forgive_me = 1; # for CODE refs etc
-        return nfreeze(shift);
-    }
-    sub deserialize {
-        my $self = shift;
-        return thaw(shift);
-    }
-}
-
-{   package DBI::Gofer::Serializer::DataDumper;
-    # a very minimal subset of Data::Serializer
-    require Data::Dumper;
-    sub new {
-        local $Data::Dumper::Indent    = 1;
-        local $Data::Dumper::Terse     = 1;
-        local $Data::Dumper::Useqq     = 0; # enabling this disables xs
-        local $Data::Dumper::Sortkeys  = 1;
-        local $Data::Dumper::Quotekeys = 0;
-        local $Data::Dumper::Deparse   = 0;
-        local $Data::Dumper::Purity    = 0;
-        return bless {
-	    dumper => Data::Dumper->new([], undef),
-	} => shift;
-    }
-    sub serialize {
-        my $dumper = shift->{dumper};
-        local $Data::Dumper::Indent    = 1;
-        local $Data::Dumper::Terse     = 1;
-        local $Data::Dumper::Useqq     = 0; # enabling this disables xs
-        local $Data::Dumper::Sortkeys  = 1;
-        local $Data::Dumper::Quotekeys = 0;
-        local $Data::Dumper::Deparse   = 0;
-        local $Data::Dumper::Purity    = 0;
-        return Data::Dumper::Dumper(shift);
-    }
-    sub deserialize {
-	Carp::croak("deserialize not supported for ".__PACKAGE__);
-    }
-}
-
-
 my $packet_header_text  = "GoFER1:";
 my $packet_header_regex = qr/^GoFER(\d+):/;
 
@@ -96,7 +54,7 @@ sub _freeze_data {
 
         local $data->{meta}; # don't include _meta in serialization
 	$serializer ||= $self->{serializer_obj};
-        my $data = $serializer->serialize($data);
+        my ($data, $deserializer_class)  = $serializer->serialize($data);
 
         $packet_header_text . $data;
     };
@@ -104,6 +62,11 @@ sub _freeze_data {
         chomp $@;
         die "Error freezing ".ref($data)." object: $@";
     }
+
+    # stash the frozen data into the data structure itself
+    # to make life easy for the client caching code in DBD::Gofer::Transport::Base
+    $data->{meta}{frozen} = $frozen if $self->keep_meta_frozen;
+
     return $frozen;
 }
 # public aliases used by subclasses
@@ -116,12 +79,16 @@ sub _thaw_data {
     my $data;
     eval {
         # check for and extract our gofer header and the info it contains
-        $frozen_data =~ s/$packet_header_regex//o
+        (my $frozen = $frozen_data) =~ s/$packet_header_regex//o
             or die "does not have gofer header\n";
         my ($t_version) = $1;
 	$serializer ||= $self->{serializer_obj};
-        $data = $serializer->deserialize($frozen_data)
-            and $data->{_transport}{version} = $t_version;
+        $data = $serializer->deserialize($frozen);
+        die ref($serializer)."->deserialize didn't return a reference"
+            unless ref $data;
+        $data->{_transport}{version} = $t_version;
+
+        $data->{meta}{frozen} = $frozen_data if $self->keep_meta_frozen;
     };
     if ($@) {
         chomp(my $err = $@);
@@ -133,6 +100,7 @@ sub _thaw_data {
     }
     $self->_dump("thawing $self->{trace} ".ref($data), $data)
         if !$skip_trace and $self->trace;
+
     return $data;
 }
 # public aliases used by subclasses
@@ -144,6 +112,10 @@ sub _thaw_data {
 # and the tace level passed in
 sub _dump {
     my ($self, $label, $data) = @_;
+
+    # don't dump the binary
+    local $data->{meta}{frozen} if $data->{meta} && $data->{meta}{frozen};
+
     if ($self->trace >= 2) {
         require Data::Dumper;
         local $Data::Dumper::Indent    = 1;
@@ -186,7 +158,7 @@ This is an internal class.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

@@ -6,10 +6,10 @@
     use DBI qw(:sql_types);
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("12.%06d", q$Revision: 9532 $ =~ /(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 10007 $ =~ /(\d+)/o);
 
 
-#   $Id: ExampleP.pm 9532 2007-05-09 15:24:30Z timbo $
+#   $Id: ExampleP.pm 10007 2007-09-27 20:53:04Z timbo $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #
@@ -95,7 +95,7 @@
 			: split(/\s*,\s*/, $fields);
 	}
 	else {
-	    return $dbh->set_err(1, "Syntax error in select statement (\"$statement\")")
+	    return $dbh->set_err($DBI::stderr, "Syntax error in select statement (\"$statement\")")
 		unless $statement =~ m/^\s*set\s+/;
 	    # the SET syntax is just a hack so the ExampleP driver can
 	    # be used to test non-select statements.
@@ -110,7 +110,7 @@
 	my @bad = map {
 	    defined $DBD::ExampleP::statnames{$_} ? () : $_
 	} @fields;
-	return $dbh->set_err(1, "Unknown field names: @bad")
+	return $dbh->set_err($DBI::stderr, "Unknown field names: @bad")
 		if @bad;
 
 	$outer->STORE('NUM_OF_FIELDS' => scalar(@fields));
@@ -152,6 +152,11 @@
 	    opendir($dh, $dir)
 		or return $dbh->set_err(int($!), "Failed to open directory $dir: $!");
 	    while (defined(my $item = readdir($dh))) {
+                if ($^O eq 'VMS') {
+                    # if on VMS then avoid warnings from catdir if you use a file
+                    # (not a dir) as the item below
+                    next if $item !~ /\.dir$/oi;
+                }
                 my $file = ($haveFileSpec) ? File::Spec->catdir($dir,$item) : $item;
 		next unless -d $file;
 		my($dev, $ino, $mode, $nlink, $uid) = lstat($file);
@@ -356,7 +361,7 @@
 	}
 	else {			# normal mode
             my $dh  = $sth->{dbd_datahandle}
-                or return $sth->set_err(1, "fetch without successful execute");
+                or return $sth->set_err($DBI::stderr, "fetch without successful execute");
 	    my $f = readdir($dh);
 	    unless ($f) {
 		$sth->finish;

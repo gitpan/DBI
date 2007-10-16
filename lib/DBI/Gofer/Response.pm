@@ -1,6 +1,6 @@
 package DBI::Gofer::Response;
 
-#   $Id: Response.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: Response.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 use constant GOf_RESPONSE_EXECUTED => 0x0001;
 
@@ -165,7 +165,7 @@ This is an internal class.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

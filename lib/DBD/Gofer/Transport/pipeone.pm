@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::pipeone;
 
-#   $Id: pipeone.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: pipeone.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -18,7 +18,7 @@ use Symbol qw(gensym);
 
 use base qw(DBD::Gofer::Transport::Base);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     connection_info
@@ -235,7 +235,7 @@ transport.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

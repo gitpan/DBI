@@ -1,6 +1,6 @@
 package DBD::Gofer::Policy::rush;
 
-#   $Id: rush.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: rush.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -10,7 +10,7 @@ package DBD::Gofer::Policy::rush;
 use strict;
 use warnings;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 use base qw(DBD::Gofer::Policy::Base);
 
@@ -77,7 +77,7 @@ In a future version the policies and their defaults will be defined in the pod a
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

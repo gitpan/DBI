@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 9689 2007-06-28 13:12:22Z timbo $
+# $Id: Makefile.PL 10015 2007-09-28 16:11:07Z timbo $
 #
 #  Copyright (c) 1994-2006  Tim Bunce  Ireland
 #
@@ -139,7 +139,7 @@ my %opts = (
     EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl", "dbilogstrip$ext_pl" ],
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
-    clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zv*_*.t"
+    clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zv*_*.t dbi__null_test_tmp*"
                 ." dbiproxy$ext_pl dbiprof$ext_pl dbilogstrip$ext_pl dbitrace.log dbi.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest tardist',

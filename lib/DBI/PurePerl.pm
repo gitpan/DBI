@@ -28,7 +28,7 @@ require utf8;
 } unless defined &utf8::is_utf8;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 9685 $ =~ /(\d+)/o);
+$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 10002 $ =~ /(\d+)/o);
 
 $DBI::neat_maxlen ||= 400;
 
@@ -689,7 +689,7 @@ sub swap_inner_handle {
     my ($h1, $h2) = @_;
     # can't make this work till we can get the outer handle from the inner one
     # probably via a WeakRef
-    return $h1->set_err(1, "swap_inner_handle not currently supported by DBI::PurePerl");
+    return $h1->set_err($DBI::stderr, "swap_inner_handle not currently supported by DBI::PurePerl");
 }
 
 sub trace {	# XXX should set per-handle level, not global

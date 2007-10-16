@@ -1,6 +1,6 @@
 package DBI::Gofer::Request;
 
-#   $Id: Request.pm 9560 2007-05-13 15:45:04Z timbo $
+#   $Id: Request.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -13,7 +13,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9560 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 use constant GOf_REQUEST_IDEMPOTENT => 0x0001;
 use constant GOf_REQUEST_READONLY   => 0x0002;
@@ -85,12 +85,14 @@ sub is_idempotent {
         return 1 if $flags & (GOf_REQUEST_IDEMPOTENT|GOf_REQUEST_READONLY);
     }
 
-    # else check if all statements are select statement
+    # else check if all statements are SELECT statement that don't include FOR UPDATE
     my @statements = $self->statements;
     # XXX this is very minimal for now, doesn't even allow comments before the select
     # (and can't ever work for "exec stored_procedure_name" kinds of statements)
     # XXX it also doesn't deal with multiple statements: prepare("select foo; update bar")
-    return 1 if @statements == grep { m/^ \s* SELECT \b/xmsi } @statements;
+    return 1 if @statements == grep {
+                m/^ \s* SELECT \b /xmsi && !m/ \b FOR \s+ UPDATE \b /xmsi
+             } @statements;
 
     return 0;
 }
@@ -161,7 +163,7 @@ This is an internal class.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

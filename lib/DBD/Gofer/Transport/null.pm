@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::null;
 
-#   $Id: null.pm 9873 2007-08-23 13:37:05Z timbo $
+#   $Id: null.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,10 +14,11 @@ use base qw(DBD::Gofer::Transport::Base);
 
 use DBI::Gofer::Execute;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9873 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     pending_response
+    transmit_count
 )); 
 
 my $executor = DBI::Gofer::Execute->new();
@@ -25,6 +26,7 @@ my $executor = DBI::Gofer::Execute->new();
 
 sub transmit_request_by_transport {
     my ($self, $request) = @_;
+    $self->transmit_count( ($self->transmit_count()||0) + 1 ); # just for tests
 
     my $frozen_request = $self->freeze_request($request);
 
@@ -91,7 +93,7 @@ The C<t/85gofer.t> script in the DBI distribution includes a comparative benchma
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 9847 2007-08-16 19:08:08Z timbo $
+#   $Id: Execute.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,10 +16,10 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9847 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
-our %all_dbh_methods = map { $_ => DBD::_::db->can($_) } @all_dbh_methods;
+our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;
 
 our $local_log = $ENV{DBI_GOFER_LOCAL_LOG}; # do extra logging to stderr
 
@@ -289,8 +289,9 @@ sub execute_request {
     $response ||= $self->new_response_with_err(undef, $@, $current_dbh);
 
     if (my $check_response_sub = $self->check_response_sub) {
-        eval { $check_response_sub->($response, $self, $request) };
-        warn "check_response_sub failed: $@" if $@;
+        # not protected with an eval so it can choose to throw an exception
+        my $new = $check_response_sub->($response, $self, $request);
+        $response = $new if ref $new;
     }
 
     undef $current_dbh;
@@ -625,7 +626,7 @@ sub _mk_rand_callback {
         }
         if ($fail) {
             undef $_; # tell DBI to not call the method
-            return $h->set_err(1, "fake error from $method method induced by DBI_GOFER_RANDOM env var ($fail_percent%)");
+            return $h->set_err($DBI::stderr, "fake error from $method method induced by DBI_GOFER_RANDOM env var ($fail_percent%)");
         }
         return;
     }
@@ -698,7 +699,7 @@ of the original request.
 
 If defined, it must be a reference to a subroutine that will 'check' the response.
 It is passed the response object, the executor, and the request object.
-The return value is ignored, though the sub may alter the response object.
+The sub may alter the response object and return undef, or return a new response object.
 
 This mechanism can be used to, for example, terminate the service if specific
 database errors are seen.
@@ -828,7 +829,7 @@ Each method has a distinct sequence number.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 

@@ -70,7 +70,7 @@ The following methods are supported by DBI::ProfileData objects.
 =cut
 
 
-our $VERSION = sprintf("2.%06d", q$Revision: 9744 $ =~ /(\d+)/o);
+our $VERSION = sprintf("2.%06d", q$Revision: 10007 $ =~ /(\d+)/o);
 
 use Carp qw(croak);
 use Symbol;
@@ -87,6 +87,12 @@ sub LONGEST   () { 4 };
 sub FIRST_AT  () { 5 };
 sub LAST_AT   () { 6 };
 sub PATH      () { 7 };
+
+
+my $HAS_FLOCK = (defined $ENV{DBI_PROFILE_FLOCK})
+    ? $ENV{DBI_PROFILE_FLOCK}
+    : do { local $@; eval { flock STDOUT, 0; 1 } };
+
 
 =head2 $prof = DBI::ProfileData->new(File => "dbi.prof")
 
@@ -161,6 +167,7 @@ sub new {
                 Files        => [ "dbi.prof" ],
 		Filter       => undef,
                 DeleteFiles  => 0,
+                LockFile     => $HAS_FLOCK,
                 _header      => {},
                 _nodes       => [],
                 _node_lookup => {},
@@ -189,9 +196,15 @@ sub _read_files {
 
         if ($self->{DeleteFiles}) {
             my $newfilename = $filename . ".deleteme";
+	    if ($^O eq 'VMS') {
+		# VMS default filesystem can only have one period
+		$newfilename = $filename . 'deleteme';
+	    }
             # will clobber an existing $newfilename
             rename($filename, $newfilename)
                 or croak "Can't rename($filename, $newfilename): $!";
+	    # On a versioned filesystem we want old versions to be removed
+	    1 while (unlink $filename);
             $filename = $newfilename;
         }
 
@@ -200,7 +213,7 @@ sub _read_files {
 
         # lock the file in case it's still being written to
         # (we'll be foced to wait till the write is complete)
-        flock($fh, LOCK_SH);
+        flock($fh, LOCK_SH) if $self->{LockFile};
 
         if (-s $fh) {   # not empty
             $self->_read_header($fh, $filename, $read_header ? 0 : 1);
@@ -212,7 +225,13 @@ sub _read_files {
         push @files_to_delete, $filename
             if $self->{DeleteFiles};
     }
-    unlink $_ or warn "Can't delete '$_': $!" for @files_to_delete;
+    for (@files_to_delete){
+	# for versioned file systems
+	1 while (unlink $_);
+	if(-e $_){
+	    warn "Can't delete '$_': $!";
+	}
+    }
     
     # discard node_lookup now that all files are read
     delete $self->{_node_lookup};

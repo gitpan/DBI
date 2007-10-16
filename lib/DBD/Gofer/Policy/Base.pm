@@ -1,6 +1,6 @@
 package DBD::Gofer::Policy::Base;
 
-#   $Id: Base.pm 9563 2007-05-13 21:17:43Z timbo $
+#   $Id: Base.pm 10087 2007-10-16 12:42:37Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -11,7 +11,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION = sprintf("0.%06d", q$Revision: 9563 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
 our $AUTOLOAD;
 
 my %policy_defaults = (
@@ -149,7 +149,7 @@ particular circumstances, such as the particular statement being executed.
 
 =head1 AUTHOR
 
-Tim Bunce, L<http://www.linkedin.com/in/timbunce>
+Tim Bunce, L<http://www.tim.bunce.name>
 
 =head1 LICENCE AND COPYRIGHT
 
