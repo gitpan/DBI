@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 10103 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 10087 2007-10-16 12:42:37Z timbo $
+#   $Id: Gofer.pm 10103 2007-10-21 22:05:38Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -1185,6 +1185,12 @@ specify no caching for a particular query, you could use
     $sth = $dbh->prepare( $sql, { go_cache => 0 } );
 
 This can be used to implement different caching policies for different statements.
+
+It's interesting to note that DBD::Gofer can be used to add client-side caching
+to any (gofer compatible) application, with no code changes and no need for a
+gofer server.  Just set the DBI_AUTOPROXY environment variable like this:
+
+    DBI_AUTOPROXY='dbi:Gofer:transport=null;cache=1'
 
 =head1 CONFIGURING BEHAVIOUR POLICY
 
