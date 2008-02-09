@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2007-10-21 23:05:38 +0100 (Sun, 21 Oct 2007) $ $Revision: 10103 $)
+(As of $Date: 2008-02-08 22:46:09 +0000 (Fri, 08 Feb 2008) $ $Revision: 10706 $)
 
 =cut
 
@@ -19,8 +19,6 @@ Document DBI_PROFILE_FLOCK and LockFile attrib in DBI::ProfileData and DBI::Prof
 
 Gofo TODOs:
 
-Add count of identical frozen_request (plus sum(results size)) to Gofer status
-    Highlight those seen before.
 Move post-request cleanup into separate method and enable hooks so
     it can be done after the response has been sent
 Gofer - allow dbh attrib changes after connect?
@@ -41,6 +39,26 @@ Policy for dbh attr FETCH (ie example_driver_path)
     so not bother FETCHing them (unless pedantic)
 Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
+
+=head2 Changes in DBI 1.602 (svn rev 10706)  8th February 2008
+
+  Fixed potential coredump if stack reallocated while calling back
+    into perl from XS code. Thanks to John Gardiner Myers.
+  Fixed DBI::Util::CacheMemory->new to not clear the cache.
+  Fixed avg in DBI::Profile as_text() thanks to Abe Ingersoll.
+  Fixed DBD::DBM bug in push_names thanks to J M Davitt.
+  Fixed take_imp_data for some platforms thanks to Jeffrey Klein.
+  Fixed docs tie'ing CacheKids (ie LRU cache) thanks to Peter John Edwards.
+
+  Expanded DBI::DBD docs for driver authors thanks to Martin Evans.
+  Enhanced t/80proxy.t test script.
+  Enhanced t/85gofer.t test script thanks to Stig.
+  Enhanced t/10examp.t test script thanks to David Cantrell.
+  Documented $DBI::stderr as the default value of err for internal errors.
+
+  Gofer changes:
+    track_recent now also keeps track of N most recent errors.
+    The connect method is now also counted in stats.
 
 =head2 Changes in DBI 1.601 (svn rev 10103),  21st October 2007
 

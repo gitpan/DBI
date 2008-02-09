@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::Base;
 
-#   $Id: Base.pm 10088 2007-10-16 13:00:27Z timbo $
+#   $Id: Base.pm 10377 2007-12-06 10:33:18Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -12,7 +12,7 @@ use warnings;
 
 use base qw(DBI::Gofer::Transport::Base);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10088 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10377 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     trace
@@ -62,12 +62,12 @@ sub transmit_request {
         if ($request_cache_key) {
             my $frozen_response = eval { $go_cache->get($request_cache_key) };
             if ($frozen_response) {
+                my $trace = $self->trace;
+                $self->_dump("cached response found for ".ref($request), $request)
+                    if $trace;
                 $response = $self->thaw_response($frozen_response);
-                if (my $trace = $self->trace) {
-                    $self->_dump("cached response found for ".ref($request), $request);
-                    $self->_dump("cached response is ".ref($response), $response);
-                    $self->trace_msg("transmit_request is returing a response from cache\n");
-                }
+                $self->trace_msg("transmit_request is returning a response from cache $go_cache\n")
+                    if $trace;
                 ++$self->{cache_hit};
                 return $response;
             }
@@ -250,7 +250,7 @@ sub _store_response_in_cache {
     warn "No request_cache_key" if !$request_cache_key;
 
     if ($frozen_response && $request_cache_key) {
-        $self->trace_msg("receive_response added response to cache\n");
+        $self->trace_msg("receive_response added response to cache $go_cache\n");
         eval { $go_cache->set($request_cache_key, $frozen_response) };
         warn $@ if $@;
         ++$self->{cache_store};

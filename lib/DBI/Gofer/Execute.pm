@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 10087 2007-10-16 12:42:37Z timbo $
+#   $Id: Execute.pm 10287 2007-11-21 12:29:07Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -16,7 +16,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10287 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;
@@ -158,6 +158,7 @@ sub _connect {
 
     my ($connect_method, $dsn, $username, $password, $attr) = @{ $request->dbh_connect_call };
     $connect_method ||= 'connect_cached';
+    $stats->{method_calls_dbh}->{$connect_method}++;
 
     # delete attributes we don't want to affect the server-side
     # (Could just do this on client-side and trust the client. DoS?)
@@ -641,17 +642,22 @@ sub update_stats {
         if length($frozen_request)  > ($stats->{frozen_request_max_bytes}||0);
     $stats->{frozen_response_max_bytes} = length($frozen_response)
         if length($frozen_response) > ($stats->{frozen_response_max_bytes}||0);
+
     my $recent;
     if (my $track_recent = $self->{track_recent}) {
-        my $recent_requests = $stats->{recent_requests} ||= [];
-        push @$recent_requests, $recent = {
+        $recent = {
             request  => $frozen_request,
             response => $frozen_response,
             time_received => $time_received,
             duration => dbi_time()-$time_received,
-	    ($meta) ? (meta => $meta) : (), # for any other info
+            ($meta) ? (meta => $meta) : (), # for any other info
         };
-        shift @$recent_requests if @$recent_requests > $track_recent;
+        my @queues =  ($stats->{recent_requests} ||= []);
+        push @queues, ($stats->{recent_errors}   ||= []) if $response->err;
+        for my $queue (@queues) {
+            push @$queue, $recent;
+            shift @$queue if @$queue > $track_recent;
+        }
     }
     return $recent;
 }

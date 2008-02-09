@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm 9530 2007-05-09 13:05:23Z timbo $
+### $Id: FAQ.pm 10253 2007-11-15 09:26:16Z timbo $
 ###
 ### DBI Frequently Asked Questions POD
 ###
@@ -21,7 +21,7 @@
 
 package DBI::FAQ;
 
-our $VERSION = sprintf("1.%06d", q$Revision: 9530 $ =~ /(\d+)/o);
+our $VERSION = sprintf("1.%06d", q$Revision: 10253 $ =~ /(\d+)/o);
 
 
 =head1 NAME
@@ -49,6 +49,8 @@ DBI Frequently Asked Questions v.0.38
 =head1 VERSION
 
 This document is currently at version I<0.38>, as of I<February 8th, 2000>.
+
+That's B<very> old. A newer FAQ can be found at L<http://faq.dbi-support.com/>
 
 =head1 DESCRIPTION
 

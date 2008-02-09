@@ -1,6 +1,6 @@
 package DBI::Util::CacheMemory;
 
-#   $Id: CacheMemory.pm 10086 2007-10-16 12:36:56Z timbo $
+#   $Id: CacheMemory.pm 10314 2007-11-26 22:25:33Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -60,18 +60,16 @@ If it's not listed above, it's not supported.
 
 =cut
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10086 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10314 $ =~ /(\d+)/o);
 
 my %cache;
 
 sub new {
     my ($class, %options ) = @_;
-    $options{namespace} ||= 'Default';
-    my $self =  bless {
-        #_cache => \%cache, # can be handy for debugging/dumping
-        %options,
-    } => $class;
-    $self->clear; # init
+    my $namespace = $options{namespace} ||= 'Default';
+    #$options{_cache} = \%cache; # can be handy for debugging/dumping
+    my $self =  bless \%options => $class;
+    $cache{ $namespace } ||= {}; # init - ensure it exists
     return $self;
 }
 

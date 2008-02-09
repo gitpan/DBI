@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 9871 2007-08-22 19:58:42Z timbo $
+ * $Id: DBI.xs 10677 2008-01-31 20:38:55Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -468,7 +468,7 @@ set_err_sv(SV *h, imp_xxh_t *imp_xxh, SV *err, SV *errstr, SV *state, SV *method
     if (    DBIc_has(imp_xxh, DBIcf_HandleSetErr)
 	&& (hook_svp = hv_fetch((HV*)SvRV(h),"HandleSetErr",12,0))
 	&&  hook_svp
-	&&  (SvGMAGICAL(*hook_svp) && mg_get(*hook_svp), SvOK(*hook_svp))
+	&&  ((SvGMAGICAL(*hook_svp) && mg_get(*hook_svp)), SvOK(*hook_svp))
     ) {
 	dSP;
 	IV items;
@@ -982,9 +982,12 @@ dbih_make_com(SV *p_h, imp_xxh_t *p_imp_xxh, const char *imp_class, STRLEN imp_s
 	DBIc_FLAGS(imp) = imp_templ_flags & (DBIcf_IMPSET|DBIcf_ACTIVE);
     }
     else {
-	dbih_imp_sv = newSV(imp_size); /* is grown to imp_size+1 */
+	dbih_imp_sv = newSV(imp_size); /* is grown to at least imp_size+1 */
 	imp = (imp_xxh_t*)(void*)SvPVX(dbih_imp_sv);
 	memzero((char*)imp, imp_size);
+        /* set up SV with SvCUR set ready for take_imp_data */
+        SvCUR_set(dbih_imp_sv, imp_size);
+        *SvEND(dbih_imp_sv) = '\0';
     }
 
     DBIc_DBISTATE(imp)  = DBIS;
@@ -4276,6 +4279,7 @@ FETCH(sv)
 	}
 	PUSHMARK(mark);  /* reset mark (implies one arg as we were called with one arg?) */
 	perl_call_sv((SV*)GvCV(imp_gv), GIMME);
+        SPAGAIN;
 #ifdef DBI_save_hv_fetch_ent
 	PL_hv_fetch_ent_mh = save_mh;
 #endif
@@ -4414,9 +4418,7 @@ take_imp_data(h)
     /* (don't use magical DBIc_ACTIVE_on here)				*/
     DBIc_FLAGS(imp_xxh) |=  DBIcf_IMPSET | DBIcf_ACTIVE;
     /* --- tidy up the raw PV for life as a more normal string */
-    SvPOK_on(imp_xxh_sv);
-    SvCUR_set(imp_xxh_sv, SvLEN(imp_xxh_sv)-1); /* SvLEN(imp_xxh_sv)-1 == imp_size */
-    *SvEND(imp_xxh_sv) = '\0';
+    SvPOK_on(imp_xxh_sv);       /* SvCUR & SvEND were set at creation   */
     /* --- return the actual imp_xxh_sv on the stack */
     ST(0) = imp_xxh_sv;
 
@@ -4617,6 +4619,7 @@ fetch(sth)
     XPUSHs(sth);
     PUTBACK;
     num_fields = perl_call_method("fetchrow", G_ARRAY);	/* XXX change the name later */
+    SPAGAIN;
     if (num_fields == 0) {
 	ST(0) = &sv_undef;
     } else {

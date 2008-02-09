@@ -1,4 +1,4 @@
-# $Id: DBI.pm 10087 2007-10-16 12:42:37Z timbo $
+# $Id: DBI.pm 10706 2008-02-08 22:46:09Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.601"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.602"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -99,16 +99,13 @@ If you think you've found a bug then please also read
 "How to Report Bugs Effectively" by Simon Tatham:
 L<http://www.chiark.greenend.org.uk/~sgtatham/bugs.html>.
 
-The DBI home page at L<http://dbi.perl.org/> is always worth a visit
-and includes an FAQ and links to other resources.
+The DBI home page at L<http://dbi.perl.org/> and the DBI FAQ
+at L<http://faq.dbi-support.com/> are always worth a visit.
+They include links to other resources.
 
 Before asking any questions, reread this document, consult the
 archives and read the DBI FAQ. The archives are listed
 at the end of this document and on the DBI home page.
-An FAQ is installed as a L<DBI::FAQ> module so
-you can read it by executing C<perldoc DBI::FAQ>.
-However the DBI::FAQ module is currently (2004) outdated relative
-to the online FAQ on the DBI home page.
 
 This document often uses terms like I<references>, I<objects>,
 I<methods>.  If you're not familar with those terms then it would
@@ -124,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.601
-($Revision: 10087 $).
+This is the DBI specification that corresponds to the DBI version 1.602
+($Revision: 10706 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -334,6 +331,7 @@ my $dbd_prefix_registry = {
   jdbc_    => { class => 'DBD::JDBC',		},
   monetdb_ => { class => 'DBD::monetdb',	},
   msql_    => { class => 'DBD::mSQL',		},
+  mvsftp_  => { class => 'DBD::MVS_FTPSQL',	},
   mysql_   => { class => 'DBD::mysql',		},
   mx_      => { class => 'DBD::Multiplex',	},
   nullp_   => { class => 'DBD::NullP',		},
@@ -3054,6 +3052,9 @@ If you need to test for specific error conditions I<and> have your program be
 portable to different database engines, then you'll need to determine what the
 corresponding error codes are for all those engines and test for all of them.
 
+The DBI uses the value of $DBI::stderr as the C<err> value for internal errors.
+Drivers should also do likewise.  The default value for $DBI::stderr is 2000000000.
+
 A driver may return C<0> from err() to indicate a warning condition
 after a method call. Similarly, a driver may return an empty string
 to indicate a 'success with information' condition. In both these
@@ -3715,7 +3716,7 @@ A value of 0 means not to automatically fetch any long data.
 Drivers may return undef or an empty string for long fields when
 C<LongReadLen> is 0.
 
-The default is typically 0 (zero) bytes but may vary between drivers.
+The default is typically 0 (zero) or 80 bytes but may vary between drivers.
 Applications fetching long fields should set this value to slightly
 larger than the longest long field value to be fetched.
 
@@ -4316,8 +4317,9 @@ If you'd like the cache to managed intelligently, you can tie the
 hashref returned by C<CachedKids> to an appropriate caching module,
 such as L<Tie::Cache::LRU>:
 
-  my $cache = $dbh->{CachedKids};
+  my $cache;
   tie %$cache, 'Tie::Cache::LRU', 500;
+  $dbh->{CachedKids} = $cache;
 
 =head3 C<commit>
 
@@ -7481,8 +7483,7 @@ Recommended Perl Programming Links
 
 =head2 FAQ
 
-Please also read the DBI FAQ which is installed as a DBI::FAQ module.
-You can use I<perldoc> to read it by executing the C<perldoc DBI::FAQ> command.
+See L<http://faq.dbi-support.com/>
 
 =head1 AUTHORS
 
