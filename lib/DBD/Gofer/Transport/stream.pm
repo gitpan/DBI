@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 10087 2007-10-16 12:42:37Z timbo $
+#   $Id: stream.pm 10905 2008-03-10 22:01:04Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use Carp;
 
 use base qw(DBD::Gofer::Transport::pipeone);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 10905 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     go_persist
@@ -154,12 +154,12 @@ sub receive_response_by_transport {
     $self->read_response_from_fh( {
         $efh => {
             error => sub { warn "error reading response stderr: $!"; $errno||=$!; 1 },
-            eof   => sub { warn "eof on stderr" if 0; 1 },
+            eof   => sub { warn "eof reading efh" if $trace >= 4; 1 },
             read  => sub { $stderr_msg .= $_; 0 },
         },
         $rfh => {
             error => sub { warn "error reading response: $!"; $errno||=$!; 1 },
-            eof   => sub { warn "eof on stdout" if 0; 1 },
+            eof   => sub { warn "eof reading rfh" if $trace >= 4; 1 },
             read  => sub { $encoded_response .= $_; ($encoded_response=~s/\015\012$//) ? 1 : 0 },
         },
     });
@@ -168,17 +168,16 @@ sub receive_response_by_transport {
     # probably exited, possibly with an error to stderr.
     # Turn this situation into a reasonably useful DBI error.
     if (not $encoded_response) {
-        my $msg = "No response received";
-        if (chomp $stderr_msg && $stderr_msg) {
-            $msg .= sprintf ", error reported by \"%s\" (pid %d%s): %s",
+        my @msg;
+        push @msg, "error while reading response: $errno" if $errno;
+        if ($stderr_msg) {
+            chomp $stderr_msg;
+            push @msg, sprintf "error reported by \"%s\" (pid %d%s): %s",
                 $self->cmd_as_string,
                 $pid, ((kill 0, $pid) ? "" : ", exited"),
                 $stderr_msg;
         }
-        else {
-            $msg .= ($errno) ? ", error while reading response: $errno" : "(no error message)";
-        }
-        die "$msg\n";
+        die join(", ", "No response received", @msg)."\n";
     }
 
     $self->trace_msg("Response received: $encoded_response\n",0)

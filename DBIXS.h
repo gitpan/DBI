@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h 9659 2007-06-18 14:19:45Z timbo $
+/* $Id: DBIXS.h 10899 2008-03-10 12:00:51Z timbo $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -467,7 +467,7 @@ struct dbistate_st {
 # define DBISTATE_INIT {	/* typically use in BOOT: of XS file	*/    \
     DBISTATE_INIT_DBIS;	\
     if (DBIS == NULL)	\
-	croak("Unable to get DBI state from %s at %p. DBI not loaded.", DBISTATE_PERLNAME, DBISTATE_ADDRSV); \
+	croak("Unable to get DBI state from %s at %p. DBI not loaded.", DBISTATE_PERLNAME, (void*)DBISTATE_ADDRSV); \
     DBIS->check_version(__FILE__, DBISTATE_VERSION, sizeof(*DBIS), NEED_DBIXS_VERSION, \
 		sizeof(dbih_drc_t), sizeof(dbih_dbc_t), sizeof(dbih_stc_t), sizeof(dbih_fdc_t) \
     ); \

@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4
  *
- * $Id: DBI.xs 10677 2008-01-31 20:38:55Z timbo $
+ * $Id: DBI.xs 10916 2008-03-13 14:29:07Z timbo $
  *
  * Copyright (c) 1994-2003  Tim Bunce  Ireland.
  *
@@ -227,13 +227,13 @@ check_version(const char *name, int dbis_cv, int dbis_cs, int need_dbixs_cv, int
     static const char msg[] = "you probably need to rebuild the DBD driver (or possibly the DBI)";
     (void)need_dbixs_cv;
     if (dbis_cv != DBISTATE_VERSION || dbis_cs != sizeof(*DBIS))
-	croak("DBI/DBD internal version mismatch (DBI is v%d/s%d, DBD %s expected v%d/s%d) %s.\n",
+	croak("DBI/DBD internal version mismatch (DBI is v%d/s%lu, DBD %s expected v%d/s%d) %s.\n",
 	    DBISTATE_VERSION, sizeof(*DBIS), name, dbis_cv, dbis_cs, msg);
     /* Catch structure size changes - We should probably force a recompile if the DBI	*/
     /* runtime version is different from the build time. That would be harsh but safe.	*/
     if (drc_s != sizeof(dbih_drc_t) || dbc_s != sizeof(dbih_dbc_t) ||
 	stc_s != sizeof(dbih_stc_t) || fdc_s != sizeof(dbih_fdc_t) )
-	    croak("%s (dr:%d/%d, db:%d/%d, st:%d/%d, fd:%d/%d), %s.\n",
+	    croak("%s (dr:%d/%lu, db:%d/%lu, st:%d/%lu, fd:%d/%lu), %s.\n",
 		"DBI/DBD internal structure mismatch",
 		drc_s, sizeof(dbih_drc_t), dbc_s, sizeof(dbih_dbc_t),
 		stc_s, sizeof(dbih_stc_t), fdc_s, sizeof(dbih_fdc_t), msg);
@@ -746,7 +746,8 @@ set_trace(SV *h, SV *level_sv, SV *file)
 
 static SV *
 dbih_inner(pTHX_ SV *orv, const char *what)
-{   /* convert outer to inner handle else croak(what) if what is not null */
+{   /* convert outer to inner handle else croak(what) if what is not NULL */
+    /* if what is NULL then return NULL for invalid handles */
     dPERINTERP;
     MAGIC *mg;
     SV *ohv;		/* outer HV after derefing the RV	*/
@@ -766,6 +767,8 @@ dbih_inner(pTHX_ SV *orv, const char *what)
 	croak("%s handle %s is not a DBI handle", what, neatsvpv(orv,0));
     }
     if (!SvMAGICAL(ohv)) {
+	if (!what)
+	    return NULL;
 	sv_dump(orv);
 	croak("%s handle %s is not a DBI handle (has no magic)",
 		what, neatsvpv(orv,0));
@@ -906,8 +909,8 @@ dbih_make_fdsv(SV *sth, const char *imp_class, STRLEN imp_size, const char *col_
     imp_fdh_t *imp_fdh;
     SV *fdsv;
     if (imp_size < sizeof(imp_fdh_t) || cn_len<10 || strNE("::fd",&col_name[cn_len-4]))
-	croak("panic: dbih_makefdsv %s '%s' imp_size %d invalid",
-		imp_class, col_name, imp_size);
+	croak("panic: dbih_makefdsv %s '%s' imp_size %ld invalid",
+		imp_class, col_name, (long)imp_size);
     if (DBIS_TRACE_LEVEL >= 3)
 	PerlIO_printf(DBILOGFP,"    dbih_make_fdsv(%s, %s, %ld, '%s')\n",
 		neatsvpv(sth,0), imp_class, (long)imp_size, col_name);
@@ -949,14 +952,14 @@ dbih_make_com(SV *p_h, imp_xxh_t *p_imp_xxh, const char *imp_class, STRLEN imp_s
 
     if (DBIS_TRACE_LEVEL >= 3)
 	PerlIO_printf(DBILOGFP,"    dbih_make_com(%s, %p, %s, %ld, %p) thr#%p\n",
-	    neatsvpv(p_h,0), p_imp_xxh, imp_class, (long)imp_size, imp_templ, PERL_GET_THX);
+	    neatsvpv(p_h,0), (void*)p_imp_xxh, imp_class, (long)imp_size, (void*)imp_templ, (void*)PERL_GET_THX);
 
     if (imp_templ && SvOK(imp_templ)) {
 	U32  imp_templ_flags;
 	/* validate the supplied dbi_imp_data looks reasonable,	*/
 	if (SvCUR(imp_templ) != imp_size)
-	    croak("Can't use dbi_imp_data of wrong size (%d not %d)",
-		SvCUR(imp_templ), imp_size);
+	    croak("Can't use dbi_imp_data of wrong size (%ld not %ld)",
+		(long)SvCUR(imp_templ), (long)imp_size);
 
 	/* copy the whole template */
 	dbih_imp_sv = newSVsv(imp_templ);
@@ -1287,7 +1290,7 @@ dbih_clearcom(imp_xxh_t *imp_xxh)
     if (DBIc_THR_USER(imp_xxh) != my_perl) { /* don't clear handle that belongs to another thread */
 	if (debug >= 3) {
 	    PerlIO_printf(DBILOGFP,"    skipped dbih_clearcom: DBI handle (type=%d, %s) is owned by thread %p not current thread %p\n",
-		  DBIc_TYPE(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)), DBIc_THR_USER(imp_xxh), my_perl) ;
+		  DBIc_TYPE(imp_xxh), HvNAME(DBIc_IMP_STASH(imp_xxh)), (void*)DBIc_THR_USER(imp_xxh), (void*)my_perl) ;
 	    PerlIO_flush(DBILOGFP);
 	}
 	return;
@@ -2630,7 +2633,8 @@ dbi_profile_merge_nodes(SV *dest, SV *increment)
 /* ----------------------------------------------------------------- */
 /* ---   The DBI dispatcher. The heart of the perl DBI.          --- */
 
-XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
+XS(XS_DBI_dispatch);            /* prototype to pass -Wmissing-prototypes */
+XS(XS_DBI_dispatch)
 {
     dXSARGS;
     dPERINTERP;
@@ -2780,7 +2784,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    if (trace_level >= 2) {
 		PerlIO_printf(DBILOGFP,"    DESTROY ignored because DBI %sh handle (%s) is owned by thread %p not current thread %p\n",
 		      dbih_htype_name(DBIc_TYPE(imp_xxh)), HvNAME(DBIc_IMP_STASH(imp_xxh)),
-		      (PerlInterpreter *)DBIc_THR_USER(imp_xxh), my_perl) ;
+		      (void*)DBIc_THR_USER(imp_xxh), (void*)my_perl) ;
 		PerlIO_flush(DBILOGFP);
 	    }
 	    XSRETURN(0); /* don't DESTROY handle, if it is not our's !*/
@@ -2812,8 +2816,8 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    }
 		    if (trace_level >= 3) {
 			PerlIO *logfp = DBILOGFP;
-			PerlIO_printf(logfp,"    <- %s(%s) = %p (%s %p)\n", meth_name, can_meth, dbi_msv,
-				(imp_msv && isGV(imp_msv)) ? HvNAME(GvSTASH(imp_msv)) : "?", imp_msv);
+			PerlIO_printf(logfp,"    <- %s(%s) = %p (%s %p)\n", meth_name, can_meth, (void*)dbi_msv,
+				(imp_msv && isGV(imp_msv)) ? HvNAME(GvSTASH(imp_msv)) : "?", (void*)imp_msv);
 		    }
 		    ST(0) = (dbi_msv) ? sv_2mortal(newRV(dbi_msv)) : &PL_sv_undef;
 		    XSRETURN(1);
@@ -3092,7 +3096,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 		    (ima && i==ima->hidearg) ? "****" : neatsvpv(ST(i),0));
 	    }
 #ifdef DBI_USE_THREADS
-	    PerlIO_printf(logfp, ") thr#%p\n", DBIc_THR_USER(imp_xxh));
+	    PerlIO_printf(logfp, ") thr#%p\n", (void*)DBIc_THR_USER(imp_xxh));
 #else
 	    PerlIO_printf(logfp, ")\n");
 #endif
@@ -3204,7 +3208,7 @@ XS(XS_DBI_dispatch)         /* prototype must match XS produced code */
 	    if (is_DESTROY) /* show handle as first arg to DESTROY */
 		/* want to show outer handle so trace makes sense	*/
 		/* but outer handle has been destroyed so we fake it	*/
-		PerlIO_printf(logfp,"(%s=HASH(%p)", HvNAME(SvSTASH(SvRV(orig_h))), DBIc_MY_H(imp_xxh));
+		PerlIO_printf(logfp,"(%s=HASH(%p)", HvNAME(SvSTASH(SvRV(orig_h))), (void*)DBIc_MY_H(imp_xxh));
 	    else
 		PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
 	    if (items >= 3)
@@ -4173,20 +4177,36 @@ dbi_profile(h, statement, method, t1, t2)
     NV t1
     NV t2
     CODE:
-    D_imp_xxh(h);
-    SV *leaf = dbi_profile(h, imp_xxh, statement,
-	SvROK(method) ? SvRV(method) : method,
-	t1, t2
-    );
-    if (DBIc_TRACE_LEVEL(imp_xxh) >= 9)
-        warn("dbi_profile(%s, %s, %f, %f) =%s, gimme=%ld",
-                neatsvpv(statement,0), neatsvpv(method,0), t1, t2,
-                neatsvpv(leaf,0), (long)GIMME_V);
+    SV *leaf = &sv_undef;
     (void)cv;   /* avoid unused var warnings */
+    if (SvROK(method))
+        method = SvRV(method);
+    if (dbih_inner(aTHX_ h, NULL)) {    /* is a DBI handle */
+        D_imp_xxh(h);
+        leaf = dbi_profile(h, imp_xxh, statement, method, t1, t2);
+    }
+    else if (SvROK(h) && SvTYPE(SvRV(h)) == SVt_PVHV) {
+        /* iterate over values %$h */
+        HV *hv = (HV*)SvRV(h);
+        SV *tmp;
+	char *key;
+	I32 keylen = 0;
+	hv_iterinit(hv);
+	while ( (tmp = hv_iternextsv(hv, &key, &keylen)) != NULL ) {
+            if (SvOK(tmp)) {
+                D_imp_xxh(tmp);
+                leaf = dbi_profile(tmp, imp_xxh, statement, method, t1, t2);
+            }
+	};
+    }
+    else {
+        croak("dbi_profile(%s,...) invalid handle argument", neatsvpv(h,0));
+    }
     if (GIMME_V == G_VOID)
         ST(0) = &sv_undef;  /* skip sv_mortalcopy if not needed */
     else
         ST(0) = sv_mortalcopy(leaf);
+
 
 
 SV *

@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2008-02-08 22:46:09 +0000 (Fri, 08 Feb 2008) $ $Revision: 10706 $)
+(As of $Date: 2008-03-13 14:54:58 +0000 (Thu, 13 Mar 2008) $ $Revision: 10918 $)
 
 =cut
 
@@ -39,6 +39,20 @@ Policy for dbh attr FETCH (ie example_driver_path)
     so not bother FETCHing them (unless pedantic)
 Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
+
+=head2 Changes in DBI 1.603
+
+  Fixed pure-perl fetchall_arrayref with $max_rows argument
+    to not error when fetching after all rows already fetched.
+    (Was fixed for compiled drivers back in DBI 1.31.)
+    Thanks to Mark Overmeer.
+  Fixed C sprintf formats and casts, fixing compiler warnings.
+
+  Changed dbi_profile() to accept a hash of profiles and apply to all.
+  Changed gofer stream transport to improve error reporting.
+  Changed gofer test timeout to avoid spurious failures on slow systems.
+
+  Added options to t/85gofer.t so it's more useful for manual testing.
 
 =head2 Changes in DBI 1.602 (svn rev 10706)  8th February 2008
 
