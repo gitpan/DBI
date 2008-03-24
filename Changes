@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2008-03-13 14:54:58 +0000 (Thu, 13 Mar 2008) $ $Revision: 10918 $)
+(As of $Date: 2008-03-24 14:06:48 +0000 (Mon, 24 Mar 2008) $ $Revision: 10994 $)
 
 =cut
 
@@ -39,6 +39,12 @@ Policy for dbh attr FETCH (ie example_driver_path)
     so not bother FETCHing them (unless pedantic)
 Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
+
+=head2 Changes in DBI 1.604 (svn rev 10994) 24th March 2008
+
+  Fixed fetchall_arrayref with $max_rows argument broken in 1.603,
+    thanks to Greg Sabino Mullane.
+  Fixed a few harmless compiler warnings on cygwin.
 
 =head2 Changes in DBI 1.603
 

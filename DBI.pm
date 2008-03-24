@@ -1,4 +1,4 @@
-# $Id: DBI.pm 10918 2008-03-13 14:54:58Z timbo $
+# $Id: DBI.pm 10994 2008-03-24 14:06:48Z timbo $
 # vim: ts=8:sw=4
 #
 # Copyright (c) 1994-2007  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.603"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.604"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.603
-($Revision: 10918 $).
+This is the DBI specification that corresponds to the DBI version 1.604
+($Revision: 10994 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -1953,7 +1953,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
         # when batch fetching with $max_rows were very likely to try to
         # fetch the 'next batch' after the previous batch returned
         # <=$max_rows. So don't treat that as an error.
-        return undef if $max_rows and not $sth->{Active};
+        return undef if $max_rows and not $sth->FETCH('Active');
 
 	my $mode = ref($slice) || 'ARRAY';
 	my @rows;
