@@ -2,25 +2,36 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2008-03-24 14:06:48 +0000 (Mon, 24 Mar 2008) $ $Revision: 10994 $)
+(As of $Date: 2008-06-16 19:59:57 +0100 (Mon, 16 Jun 2008) $ $Revision: 11430 $)
 
 =cut
 
 Assorted TODO notes:
 
-Protect trace_msg from SIGPIPE?
-prepare(...,{ Err=>\my $isolated_err, ...})
-Move _new_sth to DBI::db::_new_sth (leave alias) and implement in C
-Implement FETCH_many() in C
-Or call _new_child and move to DBI::common?
-Add trace modules that just records the last N trace messages into an array
-and prepends them to any error message.
-Document DBI_PROFILE_FLOCK and LockFile attrib in DBI::ProfileData and DBI::ProfileDumper
+General:
+    Protect trace_msg from SIGPIPE?
+    prepare(...,{ Err=>\my $isolated_err, ...})
+    Add trace modules that just records the last N trace messages into an array
+    and prepends them to any error message.
+    Document DBI_PROFILE_FLOCK and LockFile attrib in DBI::ProfileData and DBI::ProfileDumper
+Performance:
+    Move _new_sth to DBI::db::_new_sth (leave alias) and implement in C
+        Or call _new_child and move to DBI::common?
+    Implement FETCH_many() in C
 
-Gofo TODOs:
+Gofer TODOs:
 
-Move post-request cleanup into separate method and enable hooks so
-    it can be done after the response has been sent
+Add server-side caching.
+    combine these:
+        my $request = $transport->thaw_request( $frozen_request, $serializer );
+        my $response = $executor->execute_request( $request );
+        my $frozen_response = $transport->freeze_response($response, $serializer);
+    into single method that first checks the cache and updates it if appropriate.
+    Different serializations will have different caches
+
+Add DBI::Gofer::Serialiser::MIME / Base64
+Add DBI::Gofer::Serialiser::JSON
+
 Gofer - allow dbh attrib changes after connect?
     note them and pass in request as STORE method calls
     but then gofer server need to reset them to restore dbh to original state
@@ -30,15 +41,57 @@ Gofer request flags for:
     - return current executor stats as an attribute - handy for tests
     - will accept streamed resultsets
 Add attr-passthru to prepare()? ie for gofer cache control & ReadOnly
-Terminology for client and server ends
+Define and document terminology for client and server ends
 Document user/passwd issues at the various levels of the gofer stack
-Policy's from pod
+    Remove "Password" from connect attr if the same as $password arg
+Extract policy settings by parsing the pod
 Policy for dbh attr FETCH (ie example_driver_path)
     or piggyback on skip_connect_check
     could also remember which attr have been returned to us
     so not bother FETCHing them (unless pedantic)
 Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
+
+Add high-res time for windows - via Time::HiRes glob replace dbi_time().
+
+=head2 Changes in DBI 1.605 XXX
+
+Make trace level 2 show method entry but not fetched rows, leave that for trace level 3.
+So trace level 2 can be used to aid debugging without being flooded by data
+
+1 = return from top level only, no rows
+2 = +entry to top level, no rows
+3 = +return from nested, no rows
+4 = +entry to nested, with rows
+
+  Fixed broken DBIS macro with threads on big-endian machines
+    with 64bit ints but 32bit pointers. Ticket #32309.
+  Fixed the selectall_arrayref, selectrow_arrayref, and selectrow_array
+    methods that get embedded into compiled drivers to use the
+    inner sth handle when passed a $sth instead of an sql string.
+    Drivers will need to be recompiled to pick up this change.
+  Fixed leak in neat() for some kinds of values thanks to Rudolf Lippan.
+  Fixed DBI::PurePerl neat() to behave more like XS neat().
+
+  Increased default $DBI::neat_maxlen from 400 to 1000.
+  Increased timeout on tests to accomodate very slow systems.
+  Changed behaviour of trace levels 1..4 to show less information
+    at lower levels.
+  Changed the format of the key used for $h->{CachedKids}
+    (which is undocumented so you shouldn't depend on it anyway)
+  Changed gofer error handling to avoid duplicate error text in errstr.
+  Clarified docs re ":N" style placeholders.
+  Improved gofer retry-on-error logic and refactored to aid subclassing.
+  Improved gofer trace output in assorted ways.
+
+  Removed the beeps "\a" from Makefile.PL warnings.
+  Removed check for PlRPC-modules from Makefile.PL
+
+  Added sorting of ParamValues reported by ShowErrorStatement
+    thanks to to Rudolf Lippan.
+  Added cache miss trace message to DBD::Gofer transport class.
+  Added $drh->dbixs_revision method.
+  Added explicit LICENSE specification (perl) to META.yaml
 
 =head2 Changes in DBI 1.604 (svn rev 10994) 24th March 2008
 

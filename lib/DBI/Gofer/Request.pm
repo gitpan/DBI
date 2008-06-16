@@ -1,6 +1,6 @@
 package DBI::Gofer::Request;
 
-#   $Id: Request.pm 10087 2007-10-16 12:42:37Z timbo $
+#   $Id: Request.pm 11424 2008-06-16 14:52:03Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -13,7 +13,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10087 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 11424 $ =~ /(\d+)/o);
 
 use constant GOf_REQUEST_IDEMPOTENT => 0x0001;
 use constant GOf_REQUEST_READONLY   => 0x0002;
@@ -149,6 +149,31 @@ sub summary_as_text {
     }
 
     return join("\n\t", @s) . "\n";
+}
+
+
+sub outline_as_text { # one-line version of summary_as_text
+    my $self = shift;
+    my @s = '';
+    my $neatlen = 80;
+
+    if (my $flags = $self->flags) {
+        push @s, sprintf "flags=0x%x", $flags;
+    }
+
+    my (undef, $meth, @args) = @{ $self->dbh_method_call };
+    push @s, sprintf "%s(%s)", $meth, neat_list(\@args, $neatlen);
+
+    for my $call (@{ $self->sth_method_calls || [] }) {
+        my ($meth, @args) = @$call;
+        push @s, sprintf "%s(%s)", $meth, neat_list(\@args, $neatlen);
+    }
+
+    my ($method, $dsn) = @{ $self->dbh_connect_call };
+    push @s, "$method($dsn,...)"; # dsn last as it's usually less interesting
+
+    (my $outline = join("; ", @s)) =~ s/\s+/ /g; # squish whitespace, incl newlines
+    return $outline;
 }
 
 1;

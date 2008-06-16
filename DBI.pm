@@ -1,7 +1,7 @@
-# $Id: DBI.pm 10994 2008-03-24 14:06:48Z timbo $
-# vim: ts=8:sw=4
+# $Id: DBI.pm 11430 2008-06-16 18:59:57Z timbo $
+# vim: ts=8:sw=4:noet
 #
-# Copyright (c) 1994-2007  Tim Bunce  Ireland
+# Copyright (c) 1994-2008  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.604"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.605"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.604
-($Revision: 10994 $).
+This is the DBI specification that corresponds to the DBI version 1.605
+($Revision: 11430 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -241,7 +241,7 @@ BEGIN {
 );
 
 $DBI::dbi_debug = 0;
-$DBI::neat_maxlen = 400;
+$DBI::neat_maxlen = 1000;
 $DBI::stderr = 2_000_000_000; # a very round number below 2**31
 
 # If you get an error here like "Can't find loadable object ..."
@@ -404,6 +404,7 @@ my $keeperr = { O=>0x0004 };
 	'disconnect_all'=>{ U =>[1,1], O=>0x0800 },
 	data_sources => { U =>[1,2,'[\%attr]' ], O=>0x0800 },
 	default_user => { U =>[3,4,'$user, $pass [, \%attr]' ] },
+	dbixs_revision  => $keeperr,
     },
     db => {		# Database Session Class Interface
 	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
@@ -1427,14 +1428,13 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my ($dsn, $user, $auth, $attr) = @_;
 
 	my $cache = $drh->{CachedKids} ||= {};
-
-	my @attr_keys = $attr ? sort keys %$attr : ();
-	my $key = do { local $^W; # silence undef warnings
-	    join "~~", $dsn, $user, $auth, $attr ? (@attr_keys,@{$attr}{@attr_keys}) : ()
+	my $key = do { local $^W;
+	    join "!\001", $dsn, $user, $auth, DBI::_concat_hash_sorted($attr, "=\001", ",\001", 0, 0)
 	};
 	my $dbh = $cache->{$key};
         $drh->trace_msg(sprintf("    connect_cached: key '$key', cached dbh $dbh\n", DBI::neat($key), DBI::neat($dbh)))
             if $DBI::dbi_debug >= 4;
+
         my $cb = $attr->{Callbacks}; # take care not to autovivify
 	if ($dbh && $dbh->FETCH('Active') && eval { $dbh->ping }) {
             # If the caller has provided a callback then call it
@@ -1635,13 +1635,16 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 
     sub prepare_cached {
 	my ($dbh, $statement, $attr, $if_active) = @_;
+
 	# Needs support at dbh level to clear cache before complaining about
 	# active children. The XS template code does this. Drivers not using
 	# the template must handle clearing the cache themselves.
 	my $cache = $dbh->{CachedKids} ||= {};
-	my @attr_keys = ($attr) ? sort keys %$attr : ();
-	my $key = ($attr) ? join("~~", $statement, @attr_keys, @{$attr}{@attr_keys}) : $statement;
+	my $key = do { local $^W;
+	    join "!\001", $statement, DBI::_concat_hash_sorted($attr, "=\001", ",\001", 0, 0)
+	};
 	my $sth = $cache->{$key};
+
 	if ($sth) {
 	    return $sth unless $sth->FETCH('Active');
 	    Carp::carp("prepare_cached($statement) statement handle $sth still Active")
@@ -1649,8 +1652,10 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    $sth->finish if $if_active <= 1;
 	    return $sth  if $if_active <= 2;
 	}
+
 	$sth = $dbh->prepare($statement, $attr);
 	$cache->{$key} = $sth if $sth;
+
 	return $sth;
     }
 
@@ -2314,11 +2319,15 @@ or the following, to select the description for a product:
 The C<?> characters are the placeholders.  The association of actual
 values with placeholders is known as I<binding>, and the values are
 referred to as I<bind values>.
-
 Note that the C<?> is not enclosed in quotation marks, even when the
-placeholder represents a string.  Some drivers also allow placeholders
-like C<:>I<name> and C<:>I<n> (e.g., C<:1>, C<:2>, and so on)
-in addition to C<?>, but their use is not portable.
+placeholder represents a string.
+
+Some drivers also allow placeholders like C<:>I<name> and C<:>I<N> (e.g.,
+C<:1>, C<:2>, and so on) in addition to C<?>, but their use is not portable.
+
+If the C<:>I<N> form of placeholder is supported by the driver you're using,
+then you should be able to use either L</bind_param> or L</execute> to bind
+values. Check your driver documentation.
 
 With most drivers, placeholders can't be used for any element of a
 statement that would prevent the database server from validating the
@@ -6982,16 +6991,17 @@ returns.
 Trace I<levels> are as follows:
 
   0 - Trace disabled.
-  1 - Trace DBI method calls returning with results or errors.
-  2 - Trace method entry with parameters and returning with results.
+  1 - Trace top-level DBI method calls returning with results or errors.
+  2 - As above, adding tracing of top-level method entry with parameters.
   3 - As above, adding some high-level information from the driver
       and some internal information from the DBI.
   4 - As above, adding more detailed information from the driver.
-  5 to 15 - As above but with more and more obscure information.
+      This is the first level to trace all the rows being fetched.
+  5 to 15 - As above but with more and more internal information.
 
 Trace level 1 is best for a simple overview of what's happening.
-Trace level 2 is a good choice for general purpose tracing.
-Levels 3 and above are best reserved for investigating a specific
+Trace levels 2 thru 4 a good choice for general purpose tracing.
+Levels 5 and above are best reserved for investigating a specific
 problem, when you need to see "inside" the driver and DBI.
 
 The trace output is detailed and typically very useful. Much of the
@@ -7502,7 +7512,7 @@ Perl by Larry Wall and the C<perl5-porters>.
 
 =head1 COPYRIGHT
 
-The DBI module is Copyright (c) 1994-2004 Tim Bunce. Ireland.
+The DBI module is Copyright (c) 1994-2008 Tim Bunce. Ireland.
 All rights reserved.
 
 You may distribute under the terms of either the GNU General Public
