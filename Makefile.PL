@@ -1,13 +1,13 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 11566 2008-07-22 20:54:36Z timbo $
+# $Id: Makefile.PL 11570 2008-07-22 21:45:16Z timbo $
 #
 #  Copyright (c) 1994-2008  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
 BEGIN {
-    require 5.008_01;
+    require 5.008_001;
     unshift @INC, "lib";
 }
 

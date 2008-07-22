@@ -1,4 +1,4 @@
-# $Id: DBI.pm 11567 2008-07-22 20:57:19Z timbo $
+# $Id: DBI.pm 11570 2008-07-22 21:45:16Z timbo $
 # vim: ts=8:sw=4:noet
 #
 # Copyright (c) 1994-2008  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.606"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.607"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.606
-($Revision: 11567 $).
+This is the DBI specification that corresponds to the DBI version 1.607
+($Revision: 11570 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
