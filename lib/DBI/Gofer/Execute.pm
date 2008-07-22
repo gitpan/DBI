@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 11431 2008-06-16 19:01:11Z timbo $
+#   $Id: Execute.pm 11544 2008-07-20 06:43:16Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -10,13 +10,15 @@ package DBI::Gofer::Execute;
 use strict;
 use warnings;
 
+use Carp;
+
 use DBI qw(dbi_time);
 use DBI::Gofer::Request;
 use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11431 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 11544 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;

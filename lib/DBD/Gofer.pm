@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 11377 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 11565 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 11377 2008-06-03 22:18:04Z timbo $
+#   $Id: Gofer.pm 11565 2008-07-22 20:17:33Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -91,11 +91,12 @@
 
 
     sub set_err_from_response { # set error/warn/info and propagate warnings
-        my ($h, $response) = @_;
+        my $h = shift;
+        my $response = shift;
         if (my $warnings = $response->warnings) {
             warn $_ for @$warnings;
         }
-        return $h->set_err($response->err, $response->errstr, $response->state);
+        return $h->set_err($response->err_errstr_state);
     }
 
 

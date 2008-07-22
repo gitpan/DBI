@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl 9451 2007-04-25 15:57:06Z timbo $
+# $Id: test.pl 11566 2008-07-22 20:54:36Z timbo $
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 9451 $}."\n";
+    print q{DBI test application $Revision: 11566 $}."\n";
     $| = 1;
 }
 
@@ -77,7 +77,7 @@ if (0) {
 if ($::opt_m) {
     #$dbh->trace(9);
     my $level = $::opt_m;
-    my $cnt = 10000;
+    my $cnt = $::opt_n || 10000;
     print "Using $driver, same dbh...\n";
     for (my $i=0; $i<$cnt; ++$i) { mem_test($dbh, undef, $level, undef, undef, undef) }
     print "Using NullP, reconnecting each time...\n";
@@ -141,7 +141,7 @@ sub mem_test {	# harness to help find basic leaks
     my $cursor_a;
 
     my ($dl_count, $dl_handle);
-    if ($$r_develleak++) {
+    if ($has_devel_leak && $$r_develleak++) {
         $dbh->trace(2);
         $dl_count = Devel::Leak::NoteSV($dl_handle);
     }

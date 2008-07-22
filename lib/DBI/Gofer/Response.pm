@@ -1,6 +1,6 @@
 package DBI::Gofer::Response;
 
-#   $Id: Response.pm 11424 2008-06-16 14:52:03Z timbo $
+#   $Id: Response.pm 11565 2008-07-22 20:17:33Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor Exporter);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11424 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 11565 $ =~ /(\d+)/o);
 
 use constant GOf_RESPONSE_EXECUTED => 0x0001;
 
@@ -46,6 +46,10 @@ sub new {
 }   
 
 
+sub err_errstr_state {
+    my $self = shift;
+    return @{$self}{qw(err errstr state)};
+}
 
 sub executed_flag_set {
     my $flags = shift->flags

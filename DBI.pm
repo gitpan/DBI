@@ -1,4 +1,4 @@
-# $Id: DBI.pm 11430 2008-06-16 18:59:57Z timbo $
+# $Id: DBI.pm 11567 2008-07-22 20:57:19Z timbo $
 # vim: ts=8:sw=4:noet
 #
 # Copyright (c) 1994-2008  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.605"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.606"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.605
-($Revision: 11430 $).
+This is the DBI specification that corresponds to the DBI version 1.606
+($Revision: 11567 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -3844,8 +3844,9 @@ or any children of it.
 Note that the exact definition of 'read only' is rather fuzzy.
 For more details see the documentation for the driver you're using.
 
-If the driver can make the handle truly read-only (by issuing a statement like
-"C<set transaction read only>" as needed, for example) then it should.
+If the driver can make the handle truly read-only then it should
+(unless doing so would have unpleasant side effect, like changing the
+consistency level from per-statement to per-session).
 Otherwise the attribute is simply advisory.
 
 A driver can set the C<ReadOnly> attribute itself to indicate that the data it
@@ -5191,8 +5192,9 @@ quotation marks.
   $sql = sprintf "SELECT foo FROM bar WHERE baz = %s",
                 $dbh->quote("Don't");
 
-For most database types, quote would return C<'Don''t'> (including the
-outer quotation marks).
+For most database types, at least those that conform to SQL standards, quote
+would return C<'Don''t'> (including the outer quotation marks). For others it
+may return something like C<'Don\'t'>
 
 An undefined C<$value> value will be returned as the string C<NULL> (without
 single quotation marks) to match how NULLs are represented in SQL.
@@ -5604,6 +5606,10 @@ bound in this way are usually treated as C<SQL_VARCHAR> types unless
 the driver can determine the correct type (which is rare), or unless
 C<bind_param> (or C<bind_param_inout>) has already been used to
 specify the type.
+
+Note that passing C<execute> an empty array is the same as passing no arguments
+at all, which will execute the statement with previously bound values.
+That's probably not what you want.
 
 If execute() is called on a statement handle that's still active
 ($sth->{Active} is true) then it should effectively call finish()
