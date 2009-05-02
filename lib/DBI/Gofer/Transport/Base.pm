@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::Base;
 
-#   $Id: Base.pm 11425 2008-06-16 14:56:22Z timbo $
+#   $Id: Base.pm 12536 2009-02-24 22:37:09Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -18,7 +18,7 @@ use DBI::Gofer::Serializer::Storable;
 use DBI::Gofer::Serializer::DataDumper;
 
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11425 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 12536 $ =~ /(\d+)/o);
 
 
 __PACKAGE__->mk_accessors(qw(
@@ -52,7 +52,7 @@ sub _freeze_data {
         $self->_dump("freezing $self->{trace} ".ref($data), $data)
             if !$skip_trace and $self->trace;
 
-        local $data->{meta}; # don't include _meta in serialization
+        local $data->{meta}; # don't include meta in serialization
 	$serializer ||= $self->{serializer_obj};
         my ($data, $deserializer_class)  = $serializer->serialize($data);
 

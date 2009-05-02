@@ -1,4 +1,4 @@
-/* $Id: DBIXS.h 11337 2008-05-28 13:01:15Z timbo $
+/* $Id: DBIXS.h 12559 2009-03-02 11:14:07Z timbo $
  *
  * Copyright (c) 1994-2002  Tim Bunce  Ireland
  *
@@ -304,7 +304,8 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 	if (!DBIc_ACTIVE(imp) && ph_com && !dirty			\
 		&& ++DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com))	\
 	    croak("panic: DBI active kids (%ld) > kids (%ld)",		\
-		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
+		(long)DBIc_ACTIVE_KIDS(ph_com),				\
+		(long)DBIc_KIDS(ph_com));				\
 	DBIc_FLAGS(imp) |=  DBIcf_ACTIVE;				\
     } while(0)
 #define DBIc_ACTIVE_off(imp)	/* adjust parent's active kid count */	\
@@ -314,7 +315,8 @@ typedef struct {		/* -- FIELD DESCRIPTOR --		*/
 		&& (--DBIc_ACTIVE_KIDS(ph_com) > DBIc_KIDS(ph_com)	\
 		   || DBIc_ACTIVE_KIDS(ph_com) < 0) )			\
 	    croak("panic: DBI active kids (%ld) < 0 or > kids (%ld)",	\
-		DBIc_ACTIVE_KIDS(ph_com), DBIc_KIDS(ph_com));		\
+		(long)DBIc_ACTIVE_KIDS(ph_com),				\
+		(long)DBIc_KIDS(ph_com));				\
 	DBIc_FLAGS(imp) &= ~DBIcf_ACTIVE;				\
     } while(0)
 
@@ -511,7 +513,7 @@ struct dbistate_st {
 	    ? SvPV_nolen(*svp) : (dflt))
 
 #define DBD_ATTRIB_DELETE(attribs, key, klen)			\
-	hv_delete((HV*)attribs, key, klen, G_DISCARD)
+	hv_delete((HV*)SvRV(attribs), key, klen, G_DISCARD)
 
 #endif /* DBIXS_VERSION */
 /* end of DBIXS.h */

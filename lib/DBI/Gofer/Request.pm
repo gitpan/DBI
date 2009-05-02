@@ -1,6 +1,6 @@
 package DBI::Gofer::Request;
 
-#   $Id: Request.pm 11424 2008-06-16 14:52:03Z timbo $
+#   $Id: Request.pm 12536 2009-02-24 22:37:09Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -13,7 +13,7 @@ use DBI qw(neat neat_list);
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11424 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 12536 $ =~ /(\d+)/o);
 
 use constant GOf_REQUEST_IDEMPOTENT => 0x0001;
 use constant GOf_REQUEST_READONLY   => 0x0002;
@@ -69,10 +69,10 @@ sub is_sth_request {
 sub statements {
     my $self = shift;
     my @statements;
-    my $statement_method_regex = qr/^(?:do|prepare)$/;
     if (my $dbh_method_call = $self->dbh_method_call) {
+        my $statement_method_regex = qr/^(?:do|prepare)$/;
         my (undef, $method, $arg1) = @$dbh_method_call;
-        push @statements, $arg1 if $method =~ $statement_method_regex;
+        push @statements, $arg1 if $method && $method =~ $statement_method_regex;
     }
     return @statements;
 }

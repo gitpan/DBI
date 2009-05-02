@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2008-07-22 14:45:45 -0700 (Tue, 22 Jul 2008) $ $Revision: 11571 $)
+(As of $Date: 2009-05-02 23:38:41 +0100 (Sat, 02 May 2009) $ $Revision: 12736 $)
 
 =cut
 
@@ -53,6 +53,25 @@ Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
 
 Add high-res time for windows - via Time::HiRes glob replace dbi_time().
+
+=head2 Changes in DBI 1.608 (svn rXXX)
+
+  Fixes to DBD::File (H.Merijn Brand)
+    bind_param () now honors the attribute argument
+    added f_ext attribute
+    File::Spec is always required. (CORE since 5.00405)
+    Fail and set errstr on parameter count mismatch in execute ()
+  Fixed two small memory leaks when running in mod_perl
+    one in DBI->connect and one in DBI::Gofer::Execute.
+    Both due to "local $ENV{...};" leaking memory.
+  Fixed DBD_ATTRIB_DELETE macro for driver authors
+    and updated DBI::DBD docs thanks to Martin J. Evans.
+  Fixed 64bit issues in trace messages thanks to Charles Jardine.
+  Fixed FETCH_many() method to work with drivers that incorrectly return 
+    an empty list from $h->FETCH. Affected gofer.
+
+  Corrected many typos in DBI docs thanks to Martin J. Evans.
+  Improved DBI::DBD docs thanks to H.Merijn Brand.
 
 =head2 Changes in DBI 1.607 (svn r11571) 22nd July 2008
 

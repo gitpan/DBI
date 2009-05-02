@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 11544 2008-07-20 06:43:16Z timbo $
+#   $Id: Execute.pm 11769 2008-09-12 13:18:59Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -18,7 +18,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11544 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 11769 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;
@@ -157,7 +157,8 @@ sub _connect {
         }
     }
 
-    local $ENV{DBI_AUTOPROXY}; # limit the insanity
+    # local $ENV{...} can leak, so only do it if required
+    local $ENV{DBI_AUTOPROXY} if $ENV{DBI_AUTOPROXY};
 
     my ($connect_method, $dsn, $username, $password, $attr) = @{ $request->dbh_connect_call };
     $connect_method ||= 'connect_cached';
