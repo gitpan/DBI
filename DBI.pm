@@ -1,4 +1,4 @@
-# $Id: DBI.pm 12736 2009-05-02 22:38:41Z timbo $
+# $Id: DBI.pm 12742 2009-05-05 11:10:59Z timbo $
 # vim: ts=8:sw=4:noet
 #
 # Copyright (c) 1994-2008  Tim Bunce  Ireland
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.608
-($Revision: 12736 $).
+($Revision: 12742 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.

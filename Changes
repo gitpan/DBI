@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2009-05-02 23:38:41 +0100 (Sat, 02 May 2009) $ $Revision: 12736 $)
+(As of $Date: 2009-05-05 12:10:59 +0100 (Tue, 05 May 2009) $ $Revision: 12742 $)
 
 =cut
 
@@ -54,7 +54,7 @@ Gofer: gearman - need to disable coallesing for non-idempotent requests
 
 Add high-res time for windows - via Time::HiRes glob replace dbi_time().
 
-=head2 Changes in DBI 1.608 (svn rXXX)
+=head2 Changes in DBI 1.608 (svn r12742) 5th May 2009
 
   Fixes to DBD::File (H.Merijn Brand)
     bind_param () now honors the attribute argument
@@ -70,6 +70,7 @@ Add high-res time for windows - via Time::HiRes glob replace dbi_time().
   Fixed FETCH_many() method to work with drivers that incorrectly return 
     an empty list from $h->FETCH. Affected gofer.
 
+  Added 'sqlite_' as registered prefix for DBD::SQLite.
   Corrected many typos in DBI docs thanks to Martin J. Evans.
   Improved DBI::DBD docs thanks to H.Merijn Brand.
 
