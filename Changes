@@ -2,7 +2,7 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2009-05-05 12:10:59 +0100 (Tue, 05 May 2009) $ $Revision: 12742 $)
+(As of $Date: 2009-06-05 23:34:47 +0100 (Fri, 05 Jun 2009) $ $Revision: 12812 $)
 
 =cut
 
@@ -53,6 +53,20 @@ Call method on transport failure so transport can cleanup/reset if it wants
 Gofer: gearman - need to disable coallesing for non-idempotent requests
 
 Add high-res time for windows - via Time::HiRes glob replace dbi_time().
+
+=head2 Changes in DBI 1.609 (svn r12811) 5th June 2009
+
+  Fixes to DBD::File (H.Merijn Brand)
+    added f_schema attribute
+    table names case sensitive when quoted, insensitive when unquoted
+    workaround a bug in SQL::Statement (temporary fix) related
+      to the "You passed x parameters where y required" error
+
+  Added DBI->visit_handles($coderef) method.
+  Added $h->visit_child_handles($coderef) method.
+  Added docs form column_info()'s COLUMN_DEF value.
+  Clarified docs on stickyness of data type via bind_param().
+  Clarified docs on stickyness of data type via bind_col().
 
 =head2 Changes in DBI 1.608 (svn r12742) 5th May 2009
 

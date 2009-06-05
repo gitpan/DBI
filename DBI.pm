@@ -1,7 +1,7 @@
-# $Id: DBI.pm 12742 2009-05-05 11:10:59Z timbo $
+# $Id: DBI.pm 12812 2009-06-05 22:34:47Z timbo $
 # vim: ts=8:sw=4:noet
 #
-# Copyright (c) 1994-2008  Tim Bunce  Ireland
+# Copyright (c) 1994-2009  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
@@ -9,7 +9,7 @@
 require 5.006_00;
 
 BEGIN {
-$DBI::VERSION = "1.608"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.609"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.608
-($Revision: 12742 $).
+This is the DBI specification that corresponds to the DBI version 1.609
+($Revision: 12812 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -399,6 +399,7 @@ my $keeperr = { O=>0x0004 };
 	trace_msg	=> { U =>[2,3,'$message_text [, $min_level ]' ],	O=>0x0004, T=>8 },
 	swap_inner_handle => { U =>[2,3,'$h [, $allow_reparent ]'] },
         private_attribute_info => { },
+        visit_child_handles => { U => [2,3,'$coderef [, $info ]'], O=>0x0404, T=>4 },
     },
     dr => {		# Database Driver Interface
 	'connect'  =>	{ U =>[1,5,'[$db [,$user [,$passwd [,\%attr]]]]'], H=>3, O=>0x8000 },
@@ -532,6 +533,18 @@ sub parse_dsn {
     $driver ||= $ENV{DBI_DRIVER} || '';
     $attr_hash = { split /\s*=>?\s*|\s*,\s*/, $attr, -1 } if $attr;
     return ($scheme, $driver, $attr, $attr_hash, $dsn);
+}
+
+sub visit_handles {
+    my ($class, $code, $outer_info) = @_;
+    $outer_info = {} if not defined $outer_info;
+    my %drh = DBI->installed_drivers;
+    for my $h (values %drh) {
+	my $child_info = $code->($h, $outer_info)
+	    or next;
+	$h->visit_child_handles($code, $child_info);
+    }
+    return $outer_info;
 }
 
 
@@ -1399,6 +1412,17 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
         return undef;
     }
 
+    sub visit_child_handles {
+	my ($h, $code, $info) = @_;
+	$info = {} if not defined $info;
+	for my $ch (@{ $h->{ChildHandles} || []}) {
+	    next unless $ch;
+	    my $child_info = $code->($ch, $info)
+		or next;
+	    $ch->visit_child_handles($code, $child_info);
+	}
+	return $info;
+    }
 }
 
 
@@ -2860,6 +2884,31 @@ See the L</TRACING> section for full details about the DBI's powerful
 tracing facilities.
 
 
+=head3 C<visit_handles>
+
+  DBI->visit_handles( $coderef );
+  DBI->visit_handles( $coderef, $info );
+
+Where $coderef is a reference to a subroutine and $info is an arbitrary value
+which, if undefined, defaults to a reference to an empty hash. Returns $info.
+
+For each installed driver handle, if any, $coderef is invoked as:
+
+  $coderef->($driver_handle, $info);
+
+If the execution of $coderef returns a true value then L</visit_child_handles>
+is called on that child handle and passed the returned value as $info.
+
+For example:
+
+  my $info = $dbh->{Driver}->visit_child_handles(sub {
+      my ($h, $info) = @_;
+      ++$info->{ $h->{Type} }; # count types of handles (dr/db/st)
+      return $info; # visit kids
+  });
+
+See also L</visit_child_handles>.
+
 
 =head2 DBI Utility Functions
 
@@ -3327,6 +3376,32 @@ happening:
             dbh1o -> dbh2i
             sthAo -> sthBi(dbh2i)
 
+=head3 C<visit_child_handles>
+
+  $h->visit_child_handles( $coderef );
+  $h->visit_child_handles( $coderef, $info );
+
+Where $coderef is a reference to a subroutine and $info is an arbitrary value
+which, if undefined, defaults to a reference to an empty hash. Returns $info.
+
+For each child handle of $h, if any, $coderef is invoked as:
+
+  $coderef->($child_handle, $info);
+
+If the execution of $coderef returns a true value then C<visit_child_handles>
+is called on that child handle and passed the returned value as $info.
+
+For example:
+
+  # count database connections with names (DSN) matching a pattern
+  my $connections = 0;
+  $dbh->{Driver}->visit_child_handles(sub {
+      my ($h, $info) = @_;
+      ++$connections if $h->{Name} =~ /foo/;
+      return 0; # don't visit kids
+  })
+
+See also L</visit_handles>.
 
 =head1 ATTRIBUTES COMMON TO ALL HANDLES
 
@@ -4611,7 +4686,23 @@ The following values are defined:
 
 B<REMARKS>: A description of the column.
 
-B<COLUMN_DEF>: The default value of the column.
+B<COLUMN_DEF>: The default value of the column, in a format that can be used
+directly in an SQL statement.
+
+Note that this may be an expression and not simply the text used for the
+default value in the original CREATE TABLE statement. For example, given:
+
+    col1 char(30) default current_user    -- a 'function'
+    col2 char(30) default 'string'        -- a string literal
+
+where "current_user" is the name of a function, the corresponding C<COLUMN_DEF>
+values would be:
+
+    Database        col1                     col2
+    --------        ----                     ----
+    Oracle:         current_user             'string'
+    Postgres:       "current_user"()         'string'::text
+    MS SQL:         (user_name())            ('string')
 
 B<SQL_DATA_TYPE>: The SQL data type.
 
@@ -5474,11 +5565,10 @@ The SQL_INTEGER and other related constants can be imported using
 
 See L</"DBI Constants"> for more information.
 
-The data type for a placeholder cannot be changed after the first
-C<bind_param> call. In fact the whole \%attr parameter is 'sticky'
-in the sense that a driver only needs to consider the \%attr parameter
-for the first call, for a given $sth and parameter. After that the driver
-may ignore the \%attr parameter for that placeholder.
+The data type is 'sticky' in that bind values passed to execute() are bound
+with the data type specified by earlier bind_param() calls, if any.
+Portable applications should not rely on being able to change the data type
+after the first C<bind_param> call.
 
 Perl only has string and number scalar data types. All database types
 that aren't numbers are bound as strings and must be in a format the
@@ -6133,7 +6223,7 @@ SQL_DATETIME, which is 'YYYY-MM-DD HH:MM:SS', rather than the
 native formatting the database would normally use.
 
 There's no $var_to_bind in that example to emphasize the point
-that bind_col() works on the underlying column value and not just
+that bind_col() works on the underlying column and not just
 a particular bound variable.
 
 As a short-cut for the common case, the data type can be passed
@@ -6152,10 +6242,9 @@ The SQL_DATETIME and other related constants can be imported using
 
 See L</"DBI Constants"> for more information.
 
-The data type for a bind variable cannot be changed after the first
-C<bind_col> call. In fact the whole \%attr parameter is 'sticky'
-in the sense that a driver only needs to consider the \%attr parameter
-for the first call for a given $sth and column.
+Few drivers support specifying a data type via a C<bind_col> call (most will
+simply ignore the data type). Fewer still allow the data type to be altered
+once set.
 
 The TYPE attribute for bind_col() was first specified in DBI 1.41.
 
@@ -7543,11 +7632,11 @@ Perl by Larry Wall and the C<perl5-porters>.
 
 =head1 COPYRIGHT
 
-The DBI module is Copyright (c) 1994-2008 Tim Bunce. Ireland.
+The DBI module is Copyright (c) 1994-2009 Tim Bunce. Ireland.
 All rights reserved.
 
 You may distribute under the terms of either the GNU General Public
-License or the Artistic License, as specified in the Perl README file.
+License or the Artistic License, as specified in the Perl 5.10.0 README file.
 
 =head1 SUPPORT / WARRANTY
 

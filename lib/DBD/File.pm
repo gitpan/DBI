@@ -33,7 +33,7 @@ use strict;
 
 use vars qw( @ISA $VERSION $drh $valid_attrs );
 
-$VERSION = "0.36";
+$VERSION = "0.37";
 
 $drh = undef;		# holds driver handle(s) once initialised
 
@@ -74,12 +74,9 @@ sub CLONE
 
 sub file2table
 {
-    my ($data, $dir, $file, $file_is_tab) = @_;
+    my ($data, $dir, $file, $file_is_tab, $quoted) = @_;
 
     $file eq "." || $file eq ".."	and return;
-
-    # Fully Qualified File Name
-    my $fqfn = File::Spec->catfile ($dir, $file);
 
     my ($ext, $req) = ("", 0, 0);
     if ($data->{f_ext}) {
@@ -90,8 +87,17 @@ sub file2table
 	}
 
     (my $tbl = $file) =~ s/$ext$//i;
+    $file_is_tab and $file = "$tbl$ext";
 
-    $file_is_tab && $file !~ m/$ext$/i and $fqfn .= $ext;
+    # Fully Qualified File Name
+    my $fqfn;
+    unless ($quoted) { # table names are case insensitive in SQL
+	local *DIR;
+	opendir DIR, $dir;
+	my @f = grep { lc $_ eq lc $file } readdir DIR;
+	@f == 1 and $file = $f[0];
+	}
+    $fqfn = File::Spec->catfile ($dir, $file);
 
     $file = $fqfn;
     if ($ext) {
@@ -149,10 +155,11 @@ sub connect ($$;$$$)
 		}
 	    }
         $this->{f_valid_attrs} = {
-	    f_version	=> 1,  # DBD::File version
-	    f_dir	=> 1,  # base directory
-	    f_ext	=> "", # file extension
-	    f_tables	=> 1,  # base directory
+	    f_version	=> 1, # DBD::File version
+	    f_dir	=> 1, # base directory
+	    f_ext	=> 1, # file extension
+	    f_schema	=> 1, # schema name
+	    f_tables	=> 1, # base directory
 	    };
         $this->{sql_valid_attrs} = {
 	    sql_handler           => 1, # Nano or S:S
@@ -346,7 +353,7 @@ sub STORE ($$$)
 		return $dbh->set_err ($DBI::stderr, "No such directory '$value'")
 	    }
 	if ($attrib eq "f_ext") {
-	    $value eq "" || $value =~ m{^\.\w+(?:/[iIrR]*)?$}
+	    $value eq "" || $value =~ m{^\.\w+(?:/[rR]*)?$}
 		or carp "'$value' doesn't look like a valid file extension attribute\n";
 	    }
 	$dbh->{$attrib} = $value;
@@ -417,10 +424,12 @@ sub type_info_all ($)
 	    }
 
 	my ($file, @tables, %names);
-	my $user = eval { getpwuid ((stat _)[4]) };
+	my $schema = exists $dbh->{f_schema}
+	    ? $dbh->{f_schema}
+	    : eval { getpwuid ((stat $dir)[4]) };
 	while (defined ($file = readdir ($dirh))) {
-	    my $tbl = DBD::File::file2table ($dbh, $dir, $file, 0) or next;
-	    push @tables, [ undef, $user, $tbl, "TABLE", undef ];
+	    my $tbl = DBD::File::file2table ($dbh, $dir, $file, 0, 0) or next;
+	    push @tables, [ undef, $schema, $tbl, "TABLE", undef ];
 	    }
 	unless (closedir $dirh) {
 	    $dbh->set_err ($DBI::stderr, "Cannot close directory $dir: $!");
@@ -541,13 +550,24 @@ sub execute
 
     $sth->finish;
     my $stmt = $sth->{f_stmt};
-    unless ((my $req_prm = scalar($stmt->params())) == (my $nparm = @$params)) {
-	$sth->set_err ($DBI::stderr,
-	    "You passed $nparm parameters where $req_prm required");
-	return;
+    unless ($sth->{f_params_checked}++) {
+	# bug in SQL::Statement 1.20 and below causes breakage
+	# on all but the first call
+	unless ((my $req_prm = $stmt->params ()) == (my $nparm = @$params)) {
+	    my $msg = "You passed $nparm parameters where $req_prm required";
+	    $sth->set_err ($DBI::stderr, $msg);
+	    return;
+	    }
 	}
-    my $result = eval { $stmt->execute ($sth, $params); };
-    $@ and return $sth->set_err ($DBI::stderr, $@);
+    my @err;
+    my $result = eval {
+	local $SIG{__WARN__} = sub { push @err, @_ };
+	$stmt->execute ($sth, $params);
+	};
+    if ($@ || @err) {
+	$sth->set_err ($DBI::stderr, $@ || $err[0]);
+	return undef;
+	}
 
     if ($stmt->{NUM_OF_FIELDS}) {    # is a SELECT statement
 	$sth->STORE (Active => 1);
@@ -658,7 +678,8 @@ my $open_table_re = sprintf "(?:%s|%s|%s)",
 sub get_file_name ($$$)
 {
     my ($self, $data, $table) = @_;
-    $table =~ s/^\"//;    # handle quoted identifiers
+    my $quoted = 0;
+    $table =~ s/^\"// and $quoted = 1;    # handle quoted identifiers
     $table =~ s/\"$//;
     my $file = $table;
     if (    $file !~ m/^$open_table_re/o
@@ -666,7 +687,8 @@ sub get_file_name ($$$)
 	and $file !~ m{^[a-z]\:}    # drive letter
 	) {
 	exists $data->{Database}{f_map}{$table} or
-	    DBD::File::file2table ($data->{Database}, $data->{Database}{f_dir}, $file, 1);
+	    DBD::File::file2table ($data->{Database},
+		$data->{Database}{f_dir}, $file, 1, $quoted);
 	$file = $data->{Database}{f_map}{$table} || undef;
 	}
     return ($table, $file);
@@ -697,12 +719,10 @@ sub open_table ($$$$$)
     $fh and binmode $fh;
     if ($locking and $fh) {
 	if ($lockMode) {
-	    flock $fh, 2 or
-		croak "Cannot obtain exclusive lock on $file: $!";
+	    flock $fh, 2 or croak "Cannot obtain exclusive lock on $file: $!";
 	    }
 	else {
-	    flock $fh, 1 or
-		croak "Cannot obtain shared lock on $file: $!";
+	    flock $fh, 1 or croak "Cannot obtain shared lock on $file: $!";
 	    }
 	}
     my $columns = {};
@@ -871,6 +891,34 @@ extension is always case-insensitive. The table names are not.
 In this case the extension is required, and all filenames that do not match
 are ignored.
 
+=item f_schema
+
+This will set the schema name. Default is the owner of the folder in which
+the table file resides.  C<undef> is allowed.
+
+    my $dbh = DBI->connect ("dbi:CSV:", "", "", {
+        f_schema => undef,
+        f_dir    => "data",
+        f_ext    => ".csv/r",
+        }) or die $DBI::errstr;
+
+The effect is that when you get table names from DBI, you can force all
+tables into the same (or no) schema:
+
+    my @tables $dbh->tables ();
+
+    # no f_schema
+    "merijn".foo
+    "merijn".bar
+
+    # f_schema => "dbi"
+    "dbi".foo
+    "dbi".bar
+
+    # f_schema => undef
+    foo
+    bar
+
 =back
 
 =head2 Driver private methods
@@ -913,7 +961,7 @@ MacOS and Windows 95, as there's a single user anyways).
 
 =back
 
-=head1 AUTHOR 
+=head1 AUTHOR
 
 This module is currently maintained by
 

@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                DBI
-version:             1.608
+version:             1.609
 abstract:            Database independent interface for Perl
 license:             perl
 author:              
