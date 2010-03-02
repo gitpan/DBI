@@ -31,9 +31,10 @@ package DBD::File;
 
 use strict;
 
+use Carp;
 use vars qw( @ISA $VERSION $drh $valid_attrs );
 
-$VERSION = "0.37";
+$VERSION = "0.38";
 
 $drh = undef;		# holds driver handle(s) once initialised
 
@@ -54,7 +55,8 @@ sub driver ($;$)
     $attr ||= {};
     {	no strict "refs";
 	unless ($attr->{Attribution}) {
-	    $class eq "DBD::File" and $attr->{Attribution} = "$class by Jeff Zucker";
+	    $class eq "DBD::File" and
+		$attr->{Attribution} = "$class by Jeff Zucker";
 	    $attr->{Attribution} ||= ${$class . "::ATTRIBUTION"} ||
 		"oops the author of $class forgot to define this";
 	    }
@@ -78,7 +80,7 @@ sub file2table
 
     $file eq "." || $file eq ".."	and return;
 
-    my ($ext, $req) = ("", 0, 0);
+    my ($ext, $req) = ("", 0);
     if ($data->{f_ext}) {
 	($ext, my $opt) = split m/\//, $data->{f_ext};
 	if ($ext && $opt) {
@@ -92,10 +94,10 @@ sub file2table
     # Fully Qualified File Name
     my $fqfn;
     unless ($quoted) { # table names are case insensitive in SQL
-	local *DIR;
-	opendir DIR, $dir;
-	my @f = grep { lc $_ eq lc $file } readdir DIR;
+	opendir my $dh, $dir or croak "Can't open '$dir': $!";
+	my @f = grep { lc $_ eq lc $file } readdir $dh;
 	@f == 1 and $file = $f[0];
+	closedir $dh or croak "Can't close '$dir': $!";
 	}
     $fqfn = File::Spec->catfile ($dir, $file);
 
@@ -160,6 +162,7 @@ sub connect ($$;$$$)
 	    f_ext	=> 1, # file extension
 	    f_schema	=> 1, # schema name
 	    f_tables	=> 1, # base directory
+	    f_lock	=> 1, # Table locking mode
 	    };
         $this->{sql_valid_attrs} = {
 	    sql_handler           => 1, # Nano or S:S
@@ -167,7 +170,7 @@ sub connect ($$;$$$)
 	    sql_statement_version => 1, # S:S version
 	    };
 	}
-    $this->STORE ("Active", 1);
+    $this->STORE (Active => 1);
     return set_versions ($this);
     } # connect
 
@@ -175,8 +178,9 @@ sub set_versions
 {
     my $this = shift;
     $this->{f_version} = $DBD::File::VERSION;
-    for (qw( nano_version statement_version)) {
-	$this->{"sql_$_"} = $DBI::SQL::Nano::versions->{$_} || "";
+    for (qw( nano_version statement_version )) {
+	# strip development release version part
+	($this->{"sql_$_"} = $DBI::SQL::Nano::versions->{$_} || "") =~ s/_[0-9]+$//;
 	}
     $this->{sql_handler} = $this->{sql_statement_version}
 	? "SQL::Statement"
@@ -215,7 +219,7 @@ sub data_sources ($;$)
 	$file ne File::Spec->updir () && -d $d and
 	    push @dsns, "DBI:$driver:f_dir=$d";
 	}
-    @dsns;
+    return @dsns;
     } # data_sources
 
 sub disconnect_all
@@ -238,7 +242,7 @@ $DBD::File::db::imp_data_size = 0;
 
 sub ping
 {
-    return (shift->FETCH ("Active")) ? 1 : 0;
+    ($_[0]->FETCH ("Active")) ? 1 : 0;
     } # ping
 
 sub prepare ($$;@)
@@ -281,7 +285,7 @@ sub prepare ($$;@)
 	    $sth->STORE ("NUM_OF_PARAMS", scalar ($stmt->params ()));
 	    }
 	}
-    $sth;
+    return $sth;
     } # prepare
 
 sub csv_cache_sql_parser_object
@@ -301,8 +305,8 @@ sub csv_cache_sql_parser_object
 
 sub disconnect ($)
 {
-    shift->STORE ("Active", 0);
-    1;
+    $_[0]->STORE (Active => 0);
+    return 1;
     } # disconnect
 
 sub FETCH ($$)
@@ -344,17 +348,17 @@ sub STORE ($$$)
 	# not implemented yet
 	# my $class = $dbh->FETCH ("ImplementorClass");
 	#
-	# !$dbh->{f_valid_attrs}->{$attrib} && !$dbh->{sql_valid_attrs}->{$attrib} and
+	# !$dbh->{f_valid_attrs}{$attrib} && !$dbh->{sql_valid_attrs}{$attrib} and
 	#    return $dbh->set_err ($DBI::stderr, "Invalid attribute '$attrib'");
 	#  $dbh->{$attrib} = $value;
 
 	if ($attrib eq "f_dir") {
 	    -d $value or
-		return $dbh->set_err ($DBI::stderr, "No such directory '$value'")
+		return $dbh->set_err ($DBI::stderr, "No such directory '$value'");
 	    }
 	if ($attrib eq "f_ext") {
-	    $value eq "" || $value =~ m{^\.\w+(?:/[rR]*)?$}
-		or carp "'$value' doesn't look like a valid file extension attribute\n";
+	    $value eq "" || $value =~ m{^\.\w+(?:/[rR]*)?$} or
+		carp "'$value' doesn't look like a valid file extension attribute\n";
 	    }
 	$dbh->{$attrib} = $value;
 	return 1;
@@ -366,6 +370,7 @@ sub DESTROY ($)
 {
     my $dbh = shift;
     $dbh->SUPER::FETCH ("Active") and $dbh->disconnect ;
+    undef $dbh->{csv_sql_parser_object};
     } # DESTROY
 
 sub type_info_all ($)
@@ -425,7 +430,8 @@ sub type_info_all ($)
 
 	my ($file, @tables, %names);
 	my $schema = exists $dbh->{f_schema}
-	    ? $dbh->{f_schema}
+	    ? defined $dbh->{f_schema} && $dbh->{f_schema} ne ""
+		? $dbh->{f_schema} : undef
 	    : eval { getpwuid ((stat $dir)[4]) };
 	while (defined ($file = readdir ($dirh))) {
 	    my $tbl = DBD::File::file2table ($dbh, $dir, $file, 0, 0) or next;
@@ -453,7 +459,7 @@ sub type_info_all ($)
 				    NAMES => $names,
 				    });
 	$sth or $dbh->set_err ($DBI::stderr, $dbh2->errstr);
-	$sth;
+	return $sth;
 	} # table_info
     }
 
@@ -465,7 +471,7 @@ sub list_tables ($)
     while (my $ref = $sth->fetchrow_arrayref ()) {
 	push @tables, $ref->[2];
 	}
-    @tables;
+    return @tables;
     } # list_tables
 
 sub quote ($$;$)
@@ -488,7 +494,7 @@ sub quote ($$;$)
     $str =~ s/\'/\\\'/sg;
     $str =~ s/\n/\\n/sg;
     $str =~ s/\r/\\r/sg;
-    "'$str'";
+    return "'$str'";
     } # quote
 
 sub commit ($)
@@ -496,7 +502,7 @@ sub commit ($)
     my $dbh = shift;
     $dbh->FETCH ("Warn") and
 	carp "Commit ineffective while AutoCommit is on", -1;
-    1;
+    return 1;
     } # commit
 
 sub rollback ($)
@@ -504,7 +510,7 @@ sub rollback ($)
     my $dbh = shift;
     $dbh->FETCH ("Warn") and
 	carp "Rollback ineffective while AutoCommit is on", -1;
-    0;
+    return 0;
     } # rollback
 
 # ====== STATEMENT =============================================================
@@ -520,19 +526,19 @@ sub bind_param ($$$;$)
     my ($sth, $pNum, $val, $attr) = @_;
     if ($attr && defined $val) {
 	my $type = ref $attr eq "HASH" ? $attr->{TYPE} : $attr;
-	if (   $attr == DBI::SQL_BIGINT ()
-	    || $attr == DBI::SQL_INTEGER ()
+	if (   $attr == DBI::SQL_BIGINT   ()
+	    || $attr == DBI::SQL_INTEGER  ()
 	    || $attr == DBI::SQL_SMALLINT ()
-	    || $attr == DBI::SQL_TINYINT ()
-	    ) {
+	    || $attr == DBI::SQL_TINYINT  ()
+	       ) {
 	    $val += 0;
 	    }
 	elsif ($attr == DBI::SQL_DECIMAL ()
-	    || $attr == DBI::SQL_DOUBLE ()
-	    || $attr == DBI::SQL_FLOAT ()
+	    || $attr == DBI::SQL_DOUBLE  ()
+	    || $attr == DBI::SQL_FLOAT   ()
 	    || $attr == DBI::SQL_NUMERIC ()
-	    || $attr == DBI::SQL_REAL ()
-	    ) {
+	    || $attr == DBI::SQL_REAL    ()
+	       ) {
 	    $val += 0.;
 	    }
 	else {
@@ -540,7 +546,7 @@ sub bind_param ($$$;$)
 	    }
 	}
     $sth->{f_params}[$pNum - 1] = $val;
-    1;
+    return 1;
     } # bind_param
 
 sub execute
@@ -572,7 +578,7 @@ sub execute
     if ($stmt->{NUM_OF_FIELDS}) {    # is a SELECT statement
 	$sth->STORE (Active => 1);
 	$sth->FETCH ("NUM_OF_FIELDS") or
-	    $sth->STORE ("NUM_OF_FIELDS", $stmt->{NUM_OF_FIELDS})
+	    $sth->STORE ("NUM_OF_FIELDS", $stmt->{NUM_OF_FIELDS});
 	}
     return $result;
     } # execute
@@ -581,29 +587,29 @@ sub finish
 {
     my $sth = shift;
     $sth->SUPER::STORE (Active => 0);
-    delete $sth->{f_stmt}->{data};
+    delete $sth->{f_stmt}{data};
     return 1;
     } # finish
 
 sub fetch ($)
 {
     my $sth  = shift;
-    my $data = $sth->{f_stmt}->{data};
+    my $data = $sth->{f_stmt}{data};
     if (!$data || ref $data ne "ARRAY") {
 	$sth->set_err ($DBI::stderr,
 	    "Attempt to fetch row without a preceeding execute () call or from a non-SELECT statement"
 	    );
-	return
+	return;
 	}
     my $dav = shift @$data;
     unless ($dav) {
 	$sth->finish;
-	return
+	return;
 	}
     if ($sth->FETCH ("ChopBlanks")) {
 	$_ && $_ =~ s/\s+$// for @$dav;
 	}
-    $sth->_set_fbav ($dav);
+    return $sth->_set_fbav ($dav);
     } # fetch
 *fetchrow_arrayref = \&fetch;
 
@@ -646,11 +652,13 @@ sub DESTROY ($)
 {
     my $sth = shift;
     $sth->SUPER::FETCH ("Active") and $sth->finish;
+    undef $sth->{f_stmt};
+    undef $sth->{f_params};
     } # DESTROY
 
 sub rows ($)
 {
-    shift->{f_stmt}->{NUM_OF_ROWS};
+    return $_[0]->{f_stmt}{NUM_OF_ROWS};
     } # rows
 
 package DBD::File::Statement;
@@ -718,12 +726,17 @@ sub open_table ($$$$$)
 	}
     $fh and binmode $fh;
     if ($locking and $fh) {
-	if ($lockMode) {
+	my $lm = defined $data->{Database}{f_lock}
+		      && $data->{Database}{f_lock} =~ m/^[012]$/
+		       ? $data->{Database}{f_lock}
+		       : $lockMode ? 2 : 1;
+	if ($lm == 2) {
 	    flock $fh, 2 or croak "Cannot obtain exclusive lock on $file: $!";
 	    }
-	else {
+	elsif ($lm == 1) {
 	    flock $fh, 1 or croak "Cannot obtain shared lock on $file: $!";
 	    }
+	# $lm = 0 is forced no locking at all
 	}
     my $columns = {};
     my $array   = [];
@@ -738,7 +751,7 @@ sub open_table ($$$$$)
     my $class = ref $self;
     $class =~ s/::Statement/::Table/;
     bless $tbl, $class;
-    $tbl;
+    return $tbl;
     } # open_table
 
 package DBD::File::Table;
@@ -777,7 +790,7 @@ sub truncate ($$)
     my ($self, $data) = @_;
     $self->{fh}->truncate ($self->{fh}->tell ()) or
 	croak "Error while truncating " . $self->{file} . ": $!";
-    1;
+    return 1;
     } # truncate
 
 1;
@@ -806,7 +819,6 @@ SQL engine.
 See L<DBI> for details on DBI, L<SQL::Statement> for details on
 SQL::Statement and L<DBD::CSV> or L<DBD::IniFile> for example
 drivers.
-
 
 =head2 Metadata
 
@@ -837,20 +849,20 @@ Works
 
 =item NUM_OF_FIELDS
 
-Valid after C<$sth->execute>
+Valid after C<< $sth->execute >>
 
 =item NUM_OF_PARAMS
 
-Valid after C<$sth->prepare>
+Valid after C<< $sth->prepare >>
 
 =item NAME
 
-Valid after C<$sth->execute>; undef for Non-Select statements.
+Valid after C<< $sth->execute >>; undef for Non-Select statements.
 
 =item NULLABLE
 
 Not really working, always returns an array ref of one's, as DBD::CSV
-doesn't verify input data. Valid after C<$sth->execute>; undef for
+doesn't verify input data. Valid after C<< $sth->execute >>; undef for
 Non-Select statements.
 
 =back
@@ -918,6 +930,34 @@ tables into the same (or no) schema:
     # f_schema => undef
     foo
     bar
+
+Defining f_schema to the empty string is equal to setting it to C<undef>,
+this to enable the DSN to be C<dbi:CSV:f_schema=;f_dir=.>.
+
+=item f_lock
+
+With this attribute, you can force locking mode (if locking is supported
+at all) for opening tables. By default, tables are opened with a shared
+lock for reading, and with an exclusive lock for writing. The supported
+modes are:
+
+=over 2
+
+=item 0
+
+Force no locking at all.
+
+=item 1
+
+Only shared locks will be used.
+
+=item 2
+
+Only exclusive locks will be used.
+
+=back
+
+But see L</"NOWN BUGS"> below.
 
 =back
 

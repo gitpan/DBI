@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                DBI
-version:             1.609
+version:             1.611
 abstract:            Database independent interface for Perl
 license:             perl
 author:              
@@ -11,7 +11,7 @@ requires:
     File::Spec:                    0
     Scalar::Util:                  0
     Storable:                      1
-    Test::Simple:                  0.4
+    Test::Simple:                  0.84
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.3.html
     version: 1.3

@@ -9,7 +9,7 @@ use DBI;
 BEGIN {
         plan skip_all => '$h->{Callbacks} attribute not supported for DBI::PurePerl'
                 if $DBI::PurePerl && $DBI::PurePerl; # doubled to avoid typo warning
-        plan tests => 53;
+        plan tests => 63;
 }
 
 $| = 1;
@@ -164,6 +164,31 @@ is $called{cached}, undef, "connect_cached.reused not yet called";
 ok $dbh = DBI->connect_cached(@args), "Create handle with callbacks";
 is $called{cached}, 1, "connect_cached.reused called";
 is $called{new}, 1, "connect_cached.new not called again";
+
+
+# --- test ChildCallbacks.
+%called = ();
+$args[-1] = {
+    Callbacks => my $dbh_callbacks = {
+        ping => sub { $called{ping}++; return; },
+        ChildCallbacks => my $sth_callbacks = {
+            execute => sub { $called{execute}++; return; },
+            fetch   => sub { $called{fetch}++; return; },
+        }
+    }
+};
+
+ok $dbh = DBI->connect(@args), "Create handle with ChildCallbacks";
+ok $dbh->ping, 'Ping';
+is $called{ping}, 1, 'Ping callback should have been called';
+ok my $sth = $dbh->prepare('SELECT name from t'), 'Prepare a statement handle (child)';
+ok $sth->{Callbacks}, 'child should have Callbacks';
+is $sth->{Callbacks}, $sth_callbacks, "child Callbacks should be ChildCallbacks of parent"
+    or diag "(dbh Callbacks is $dbh_callbacks)";
+ok $sth->execute, 'Execute';
+is $called{execute}, 1, 'Execute callback should have been called';
+ok $sth->fetch, 'Fetch';
+is $called{fetch}, 1, 'Fetch callback should have been called';
 
 __END__
 

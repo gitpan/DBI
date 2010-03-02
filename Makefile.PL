@@ -1,15 +1,12 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 11570 2008-07-22 21:45:16Z timbo $
+# $Id: Makefile.PL 13833 2010-03-02 18:33:55Z timbo $
 #
-#  Copyright (c) 1994-2008  Tim Bunce  Ireland
+#  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
 # See COPYRIGHT section in DBI.pm for usage and distribution rights.
 
-BEGIN {
-    require 5.008_001;
-    unshift @INC, "lib";
-}
+use 5.008_001;
 
 use ExtUtils::MakeMaker 5.16, qw(WriteMakefile $Verbose prompt);
 use Getopt::Long;
@@ -18,6 +15,7 @@ use File::Find;
 use File::Spec;
 use strict;
 
+use lib 'lib'; # for use DBI::DBD
 use DBI::DBD;
 
 $| = 1;
@@ -26,7 +24,7 @@ my $os = $^O;
 my $osvers = $Config{osvers};
 $osvers =~ s/^\s*(\d+\.\d+).*/$1/;  # drop sub-sub-version: 2.5.1 -> 2.5
 my $ext_pl = $^O eq 'VMS' ? '.pl' : '';
-my $is_developer = (-d ".svn" && -f "MANIFEST.SKIP");
+my $is_developer = ((-d ".svn" || -d ".git") && -f "MANIFEST.SKIP");
 
 $::opt_v = 0;
 $::opt_thread = 1;	# thread if we can, use "-nothread" to disable
@@ -91,7 +89,7 @@ my %opts = (
     VERSION_FROM  => 'DBI.pm',
     ABSTRACT_FROM => 'DBI.pm',
     PREREQ_PM => {
-        "Test::Simple" => 0.40,
+        "Test::Simple" => 0.84,
         "Storable" => 1,
         "File::Spec" => 0,
         "Scalar::Util" => 0,
@@ -153,6 +151,9 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
+# If working from git-svn, the $Id: Makefile.PL 13833 2010-03-02 18:33:55Z timbo $'s in the mod's should be completed
+# before any other action is taken
+$is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
 $Verbose = $::opt_v;
 WriteMakefile(
@@ -191,7 +192,7 @@ EOT
 
 sub libscan {
     my($self, $path) = @_;
-    ($path =~ /\~$|\B\.svn\b/) ? undef : $path;
+    ($path =~ /\~$|\B\.(svn|git)\b/) ? undef : $path;
 }
 
 sub const_cccmd {
@@ -246,6 +247,8 @@ Here's a list of probable old files and directories:
 	$self->{PM}->{$_} = File::Spec->catfile($self->{INST_ARCHAUTODIR}, $_)
 	    if '.h' eq substr( $_, -2 ) || '.xst' eq substr( $_, -4 );
         }, '.' );
+
+    delete $self->{$_}{"git-svn-vsn.pl"} for qw( PM MAN3PODS );
 
     return '';
 }

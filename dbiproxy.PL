@@ -7,7 +7,7 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 10720 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision: 13336 $ =~ /(\d+)/o);
 
 my $arg_test    = shift(@ARGV)		if $ARGV[0] eq '--test';
 $ENV{DBI_TRACE} = shift(@ARGV) || 2	if $ARGV[0] =~ s/^--dbitrace=?//;
@@ -204,6 +204,5 @@ chmod 0755, $file;
 print "Extracted $file from ",__FILE__," with variable substitutions.\n";
 
 # syntax check resulting file, but only for developers
-exit 1 if system($^X, '-wc', '-Mblib', $file) != 0 && -d ".svn";
-
+exit 1 if -d ".svn" || -d ".git" and system($^X, '-wc', '-Mblib', $file) != 0;
 
