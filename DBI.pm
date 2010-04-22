@@ -1,5 +1,5 @@
-# $Id: DBI.pm 13833 2010-03-02 18:33:55Z timbo $
-# vim: ts=8:sw=4:noet
+# $Id: DBI.pm 13905 2010-04-15 12:49:48Z timbo $
+# vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.611
-($Revision: 13833 $).
+($Revision: 13905 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -2749,7 +2749,7 @@ corresponding cached C<$dbh> will be returned if it is still valid.
 The cached database handle is replaced with a new connection if it
 has been disconnected or if the C<ping> method fails.
 
-That the behaviour of this method differs in several respects from the
+Note that the behaviour of this method differs in several respects from the
 behaviour of persistent connections implemented by Apache::DBI.
 However, if Apache::DBI is loaded then C<connect_cached> will use it.
 
@@ -2757,7 +2757,9 @@ Caching connections can be useful in some applications, but it can
 also cause problems, such as too many connections, and so should
 be used with care. In particular, avoid changing the attributes of
 a database handle created via connect_cached() because it will affect
-other code that may be using the same handle.
+other code that may be using the same handle. When connect_cached()
+returns a handle the attributes will be reset to their initial values.
+This can cause problems, especially with the C<AutoCommit> attribute.
 
 Where multiple separate parts of a program are using connect_cached()
 to connect to the same database with the same (initial) attributes
@@ -3991,6 +3993,189 @@ making a decision about whether to retry an operation that failed.
 
 The attribute should be set to 1 or 0 (or undef). Other values are reserved.
 
+=head3 C<Callbacks> (hash ref)
+
+The DBI callback mechanism lets you intercept, and optionally replace, any
+method call on a DBI handle. At the extreme, it lets you become a puppet
+master, deceiving the application in any way you want.
+
+The C<Callbacks> attribute is a hash reference where the keys are DBI method
+names and the values are code references. For each key naming a method, the
+DBI will execute the associated code reference before executing the method.
+
+The arguments to the code reference will be the same as to the method,
+including the invocant (a database handle or statement handle). For example,
+say that to callback to some code on a call to C<prepare()>:
+
+  $dbh->{Callbacks} = {
+      prepare => sub {
+          my ($dbh, $query, $attrs) = @_;
+          print "Preparing q{$query}\n"
+      },
+  };
+
+The callback would then be executed when you called the C<prepare()> method:
+
+  $dbh->prepare('SELECT 1');
+
+And the output of course would be:
+
+  Preparing q{SELECT 1}
+
+Because callbacks are executed I<before> the methods
+they're associated with, you can modify the arguments before they're passed on
+to the method call. For example, to make sure that all calls to C<prepare()>
+are immediately prepared by L<DBD::Pg>, add a callback that makes sure that
+the C<pg_prepare_now> attribute is always set:
+
+  my $dbh = DBI->connect($dsn, $username, $auth, {
+      Callbacks => {
+          prepare => sub {
+              $_[2] ||= {};
+              $_[2]->{pg_prepare_now} = 1;
+              return; # must return nothing
+          },
+      }
+  });
+
+Note that we are editing the contents of C<@_> directly. In this case we've
+created the attributes hash if it's not passed to the C<prepare> call.
+
+You can also prevent the associated method from ever executing. While a
+callback executes, C<$_> holds the method name. (This allows multiple callbacks
+to share the same code reference and still know what method was called.)
+To prevent the method from
+executing, simply C<undef $_>. For example, if you wanted to disable calls to
+C<ping()>, you could do this:
+
+  $dbh->{Callbacks} = {
+      ping => sub {
+          # tell dispatch to not call the method:
+          undef $_;
+          # return this value instead:
+          return "42 bells";
+      }
+  };
+
+As with other attributes, Callbacks can be specified on a handle or via the
+attributes to C<connect()>. Callbacks can also be applied to a statement
+methods on a statement handle. For example:
+
+  $sth->{Callbacks} = {
+      execute => sub {
+          print "Executing ", shift->{Statement}, "\n";
+      }
+  };
+
+The C<Callbacks> attribute of a database handle isn't copied to any statement
+handles it creates. So setting callbacks for a statement handle requires you to
+set the C<Callbacks> attribute on the statement handle yourself, as in the
+example above, or use the special C<ChildCallbacks> key described below.
+
+B<Special Keys in Callbacks Attribute>
+
+In addition to DBI handle method names, the C<Callbacks> hash reference
+supports three additional keys.
+
+The first is the C<ChildCallbacks> key. When a statement handle is created from
+a database handle the C<ChildCallbacks> key of the database handle's
+C<Callbacks> attribute, if any, becomes the new C<Callbacks> attribute of the
+statement handle.
+This allows you to define callbacks for all statement handles created from a
+database handle. For example, if you wanted to count how many times C<execute>
+was called in your application, you could write:
+
+  my $exec_count = 0;
+  my $dbh = DBI->connect( $dsn, $username, $auth, {
+      Callbacks => {
+          ChildCallbacks => {
+              execute => sub { $exec_count++; return; }
+          }
+      }
+  });
+
+  END {
+      print "The execute method was called $exec_count times\n";
+  }
+
+The other two special keys are C<connect_cached.new> and
+C<connect_cached.reused>. These keys define callbacks that are called when
+C<connect_cached()> is called, but allow different behaviors depending on
+whether a new handle is created or a handle is returned. The callback is
+invoked with these arguments: C<$dbh, $dsn, $user, $auth, $attr>.
+
+For example, some applications uses C<connect_cached()> to connect with
+C<AutoCommit> enabled and then disable C<AutoCommit> temporarily for
+transactions. If C<connect_cached()> is called during a transaction, perhaps in
+a utility method, then it might select the same cached handle and then force
+C<AutoCommit> on, forcing a commit of the transaction. See the L</connect_cached>
+documentation for one way to deal with that. Here we'll describe an alternative
+approach using a callback.
+
+Because the C<connect_cached.*> callbacks are invoked before connect_cached()
+has applied the connect attributes you can use a callback to edit the attributes
+that will be applied.  To prevent a cached handle from having its transactions
+committed before it's returned, you can eliminate the C<AutoCommit> attribute
+in a C<connect_cached.reused> callback, like so:
+
+  my $cb = {
+      ‘connect_cached.reused’ => sub { delete $_[4]->{AutoCommit} },
+  };
+
+  sub dbh {
+      my $self = shift;
+      DBI->connect_cached( $dsn, $username, $auth, {
+          PrintError => 0,
+          RaiseError => 1,
+          AutoCommit => 1,
+          Callbacks  => $cb,
+      });
+  }
+
+The upshot is that new database handles are created with C<AutoCommit>
+enabled, while cached database handles are left in whatever transaction state
+they happened to be in when retrieved from the cache.
+
+A more common application for callbacks is setting connection state only when a
+new connection is made (by connect() or connect_cached()). Adding a callback to
+the connected method makes this easy.
+This method is a no-op by default (unless you subclass the DBI and change it).
+The DBI calls it to indicate that a new connection has been made and the connection
+attributes have all been set.  You can
+give it a bit of added functionality by applying a callback to it. For
+example, to make sure that MySQL understands your application's ANSI-compliant
+SQL, set it up like so:
+
+  my $dbh = DBI->connect($dsn, $username, $auth, {
+      Callbacks => {
+          connected => sub {
+              shift->do(q{
+                  SET SESSION sql_mode='ansi,strict_trans_tables,no_auto_value_on_zero';
+              });
+              return;
+          },
+      }
+  });
+
+One significant limitation with callbacks is that there can only be one per
+method per handle. This means it's easy for one use of callbacks to interfere
+with, or typically simply overwrite, another use of callbacks. For this reason
+modules using callbacks should document the fact clearly so application authors
+can tell if use of callbacks by the module will clash with use of callbacks by
+the application.
+
+You might be able to work around this issue by taking a copy of the original
+callback and calling it within your own. For example:
+
+  my $prev_cb = $h->{Callbacks}{method_name};
+  $h->{Callbacks}{method_name} = sub {
+    if ($prev_cb) {
+        my @result = $prev_cb->(@_);
+	return @result if not $_; # $prev_cb vetoed call
+    }
+    ... your callback logic here ...
+  };
+
 =head3 C<private_your_module_name_*>
 
 The DBI provides a way to store extra information in a DBI handle as
@@ -4690,6 +4875,11 @@ according to the database/driver, for example: $table = '%FOO%';
 Note: The support for the selection criteria is driver specific. If the
 driver doesn't support one or more of them then you may get back more
 than you asked for and can do the filtering yourself.
+
+Note: If your driver does not support column_info an undef is
+returned.  This is distinct from asking for something which does not
+exist in a driver which supports column_info as a valid statement
+handle to an empty result-set will be returned in this case.
 
 If the arguments don't match any tables then you'll still get a statement
 handle, it'll just return no rows.
@@ -6435,7 +6625,7 @@ statement, like SELECT. Typically the attribute will be C<undef>
 in these situations.
 
 For drivers which support stored procedures and multiple result sets
-(see L</more_results>) these attributes relate to the I<current> result set.
+(see more_results) these attributes relate to the I<current> result set.
 
 See also L</finish> to learn more about the effect it
 may have on some attributes.
@@ -6997,13 +7187,22 @@ arrives and then to call alarm($seconds) to schedule an ALRM signal
 to be delivered $seconds in the future. For example:
 
   eval {
-    local $SIG{ALRM} = sub { die "TIMEOUT\n" };
-    alarm($seconds);
-    ... code to execute with timeout here ...
+    local $SIG{ALRM} = sub { die "TIMEOUT\n" }; # N.B. \n required
+    eval {
+      alarm($seconds);
+      ... code to execute with timeout here (which may die) ...
+    };
     alarm(0);  # cancel alarm (if code ran fast)
+    die "$@\n" if $@;
   };
-  alarm(0);    # cancel alarm (if eval failed)
   if ( $@ eq "TIMEOUT\n" ) { ... }
+  elsif ($@) { ... } # some other error
+
+The second (inner) eval is used to avoid the unlikey but possible
+chance that the "code to execute" dies and the alarm fires before it
+is cancelled. Without the inner eval, if this happened your program
+will die if you have no ALRM handler or a non-local alarm handler
+will be called.
 
 Unfortunately, as described above, this won't always work as expected,
 depending on your perl version and the underlying database code.
@@ -7019,25 +7218,32 @@ routine to gain low level access to how the signal handler is installed.
 
 The code would look something like this (for the DBD-Oracle connect()):
 
-   use POSIX ':signal_h';
+   use POSIX qw(:signal_h);
 
    my $mask = POSIX::SigSet->new( SIGALRM ); # signals to mask in the handler
    my $action = POSIX::SigAction->new(
-       sub { die "connect timeout" },        # the handler code ref
+       sub { die "connect timeout\n" },        # the handler code ref
        $mask,
        # not using (perl 5.8.2 and later) 'safe' switch or sa_flags
    );
    my $oldaction = POSIX::SigAction->new();
-   sigaction( 'ALRM', $action, $oldaction );
+   sigaction( SIGALRM, $action, $oldaction );
    my $dbh;
    eval {
-      alarm(5); # seconds before time out
-      $dbh = DBI->connect("dbi:Oracle:$dsn" ... );
+      eval {
+        alarm(5); # seconds before time out
+        $dbh = DBI->connect("dbi:Oracle:$dsn" ... );
+      };
       alarm(0); # cancel alarm (if connect worked fast)
+      die "$@\n" if $@; # connect died
    };
-   alarm(0);    # cancel alarm (if eval failed)
-   sigaction( 'ALRM', $oldaction );  # restore original signal handler
-   if ( $@ ) ....
+   sigaction( SIGALRM, $oldaction );  # restore original signal handler
+   if ( $@ ) {
+     if ($@ eq "connect timeout\n") {...}
+     else { # connect died }
+   }
+
+See previous example for the reasoning around the double eval.
 
 Similar techniques can be used for canceling statement execution.
 
@@ -7596,17 +7802,12 @@ standard:
  type_info         SQLGetTypeInfo    Page 239
  statistics_info   SQLStatistics
 
-For example, for ODBC information on SQLColumns you'd visit:
+To find documentation on the ODBC function you can use
+the MSDN search facility at:
 
-  http://msdn.microsoft.com/library/en-us/odbc/htm/odbcsqlcolumns.asp
+    http://msdn.microsoft.com/Search
 
-If that URL ceases to work then use the MSDN search facility at:
-
-  http://search.microsoft.com/us/dev/
-
-and search for C<SQLColumns returns> using the exact phrase option.
-The link you want will probably just be called C<SQLColumns> and will
-be part of the Data Access SDK.
+and search for something like C<"SQLColumns returns">.
 
 And for SQL/CLI standard information on SQLColumns you'd read page 124 of
 the (very large) SQL/CLI Working Draft available from:

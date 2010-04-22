@@ -28,7 +28,7 @@ require utf8;
 } unless defined &utf8::is_utf8;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 13658 $ =~ /(\d+)/o);
+$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 13911 $ =~ /(\d+)/o);
 
 $DBI::neat_maxlen ||= 400;
 
@@ -701,7 +701,7 @@ sub sql_type_cast {
         else {
             return -2;
         }
-    } or warn $@;
+    } or $^W && warn $@; # XXX warnings::warnif("numeric", $@) ?
 
     return $evalret if defined($evalret) && ($evalret == -2);
     $cast_ok = 0 unless $evalret;
