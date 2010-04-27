@@ -9,7 +9,7 @@
 #
 #  The original author is Jochen Wiedmann.
 #
-#  Copyright (C) 2009 by H.Merijn Brand & Jens Rehsack
+#  Copyright (C) 2009,2010 by H.Merijn Brand & Jens Rehsack
 #  Copyright (C) 2004 by Jeff Zucker
 #  Copyright (C) 1998 by Jochen Wiedmann
 #
@@ -123,6 +123,9 @@ sub file2table
 package DBD::File::dr;
 
 use strict;
+use Config;
+
+our $threadid = 0;       # holds private thread id of driver
 
 $DBD::File::dr::imp_data_size = 0;
 
@@ -163,6 +166,7 @@ sub connect ($$;$$$)
 	    f_schema	=> 1, # schema name
 	    f_tables	=> 1, # base directory
 	    f_lock	=> 1, # Table locking mode
+	    f_encoding	=> 1, # Encoding of the file
 	    };
         $this->{sql_valid_attrs} = {
 	    sql_handler           => 1, # Nano or S:S
@@ -170,7 +174,8 @@ sub connect ($$;$$$)
 	    sql_statement_version => 1, # S:S version
 	    };
 	}
-    $this->STORE (Active => 1);
+    $this->STORE (Active     => 1);
+    $this->STORE (p_threadid => $threadid);
     return set_versions ($this);
     } # connect
 
@@ -226,6 +231,12 @@ sub disconnect_all
 {
     } # disconnect_all
 
+sub CLONE
+{
+    $Config{usethreads} && $INC{"threads.pm"} and
+	$threadid = threads->tid ();
+    } # CLONE
+
 sub DESTROY
 {
     undef;
@@ -248,6 +259,10 @@ sub ping
 sub prepare ($$;@)
 {
     my ($dbh, $statement, @attribs) = @_;
+
+    my $ownerid = $dbh->FETCH ("p_threadid");
+    $ownerid == $DBD::File::dr::threadid or
+	croak "database handle is owned by thread $ownerid and this is $DBD::File::dr::threadid";
 
     # create a 'blank' sth
     my $sth = DBI::_new_sth ($dbh, {Statement => $statement});
@@ -283,6 +298,7 @@ sub prepare ($$;@)
 	    $sth->STORE ("f_stmt", $stmt);
 	    $sth->STORE ("f_params", []);
 	    $sth->STORE ("NUM_OF_PARAMS", scalar ($stmt->params ()));
+	    $sth->STORE ("p_threadid", $DBD::File::dr::threadid);
 	    }
 	}
     return $sth;
@@ -339,7 +355,7 @@ sub STORE ($$$)
     if ($attrib eq lc $attrib) {
 	# Driver private attributes are lower cased
 
-	# I'm not implementing this yet becuase other drivers may be
+	# I'm not implementing this yet because other drivers may be
 	# setting f_ and sql_ attrs I don't know about
 	# I'll investigate and publicize warnings to DBD authors
 	# then implement this
@@ -724,7 +740,15 @@ sub open_table ($$$$$)
 	    $safe_drop or croak "Cannot open $file: $!";
 	    }
 	}
-    $fh and binmode $fh;
+    if ($fh) {
+	if (my $enc = $data->{Database}{f_encoding}) {
+	    binmode $fh, ":encoding($enc)" or
+                croak "Failed to set encoding layer '$enc' on $file: $!";
+	    }
+	else {
+	    binmode $fh or croak "Failed to set binary mode on $file: $!";
+	    }
+	}
     if ($locking and $fh) {
 	my $lm = defined $data->{Database}{f_lock}
 		      && $data->{Database}{f_lock} =~ m/^[012]$/
@@ -958,6 +982,11 @@ Only exclusive locks will be used.
 =back
 
 But see L</"NOWN BUGS"> below.
+
+=item f_encoding
+
+With this attribute, you can set the encoding in which the file is opened.
+This is implemented using C<binmode $fh, ":encoding(<f_encoding>)">.
 
 =back
 
