@@ -2,11 +2,11 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2010-04-23 13:57:35 +0100 (Fri, 23 Apr 2010) $ $Revision: 13921 $)
+(As of $Date: 2010-04-29 18:35:57 +0100 (Thu, 29 Apr 2010) $ $Revision: 13936 $)
 
 =cut
 
-=head2 Changes in DBI 1.611 (svn r13931) 27th April 2010
+=head2 Changes in DBI 1.611 (svn r13935) 29th April 2010
 
   NOTE: minimum perl version is now 5.8.1 (as announced in DBI 1.607)
 
@@ -14,7 +14,7 @@ DBI::Changes - List of significant changes to the DBI
     thanks to Vernon Lyon.
   Fixed DBI->trace(0, *STDERR); (H.Merijn Brand)
     which tried to open a file named "*main::STDERR" in perl-5.10.x
-  Fixes in DBD::File and DBD::DBM for use under threads (Jens Rehsack)
+  Fixes in DBD::DBM for use under threads (Jens Rehsack)
 
   Changed "Issuing rollback() due to DESTROY without explicit disconnect"
     warning to not be issued if ReadOnly set for that dbh.
@@ -26,9 +26,6 @@ DBI::Changes - List of significant changes to the DBI
   Added DBI::sql_type_cast($value, $type, $flags) to cast a string value
     to an SQL type. e.g. SQL_INTEGER effectively does $value += 0;
     Has other options plus an internal interface for drivers.
-  Added support to DBD::Gofer for Basic HTTP Authentication
-    and GoferConfigVerbose config setting to Gofer mod_perl
-    thanks to Stuart Johnston.
 
   Documentation changes:
   Small fixes in the documentation of DBD::DBM (H.Merijn Brand)
