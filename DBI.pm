@@ -1,4 +1,4 @@
-# $Id: DBI.pm 13905 2010-04-15 12:49:48Z timbo $
+# $Id: DBI.pm 14075 2010-05-28 10:15:56Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2010  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.008_001;
 
 BEGIN {
-$DBI::VERSION = "1.611"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.612"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -121,8 +121,8 @@ Tim he's very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.611
-($Revision: 13905 $).
+This is the DBI specification that corresponds to the DBI version 1.612
+($Revision: 14075 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -1230,13 +1230,13 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
 
     # XXX DBI_PROFILE unless DBI::PurePerl because for some reason
     # it kills the t/zz_*_pp.t tests (they silently exit early)
-    if ($ENV{DBI_PROFILE} && !$DBI::PurePerl) {
+    if (($ENV{DBI_PROFILE} && !$DBI::PurePerl) || $shared_profile) {
 	# The profile object created here when the first driver is loaded
 	# is shared by all drivers so we end up with just one set of profile
 	# data and thus the 'total time in DBI' is really the true total.
 	if (!$shared_profile) {	# first time
-	    $h->{Profile} = $ENV{DBI_PROFILE};
-	    $shared_profile = $h->{Profile};
+	    $h->{Profile} = $ENV{DBI_PROFILE}; # write string
+	    $shared_profile = $h->{Profile};   # read and record object
 	}
 	else {
 	    $h->{Profile} = $shared_profile;
@@ -3365,7 +3365,7 @@ The parse_trace_flag() method was added in DBI 1.42.
   $hash_ref = $h->private_attribute_info();
 
 Returns a reference to a hash whose keys are the names of driver-private
-attributes available for the kind of handle (driver, database, statement)
+handle attributes available for the kind of handle (driver, database, statement)
 that the method was called on.
 
 For example, the return value when called with a DBD::Sybase $dbh could look like this:
@@ -7192,15 +7192,16 @@ to be delivered $seconds in the future. For example:
       alarm($seconds);
       ... code to execute with timeout here (which may die) ...
     };
+    # outer eval catches alarm that might fire JUST before this alarm(0)
     alarm(0);  # cancel alarm (if code ran fast)
-    die "$@\n" if $@;
+    die "$@" if $@;
   };
   if ( $@ eq "TIMEOUT\n" ) { ... }
   elsif ($@) { ... } # some other error
 
-The second (inner) eval is used to avoid the unlikey but possible
+The first (outer) eval is used to avoid the unlikey but possible
 chance that the "code to execute" dies and the alarm fires before it
-is cancelled. Without the inner eval, if this happened your program
+is cancelled. Without the outer eval, if this happened your program
 will die if you have no ALRM handler or a non-local alarm handler
 will be called.
 

@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 13612 2009-11-27 11:34:26Z mjevans $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14023 2010-05-24 12:06:12Z REHSACK $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 13612 2009-11-27 11:34:26Z mjevans $
+# $Id: DBD.pm 14023 2010-05-24 12:06:12Z REHSACK $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -3320,40 +3320,80 @@ sub dbd_edit_mm_attribs {
 	if @_;
     _inst_checks();
 
+    # what can be done
+    my %test_variants = (
+	p => {	name => "DBI::PurePerl",
+		match => qr/^\d/,
+		add => [ '$ENV{DBI_PUREPERL} = 2' ],
+	},
+	g => {	name => "DBD::Gofer",
+		match => qr/^\d/,
+		add => [ q{$ENV{DBI_AUTOPROXY} = 'dbi:Gofer:transport=null;policy=pedantic'} ],
+	},
+	n => {	name => "DBI::SQL::Nano",
+		match => qr/^(?:49dbd_file|5\ddbm_\w+|85gofer)\.t$/,
+		add => [ q{$ENV{DBI_SQL_NANO} = 1} ],
+	},
+    #   mx => {	name => "DBD::Multiplex",
+    #           add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Multiplex:';} ],
+    #   }
+    #   px => {	name => "DBD::Proxy",
+    #		need mechanism for starting/stopping the proxy server
+    #		add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Proxy:XXX';} ],
+    #   }
+    );
+
     # decide what needs doing
+    $dbd_attr->{create_pp_tests} or delete $test_variants{p};
+    $dbd_attr->{create_nano_tests} or delete $test_variants{n};
+    $dbd_attr->{create_gap_tests} or delete $test_variants{g};
+
+    # expand for all combinations
+    my @all_keys = my @tv_keys = sort keys %test_variants;
+    while( @tv_keys ) {
+	my $cur_key = shift @tv_keys;
+	last if( 1 < length $cur_key );
+	my @new_keys;
+	foreach my $remain (@tv_keys) {
+	    push @new_keys, $cur_key . $remain unless $remain =~ /$cur_key/;
+	}
+	push @tv_keys, @new_keys;
+	push @all_keys, @new_keys;
+    }
+
+    my %uniq_keys;
+    foreach my $key (@all_keys) {
+	@tv_keys = sort split //, $key;
+	my $ordered = join( '', @tv_keys );
+	$uniq_keys{$ordered} = 1;
+    }
+    @all_keys = sort { length $a <=> length $b or $a cmp $b } keys %uniq_keys;
 
     # do whatever needs doing
-    if ($dbd_attr->{create_pp_tests}) {
+    if( keys %test_variants ) {
 	# XXX need to convert this to work within the generated Makefile
 	# so 'make' creates them and 'make clean' deletes them
-	my %test_variants = (
-	    p => {	name => "DBI::PurePerl",
-			add => [ '$ENV{DBI_PUREPERL} = 2' ],
-	    },
-	    g => {	name => "DBD::Gofer",
-			add => [ q{$ENV{DBI_AUTOPROXY} = 'dbi:Gofer:transport=null;policy=pedantic'} ],
-	    },
-	    xgp => {	name => "PurePerl & Gofer",
-			add => [ q{$ENV{DBI_PUREPERL} = 2; $ENV{DBI_AUTOPROXY} = 'dbi:Gofer:transport=null;policy=pedantic'} ],
-	    },
-	#   mx => {	name => "DBD::Multiplex",
-	#               add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Multiplex:';} ],
-	#   }
-	#   px => {	name => "DBD::Proxy",
-	#		need mechanism for starting/stopping the proxy server
-	#		add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Proxy:XXX';} ],
-	#   }
-	);
-
 	opendir DIR, 't' or die "Can't read 't' directory: $!";
 	my @tests = grep { /\.t$/ } readdir DIR;
 	closedir DIR;
 
-        while ( my ($v_type, $v_info) = each %test_variants ) {
-            printf "Creating test wrappers for $v_info->{name}:\n";
+        foreach my $test_combo (@all_keys) {
+	    @tv_keys = split //, $test_combo;
+	    my @test_names = map { $test_variants{$_}->{name} } @tv_keys;
+            printf "Creating test wrappers for " . join( " + ", @test_names ) . ":\n";
+	    my @test_matches = map { $test_variants{$_}->{match} } @tv_keys;
+	    my @test_adds;
+	    foreach my $test_add ( map { $test_variants{$_}->{add} } @tv_keys) {
+		push @test_adds, @$test_add;
+	    }
+	    my $v_type = $test_combo;
+	    $v_type = 'x' . $v_type if length( $v_type ) > 1;
 
+	TEST:
             foreach my $test (sort @tests) {
-                next if $test !~ /^\d/;
+		foreach my $match (@test_matches) {
+		    next TEST if $test !~ $match;
+		}
                 my $usethr = ($test =~ /(\d+|\b)thr/ && $] >= 5.008 && $Config{useithreads});
                 my $v_test = "t/zv${v_type}_$test";
                 my $v_perl = ($test =~ /taint/) ? "perl -wT" : "perl -w";
@@ -3361,7 +3401,7 @@ sub dbd_edit_mm_attribs {
 		open PPT, ">$v_test" or warn "Can't create $v_test: $!";
 		print PPT "#!$v_perl\n";
 		print PPT "use threads;\n" if $usethr;
-		print PPT "$_;\n" foreach @{$v_info->{add}};
+		print PPT "$_;\n" foreach @test_adds;
 		print PPT "require './t/$test'; # or warn \$!;\n";
 		close PPT or warn "Error writing $v_test: $!";
 	    }

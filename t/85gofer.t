@@ -22,7 +22,8 @@ if (my $ap = $ENV{DBI_AUTOPROXY}) { # limit the insanity
 
 # 0=SQL::Statement if avail, 1=DBI::SQL::Nano
 # next line forces use of Nano rather than default behaviour
-$ENV{DBI_SQL_NANO}=1;
+# $ENV{DBI_SQL_NANO}=1;
+# This is done in zvn_50dbm.t
 
 GetOptions(
     'c|count=i' => \(my $opt_count = (-t STDOUT ? 100 : 0)),
@@ -154,6 +155,7 @@ sub run_tests {
         ? $driver_dsn
         : $remote_driver_dsn;
 
+    END { unlink glob "fruit.???" }
     ok $dbh->do("DROP TABLE IF EXISTS fruit");
     ok $dbh->do("CREATE TABLE fruit (dKey INT, dVal VARCHAR(10))");
     die "$test_run_tag aborted\n" if $DBI::err;
