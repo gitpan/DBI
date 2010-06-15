@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 11769 2008-09-12 13:18:59Z timbo $
+#   $Id: Execute.pm 14120 2010-06-07 19:52:19Z hmbrand $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -18,7 +18,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 11769 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 14120 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;
@@ -852,7 +852,7 @@ Negative values for R have special meaning, see below.
 
 =item err=N
 
-Sets the current failure err vaue to N (instead of the DBI's default 'standard
+Sets the current failure err value to N (instead of the DBI's default 'standard
 err value' of 2000000000). This is useful when you want to simulate a
 specific error.
 

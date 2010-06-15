@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 14039 2010-05-25 14:17:45Z REHSACK $
+# $Id: Makefile.PL 14129 2010-06-10 11:18:48Z REHSACK $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -99,11 +99,12 @@ my %opts = (
 	    homepage    => 'http://dbi.perl.org/',
 	},
 	recommends => {
-	    'RPC::PlServer' => 0.2001,
-	    'Net::Daemon' => 0,
+	    'RPC::PlServer'  => 0.2001,
+	    'Net::Daemon'    => 0,
 	    'SQL::Statement' => 1.28,
-	    'MLDBM' => 0,
-	    'DB_File' => 0,
+	    'Clone'          => 0.31,
+	    'MLDBM'          => 0,
+	    'DB_File'        => 0,
 	},
     },
     CONFLICTS => {
@@ -170,7 +171,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 14039 2010-05-25 14:17:45Z REHSACK $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 14129 2010-06-10 11:18:48Z REHSACK $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 

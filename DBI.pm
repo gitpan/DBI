@@ -1,4 +1,4 @@
-# $Id: DBI.pm 14075 2010-05-28 10:15:56Z timbo $
+# $Id: DBI.pm 14120 2010-06-07 19:52:19Z hmbrand $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2010  Tim Bunce  Ireland
@@ -122,7 +122,7 @@ Tim he's very likely to just forward it to the mailing list.
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.612
-($Revision: 14075 $).
+($Revision: 14120 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -342,7 +342,9 @@ my $dbd_prefix_registry = {
   pg_      => { class => 'DBD::Pg',		},
   pgpp_    => { class => 'DBD::PgPP',		},
   plb_     => { class => 'DBD::Plibdata',	},
+  po_      => { class => 'DBD::PO',		},
   proxy_   => { class => 'DBD::Proxy',		},
+  ram_     => { class => 'DBD::RAM',		},
   rdb_     => { class => 'DBD::RDB',		},
   sapdb_   => { class => 'DBD::SAP_DB',		},
   solid_   => { class => 'DBD::Solid',		},
@@ -350,6 +352,7 @@ my $dbd_prefix_registry = {
   sql_     => { class => 'SQL::Statement',	},
   sqlite_  => { class => 'DBD::SQLite',  	},
   syb_     => { class => 'DBD::Sybase',		},
+  sys_     => { class => 'DBD::Sys',		},
   tdat_    => { class => 'DBD::Teradata',	},
   tmpl_    => { class => 'DBD::Template',	},
   tmplss_  => { class => 'DBD::TemplateSS',	},
@@ -362,6 +365,10 @@ my $dbd_prefix_registry = {
   xl_      => { class => 'DBD::Excel',		},
   yaswi_   => { class => 'DBD::Yaswi',		},
 };
+
+my %dbd_class_registry = map { $dbd_prefix_registry->{$_}->{class} => { prefix => $_ } }
+			     grep { exists $dbd_prefix_registry->{$_}->{class} }
+			     keys %{$dbd_prefix_registry};
 
 sub dump_dbd_registry {
     require Data::Dumper;
@@ -968,6 +975,11 @@ sub init_rootclass {	# deprecated
 
 *internal = \&DBD::Switch::dr::driver;
 
+sub driver_prefix {
+    my ($class, $driver) = @_;
+    return $dbd_class_registry{$driver}->{prefix} if exists $dbd_class_registry{$driver};
+    return;
+}
 
 sub available_drivers {
     my($quiet) = @_;
@@ -1089,7 +1101,7 @@ sub data_diff {
 
 sub data_string_diff {
     # Compares 'logical' characters, not bytes, so a latin1 string and an
-    # an equivalent unicode string will compare as equal even though their
+    # an equivalent Unicode string will compare as equal even though their
     # byte encodings are different.
     my ($a, $b) = @_;
     unless (defined $a and defined $b) {             # one undef
@@ -2255,7 +2267,7 @@ Perl supports binary data in Perl strings, and the DBI will pass binary
 data to and from the driver without change. It is up to the driver
 implementors to decide how they wish to handle such binary data.
 
-Perl supports two kinds of strings: unicode (utf8 internally) and non-unicode
+Perl supports two kinds of strings: Unicode (utf8 internally) and non-Unicode
 (defaults to iso-8859-1 if forced to assume an encoding).  Drivers should
 accept both kinds of strings and, if required, convert them to the character
 set of the database being used. Similarly, when fetching from the database
@@ -6381,28 +6393,27 @@ earlier ones.
   $rc  = $sth->finish;
 
 Indicate that no more data will be fetched from this statement handle
-before it is either executed again or destroyed.  The C<finish> method
-is rarely needed, and frequently overused, but can sometimes be
-helpful in a few very specific situations to allow the server to free
-up resources (such as sort buffers).
+before it is either executed again or destroyed.  You almost certainly
+do I<not> need to call this method.
 
-When all the data has been fetched from a C<SELECT> statement, the
-driver should automatically call C<finish> for you. So you should
-I<not> normally need to call it explicitly I<except> when you know
-that you've not fetched all the data from a statement handle.
-The most common example is when you only want to fetch one row,
-but in that case the C<selectrow_*> methods are usually better anyway.
-Adding calls to C<finish> after each fetch loop is a common mistake,
+Adding calls to C<finish> after loop that fetches all rows is a common mistake,
 don't do it, it can mask genuine problems like uncaught fetch errors.
+
+When all the data has been fetched from a C<SELECT> statement, the driver will
+automatically call C<finish> for you. So you should I<not> call it explicitly
+I<except> when you know that you've not fetched all the data from a statement
+handle I<and> the handle won't be destroyed soon.
+
+The most common example is when you only want to fetch just one row,
+but in that case the C<selectrow_*> methods are usually better anyway.
 
 Consider a query like:
 
-  SELECT foo FROM table WHERE bar=? ORDER BY foo
+  SELECT foo FROM table WHERE bar=? ORDER BY baz
 
-where you want to select just the first (smallest) "foo" value from a
-very large table. When executed, the database server will have to use
+on a very large table. When executed, the database server will have to use
 temporary buffer space to store the sorted rows. If, after executing
-the handle and selecting one row, the handle won't be re-executed for
+the handle and selecting just a few rows, the handle won't be re-executed for
 some time and won't be destroyed, the C<finish> method can be used to tell
 the server that the buffer space can be freed.
 
@@ -6807,7 +6818,7 @@ and values).
 
 It is possible that the values in the hash returned by C<ParamTypes>
 are not exactly the same as those passed to bind_param() or execute().
-Param attributes specified using the abreviated form, like this:
+Param attributes specified using the abbreviated form, like this:
 
     $sth->bind_param(1, SQL_INTEGER);
 
@@ -7199,7 +7210,7 @@ to be delivered $seconds in the future. For example:
   if ( $@ eq "TIMEOUT\n" ) { ... }
   elsif ($@) { ... } # some other error
 
-The first (outer) eval is used to avoid the unlikey but possible
+The first (outer) eval is used to avoid the unlikely but possible
 chance that the "code to execute" dies and the alarm fires before it
 is cancelled. Without the outer eval, if this happened your program
 will die if you have no ALRM handler or a non-local alarm handler

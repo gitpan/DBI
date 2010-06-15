@@ -25,18 +25,26 @@ use strict;
 
 use DBI ();
 require DBI::SQL::Nano;
-require File::Spec;
 
 package DBD::File;
 
 use strict;
 
 use Carp;
-use vars qw( @ISA $VERSION $drh $valid_attrs );
+use vars qw( @ISA $VERSION $drh );
 
 $VERSION = "0.39";
 
-$drh = undef;		# holds driver handle(s) once initialised
+$drh = undef;		# holds driver handle(s) once initialized
+
+DBI->setup_driver ("DBD::File"); # only needed once but harmless to repeat
+
+my %accessors = (
+    versions   => "get_versions",
+    get_meta   => "get_file_meta",
+    set_meta   => "set_file_meta",
+    clear_meta => "clear_file_meta",
+    );
 
 sub driver ($;$)
 {
@@ -51,7 +59,6 @@ sub driver ($;$)
     # their own caching, so caching here just provides extra safety.
     $drh->{$class} and return $drh->{$class};
 
-    DBI->setup_driver ("DBD::File"); # only needed once but harmless to repeat
     $attr ||= {};
     {	no strict "refs";
 	unless ($attr->{Attribution}) {
@@ -66,6 +73,25 @@ sub driver ($;$)
 
     $drh->{$class} = DBI::_new_drh ($class . "::dr", $attr);
     $drh->{$class}->STORE (ShowErrorStatement => 1);
+
+    my $prefix = DBI->driver_prefix ($class);
+    my $dbclass = $class . "::db";
+    while (my ($accessor, $funcname) = each %accessors) {
+	my $method = $prefix . $accessor;
+	$dbclass->can ($method) and next;
+	my $inject = sprintf <<'EOI', $dbclass, $method, $dbclass, $funcname;
+sub %s::%s
+{
+    my $func = %s->can (q{%s});
+    goto &$func;
+    }
+EOI
+	eval $inject;
+	$dbclass->install_method ($method);
+	}
+
+    # XXX inject DBD::XXX::Statement unless exists
+
     return $drh->{$class};
     } # driver
 
@@ -94,10 +120,10 @@ sub connect ($$;$$$)
 	});
 
     if ($this) {
-	# must be done first, because setting flags implicitely calls $dbdname::st->STORE
-	$this->func ("init_valid_attributes");
+	# must be done first, because setting flags implicitly calls $dbdname::db->STORE
+	$this->func ("init_default_attributes");
+
 	my ($var, $val);
-	$this->{f_dir} = File::Spec->curdir ();
 	while (length $dbname) {
 	    if ($dbname =~ s/^((?:[^\\;]|\\.)*?);//s) {
 		$var    = $1;
@@ -111,10 +137,17 @@ sub connect ($$;$$$)
 		($val = $2) =~ s/\\(.)/$1/g;
 		$this->{$var} = $val;
 		}
+	    elsif ($var =~ m/^(.+?)=>(.*)/s) {
+		$var = $1;
+		($val = $2) =~ s/\\(.)/$1/g;
+		my $ref = eval $val;
+		$this->$var ($ref);
+		}
 	    }
+
+	$this->STORE (Active => 1);
 	}
-    $this->STORE (Active => 1);
-    $this->func ("set_versions");
+
     return $this;
     } # connect
 
@@ -167,6 +200,17 @@ package DBD::File::db;
 
 use strict;
 use Carp;
+require File::Spec;
+require Cwd;
+use Scalar::Util qw(refaddr); # in CORE since 5.7.3
+
+if (eval { require Clone; }) {
+    Clone->import ("clone");
+    }
+else {
+    require Storable; # in CORE since 5.7.3
+    *clone = \&Storable::dclone;
+    }
 
 $DBD::File::db::imp_data_size = 0;
 
@@ -193,8 +237,8 @@ sub prepare ($$;@)
 
 	if ( $dbh->{sql_handler} eq "SQL::Statement" and
 	     $dbh->{sql_statement_version} > 1) {
-	    my $parser = $dbh->{csv_sql_parser_object};
-	    $parser ||= eval { $dbh->func ("cache_sql_parser_object") };
+	    my $parser = $dbh->{sql_parser_object};
+	    $parser ||= eval { $dbh->func ("sql_parser_object") };
 	    if ($@) {
 		$stmt = eval { $class->new ($statement) };
 		}
@@ -220,41 +264,114 @@ sub prepare ($$;@)
 
 sub set_versions
 {
-    my $this = shift;
-    $this->{f_version} = $DBD::File::VERSION;
+    my $dbh = shift;
+    $dbh->{f_version} = $DBD::File::VERSION;
     for (qw( nano_version statement_version )) {
 	# strip development release version part
-	($this->{"sql_$_"} = $DBI::SQL::Nano::versions->{$_} || "") =~ s/_[0-9]+$//;
+	($dbh->{"sql_$_"} = $DBI::SQL::Nano::versions->{$_} || "") =~ s/_[0-9]+$//;
 	}
-    $this->{sql_handler} = $this->{sql_statement_version}
+    $dbh->{sql_handler} = $dbh->{sql_statement_version}
 	? "SQL::Statement"
 	: "DBI::SQL::Nano";
-    return $this;
+
+    return $dbh;
     } # set_versions
 
 sub init_valid_attributes
 {
-    my $sth = shift;
+    my $dbh = shift;
 
-    $sth->{f_valid_attrs} = {
-	f_version  => 1, # DBD::File version
-	f_dir      => 1, # base directory
-	f_ext      => 1, # file extension
-	f_schema   => 1, # schema name
-	f_tables   => 1, # base directory
-	f_lock     => 1, # Table locking mode
-	f_encoding => 1, # Encoding of the file
+    $dbh->{f_valid_attrs} = {
+	f_version        => 1, # DBD::File version
+	f_dir            => 1, # base directory
+	f_ext            => 1, # file extension
+	f_schema         => 1, # schema name
+	f_meta           => 1, # meta data for tables
+	f_meta_map       => 1, # mapping table for identifier case
+	f_lock           => 1, # Table locking mode
+	f_lockfile       => 1, # Table lockfile extension
+	f_encoding       => 1, # Encoding of the file
+	f_valid_attrs    => 1, # File valid attributes
+	f_readonly_attrs => 1, # File readonly attributes
 	};
-    $sth->{sql_valid_attrs} = {
-	sql_handler           => 1, # Nano or S:S
-	sql_nano_version      => 1, # Nano version
-	sql_statement_version => 1, # S:S version
+    $dbh->{sql_valid_attrs} = {
+	sql_handler                => 1, # Nano or S:S
+	sql_nano_version           => 1, # Nano version
+	sql_statement_version      => 1, # S:S version
+	sql_flags                  => 1, # flags for SQL::Parser
+	sql_quoted_identifier_case => 1, # case for quoted identifiers
+	sql_identifier_case        => 1, # case for non-quoted identifiers
+	sql_parser_object          => 1, # SQL::Parser instance
+	sql_valid_attrs            => 1, # SQL valid attributes
+	sql_readonly_attrs         => 1, # SQL readonly attributes
+	};
+    $dbh->{f_readonly_attrs} = {
+	f_version        => 1, # DBD::File version
+	f_valid_attrs    => 1, # File valid attributes
+	f_readonly_attrs => 1, # File readonly attributes
+	};
+    $dbh->{sql_readonly_attrs} = {
+	sql_handler                => 1, # Nano or S:S
+	sql_nano_version           => 1, # Nano version
+	sql_statement_version      => 1, # S:S version
+	sql_quoted_identifier_case => 1, # case for quoted identifiers
+	sql_parser_object          => 1, # SQL::Parser instance
+	sql_valid_attrs            => 1, # SQL valid attributes
+	sql_readonly_attrs         => 1, # SQL readonly attributes
 	};
 
-    return $sth;
+    return $dbh;
     } # init_valid_attributes
 
-sub cache_sql_parser_object
+sub init_default_attributes
+{
+    my $dbh = shift;
+
+    # must be done first, because setting flags implicitly calls $dbdname::db->STORE
+    $dbh->func ("init_valid_attributes");
+
+    $dbh->func ("set_versions");
+
+    # f_ext should not be initialized
+    # f_map is deprecated (but might return)
+    $dbh->{f_dir}      = Cwd::abs_path (File::Spec->curdir ());
+    $dbh->{f_meta}     = {};
+    $dbh->{f_meta_map} = {}; # choose new name because it contains other keys
+
+    $dbh->{sql_identifier_case}        = 2; # SQL_IC_LOWER
+    $dbh->{sql_quoted_identifier_case} = 3; # SQL_IC_SENSITIVE
+
+    # complete derived attributes, if required
+    (my $drv_class = $dbh->{ImplementorClass}) =~ s/::db$//;
+    my $drv_prefix = DBI->driver_prefix ($drv_class);
+    my $valid_attrs = $drv_prefix . "valid_attrs";
+    my $ro_attrs = $drv_prefix . "readonly_attrs";
+
+    my @comp_attrs = qw(valid_attrs version readonly_attrs);
+    if (exists $dbh->{$drv_prefix . "meta"}) {
+	my $attr = $dbh->{$drv_prefix . "meta"};
+	defined $attr and defined $dbh->{$valid_attrs} and !defined $dbh->{$valid_attrs}{$attr} and
+	    $dbh->{$valid_attrs}{$attr} = 1;
+
+	my %h;
+	tie %h, "DBD::File::TieTables", $dbh;
+	$dbh->{$attr} = \%h;
+
+        push @comp_attrs, "meta";
+	}
+
+    foreach my $comp_attr (@comp_attrs) {
+	my $attr = $drv_prefix . $comp_attr;
+	defined $dbh->{$valid_attrs} and !defined $dbh->{$valid_attrs}{$attr} and
+	    $dbh->{$valid_attrs}{$attr} = 1;
+	defined $dbh->{$ro_attrs} and !defined $dbh->{$ro_attrs}{$attr} and
+	    $dbh->{$ro_attrs}{$attr} = 1;
+	}
+
+    return $dbh;
+    } # init_default_attributes
+
+sub sql_parser_object
 {
     my $dbh    = shift;
     my $parser = {
@@ -265,13 +382,14 @@ sub cache_sql_parser_object
     my $sql_flags = $dbh->FETCH ("sql_flags") || {};
     %$parser = (%$parser, %$sql_flags);
     $parser = SQL::Parser->new ($parser->{dialect}, $parser);
-    $dbh->{csv_sql_parser_object} = $parser;
+    $dbh->{sql_parser_object} = $parser;
     return $parser;
     } # cache_sql_parser_object
 
 sub disconnect ($)
 {
     $_[0]->STORE (Active => 0);
+    %{$_[0]->{f_meta}} = ();
     return 1;
     } # disconnect
 
@@ -284,9 +402,28 @@ sub FETCH ($$)
     if ($attrib eq (lc $attrib)) {
 	# Driver private attributes are lower cased
 
-	# Error-check for valid attributes
+	# XXX Error-check for valid attributes
 	# not implemented yet, see STORE
 	#
+	# XXX return cloned value when readonly attr
+	# and not scalar type
+	# use: *clone = $haveClone ? \&Clone::clone : \&Storable::dclone;
+	#
+	my $attr_prefix;
+	$attrib =~ m/^([a-z]+_)/ and $attr_prefix = $1;
+	unless ($attr_prefix) {
+	    (my $drv_class = $dbh->{ImplementorClass}) =~ s/::db$//;
+	    $attr_prefix = DBI->driver_prefix ($drv_class);
+	    $attrib = $attr_prefix . $attrib;
+	    }
+	my $valid_attrs = $attr_prefix . "valid_attrs";
+	my $ro_attrs = $attr_prefix . "readonly_attrs";
+	exists $dbh->{$valid_attrs} and ($dbh->{$valid_attrs}{$attrib} or
+	   return $dbh->set_err ($DBI::stderr, "Invalid attribute '$attrib'"));
+	exists $dbh->{$ro_attrs} and $dbh->{$ro_attrs}{$attrib} and
+	    defined $dbh->{$attrib} and refaddr ($dbh->{$attrib}) and
+	    return clone ($dbh->{$attrib});
+
 	return $dbh->{$attrib};
 	}
     # else pass up to DBI to handle
@@ -314,29 +451,218 @@ sub STORE ($$$)
 	# not implemented yet
 	# my $class = $dbh->FETCH ("ImplementorClass");
 	#
-	# !$dbh->{f_valid_attrs}{$attrib} && !$dbh->{sql_valid_attrs}{$attrib} and
-	#    return $dbh->set_err ($DBI::stderr, "Invalid attribute '$attrib'");
+	my $attr_prefix;
+	$attrib =~ m/^([a-z]+_)/ and $attr_prefix = $1;
+	unless ($attr_prefix) {
+	    (my $drv_class = $dbh->{ImplementorClass}) =~ s/::db$//;
+	    $attr_prefix = DBI->driver_prefix ($drv_class);
+	    $attrib = $attr_prefix . $attrib;
+	    }
+	my $valid_attrs = $attr_prefix . "valid_attrs";
+	my $ro_attrs = $attr_prefix . "readonly_attrs";
+	exists $dbh->{$valid_attrs} and ($dbh->{$valid_attrs}{$attrib} or
+	   return $dbh->set_err ($DBI::stderr, "Invalid attribute '$attrib'"));
+	exists $dbh->{$ro_attrs} and $dbh->{$ro_attrs}{$attrib} and defined $dbh->{$attrib} and
+	   return $dbh->set_err ($DBI::stderr, "attribute '$attrib' is readonly and must not be modified");
 	#  $dbh->{$attrib} = $value;
 
 	if ($attrib eq "f_dir") {
 	    -d $value or
 		return $dbh->set_err ($DBI::stderr, "No such directory '$value'");
+	    File::Spec->file_name_is_absolute ($value) or
+	        $value = Cwd::abs_path ($value);
 	    }
+
 	if ($attrib eq "f_ext") {
 	    $value eq "" || $value =~ m{^\.\w+(?:/[rR]*)?$} or
 		carp "'$value' doesn't look like a valid file extension attribute\n";
 	    }
+
+	if (    $attrib eq "sql_identifier_case" ||
+	        $attrib eq "sql_quoted_identifier_case"
+	    and
+		$value < 1 || $value > 4) {
+	    croak "attribute '$attrib' must have a value from 1 .. 4 (SQL_IC_UPPER .. SQL_IC_MIXED)";
+	    # XXX correctly a remap of all entries in f_meta/f_meta_map is required here
+	    }
+
+        # if (($attrib =~ m/^f_/   && $dbh->{f_readonly_attrs}{$attrib} or
+        #      $attrib =~ m/^sql_/ && $dbh->{sql_readonly_attrs}{$attrib}) and
+	#      defined $dbh->{$attrib}) {
+	#     croak "attribute '$attrib' is readonly and must not be modified";
+	#     }
+
 	$dbh->{$attrib} = $value;
 	return 1;
 	}
+
     return $dbh->SUPER::STORE ($attrib, $value);
     } # STORE
+
+sub get_versions
+{
+    my ($dbh, $table) = @_;
+    my %vsn = (
+	OS		=> "$^O ($Config::Config{osvers})",
+	Perl		=> "$] ($Config::Config{archname})",
+	DBI		=> $DBI::VERSION,
+	);
+    my %vmp;
+
+    my $dbd_file_verinfo = join " ",
+	$dbh->{f_version}, "using", $dbh->{sql_handler},
+	$dbh->{sql_handler} eq "SQL::Statement"
+	    ? $dbh->{sql_statement_version}
+	    : $dbh->{sql_nano_version};
+
+    (my $drv_class = $dbh->{ImplementorClass}) =~ s/::db$//;
+    my $drv_prefix = DBI->driver_prefix ($drv_class);
+    my $ddgv = $dbh->{ImplementorClass}->can( "get_" . $drv_prefix . "versions" );
+    if ($ddgv) {
+	$vsn{"DBD::File"} = $dbd_file_verinfo;
+	$vmp{"DBD::File"} = "  DBD::File";
+	$vsn{$drv_class}  = &$ddgv ($dbh, $table);
+	}
+    else {
+	$vsn{"DBD::File"} = $dbd_file_verinfo;
+	}
+
+    $DBI::PurePerl and $vsn{"DBI::PurePerl"} = $DBI::PurePerl::VERSION;
+
+    my @versions = map { sprintf "%-16s %s", $vmp{$_} || $_, $vsn{$_} }
+		   sort
+		   {
+		       $a->isa ($b) and return -1;
+		       $b->isa ($a) and return 1;
+		       return $a cmp $b;
+		       } keys %vsn;
+
+    return wantarray ? @versions : join "\n", @versions;
+    } # get_versions
+
+sub get_single_table_meta
+{
+    my ($dbh, $table, $attr) = @_;
+    my $meta;
+
+    $table eq "." and
+	return $dbh->FETCH ($attr);
+
+    my $class = $dbh->FETCH ("ImplementorClass");
+    $class =~ s/::db$/::Table/;
+    (undef, $meta) = $class->get_table_meta ($dbh, $table, 1);
+    $meta or croak "No such table '$table'";
+
+    # prevent creation of undef attributes
+    return $class->get_table_meta_attr ($meta, $attr);
+    } # get_single_table_meta
+
+sub get_file_meta
+{
+    my ($dbh, $table, $attr) = @_;
+
+    my $gstm = $dbh->{ImplementorClass}->can ("get_single_table_meta");
+
+    $table eq "*" and
+	$table = [ ".", keys %{$dbh->{f_meta}} ];
+    $table eq "+" and
+	$table = [ grep { m/^[_A-Za-z0-9]+$/ } keys %{$dbh->{f_meta}} ];
+    ref ($table) eq "Regexp" and
+	$table = [ grep { $_ =~ $table } keys %{$dbh->{f_meta}} ];
+
+    unless (ref ($table) or ref ($attr)) {
+	return &$gstm ($dbh, $table, $attr);
+	}
+    else {
+	ref $table or $table = [ $table ];
+	ref $attr or $attr = [ $attr ];
+	"ARRAY" eq ref $table or
+	    croak "Invalid argument for \$table - SCALAR, Regexp or ARRAY expected but got " . ref $table;
+	"ARRAY" eq ref $attr or
+	    croak "Invalid argument for \$attr - SCALAR or ARRAY expected but got " . ref $attr;
+
+	my %results;
+	foreach my $tname (@{$table}) {
+	    my %tattrs;
+	    foreach my $aname (@{$attr}) {
+		$tattrs{$aname} = &$gstm ($dbh, $tname, $aname);
+		}
+		$results{$tname} = \%tattrs;
+	    }
+
+	return \%results;
+	}
+    } # get_file_meta
+
+sub set_single_table_meta
+{
+    my ($dbh, $table, $attr, $value) = @_;
+    my $meta;
+
+    $table eq "." and
+	return $dbh->STORE ($attr, $value);
+
+    my $class = $dbh->FETCH ("ImplementorClass");
+    $class =~ s/::db$/::Table/;
+    (undef, $meta) = $class->get_table_meta ($dbh, $table, 1);
+    $meta or croak "No such table '$table'";
+    $class->set_table_meta_attr ($meta, $attr, $value);
+
+    return $dbh;
+    } # set_single_table_meta
+
+sub set_file_meta
+{
+    my ($dbh, $table, $attr, $value) = @_;
+
+    my $sstm = $dbh->{ImplementorClass}->can ("set_single_table_meta");
+
+    $table eq "*" and
+	$table = [ ".", keys %{$dbh->{f_meta}} ];
+    $table eq "+" and
+	$table = [ grep { m/^[_A-Za-z0-9]+$/ } keys %{$dbh->{f_meta}} ];
+    ref ($table) eq "Regexp" and
+	$table = [ grep { $_ =~ $table } keys %{$dbh->{f_meta}} ];
+
+    unless (ref ($table) or ref ($attr)) {
+	return &$sstm ($dbh, $table, $attr, $value);
+	}
+    else {
+	ref $table or $table = [ $table ];
+	ref $attr or $attr = { $attr => $value };
+	"ARRAY" eq ref $table or
+	    croak "Invalid argument for \$table - SCALAR, Regexp or ARRAY expected but got " . ref $table;
+	"HASH" eq ref $attr or
+	    croak "Invalid argument for \$attr - SCALAR or HASH expected but got " . ref $attr;
+
+	foreach my $tname (@{$table}) {
+	    my %tattrs;
+	    while (my ($aname, $aval) = each %$attr) {
+		&$sstm ($dbh, $tname, $aname, $aval);
+		}
+	    }
+
+	return $dbh;
+	}
+    } # set_file_meta
+
+sub clear_file_meta
+{
+    my ($dbh, $table) = @_;
+
+    my $class = $dbh->FETCH ("ImplementorClass");
+    $class =~ s/::db$/::Table/;
+    my (undef, $meta) = $class->get_table_meta ($dbh, $table, 1);
+    $meta and %{$meta} = ();
+
+    return;
+    } # clear_file_meta
 
 sub DESTROY ($)
 {
     my $dbh = shift;
     $dbh->SUPER::FETCH ("Active") and $dbh->disconnect ;
-    undef $dbh->{csv_sql_parser_object};
+    undef $dbh->{sql_parser_object};
     } # DESTROY
 
 sub type_info_all ($)
@@ -401,10 +727,12 @@ sub type_info_all ($)
 	    ? defined $dbh->{f_schema} && $dbh->{f_schema} ne ""
 		? $dbh->{f_schema} : undef
 	    : eval { getpwuid ((stat $dir)[4]) }; # XXX Win32::pwent
+	my %seen;
 	while (defined ($file = readdir ($dirh))) {
 	    my ($tbl, $meta) = $class->get_table_meta ($dbh, $file, 0, 0) or next; # XXX
-	    $tbl && $meta && -f $meta->{f_fqfn} or next;
-	    push @tables, [ undef, $schema, $tbl, "TABLE", undef ];
+	    # $tbl && $meta && -f $meta->{f_fqfn} or next;
+	    $seen{defined $schema ? $schema : "\0"}{$tbl}++ or
+		push @tables, [ undef, $schema, $tbl, "TABLE", undef ];
 	    }
 	unless (closedir $dirh) {
 	    $dbh->set_err ($DBI::stderr, "Cannot close directory $dir: $!");
@@ -481,6 +809,154 @@ sub rollback ($)
 	carp "Rollback ineffective while AutoCommit is on", -1;
     return 0;
     } # rollback
+
+# ====== Tie-Meta ==============================================================
+
+package DBD::File::TieMeta;
+
+use Carp qw(croak);
+require Tie::Hash;
+@DBD::File::TieMeta::ISA = qw(Tie::Hash);
+
+sub TIEHASH
+{
+    my ($class, $tblClass, $tblMeta) = @_;
+
+    my $self = bless ({ tblClass => $tblClass, tblMeta => $tblMeta, }, $class);
+    return $self;
+    } # new
+
+sub STORE
+{
+    my ($self, $meta_attr, $meta_val) = @_;
+
+    $self->{tblClass}->set_table_meta_attr ($self->{tblMeta}, $meta_attr, $meta_val);
+
+    return;
+    } # STORE
+
+sub FETCH
+{
+    my ($self, $meta_attr) = @_;
+
+    return $self->{tblClass}->get_table_meta_attr ($self->{tblMeta}, $meta_attr);
+    } # FETCH
+
+sub FIRSTKEY
+{
+    my $a = scalar keys %{$_[0]->{tblMeta}};
+    each %{$_[0]->{tblMeta}};
+    } # FIRSTKEY
+
+sub NEXTKEY
+{
+    each %{$_[0]->{tblMeta}};
+    } # NEXTKEY
+
+sub EXISTS
+{
+    exists $_[0]->{tblMeta}{$_[1]};
+    } # EXISTS
+
+sub DELETE
+{
+    croak "Can't delete single attributes from table meta structure";
+    } # DELETE
+
+sub CLEAR
+{
+    %{$_[0]->{tblMeta}} = ()
+    } # CLEAR
+
+sub SCALAR
+{
+    scalar %{$_[0]->{tblMeta}}
+    } # SCALAR
+
+# ====== Tie-Tables ============================================================
+
+package DBD::File::TieTables;
+
+use Carp qw(croak);
+require Tie::Hash;
+@DBD::File::TieTables::ISA = qw(Tie::Hash);
+
+sub TIEHASH
+{
+    my ($class, $dbh) = @_;
+
+    (my $tbl_class = $dbh->{ImplementorClass}) =~ s/::db$/::Table/;
+    my $self = bless ({ dbh => $dbh, tblClass => $tbl_class, }, $class);
+    return $self;
+    } # new
+
+sub STORE
+{
+    my ($self, $table, $tbl_meta) = @_;
+
+    "HASH" eq ref $tbl_meta or
+        croak "Invalid data for storing as table meta data (must be hash)";
+
+    (undef, my $meta) = $self->{tblClass}->get_table_meta ($self->{dbh}, $table, 1);
+    $meta or croak "Invalid table name '$table'";
+
+    while (my ($meta_attr, $meta_val) = each %$tbl_meta) {
+	$self->{tblClass}->set_table_meta_attr ($meta, $meta_attr, $meta_val);
+	}
+
+    return;
+    } # STORE
+
+sub FETCH
+{
+    my ($self, $table) = @_;
+
+    (undef, my $meta) = $self->{tblClass}->get_table_meta ($self->{dbh}, $table, 1);
+    $meta or croak "Invalid table name '$table'";
+
+    my %h;
+    tie %h, "DBD::File::TieMeta", $self->{tblClass}, $meta;
+
+    return \%h;
+    } # FETCH
+
+sub FIRSTKEY
+{
+    my $a = scalar keys %{$_[0]->{dbh}->{f_meta}};
+    each %{$_[0]->{dbh}->{f_meta}};
+    } # FIRSTKEY
+
+sub NEXTKEY
+{
+    each %{$_[0]->{dbh}->{f_meta}};
+    } # NEXTKEY
+
+sub EXISTS
+{
+    exists $_[0]->{dbh}->{f_meta}->{$_[1]} or
+	exists $_[0]->{dbh}->{f_meta_map}->{$_[1]};
+    } # EXISTS
+
+sub DELETE
+{
+    my ($self, $table) = @_;
+
+    (undef, my $meta) = $self->{tblClass}->get_table_meta ($self->{dbh}, $table, 1);
+    $meta or croak "Invalid table name '$table'";
+
+    delete $_[0]->{dbh}->{f_meta}->{$meta->{table_name}};
+    } # DELETE
+
+sub CLEAR
+{
+    %{$_[0]->{dbh}->{f_meta}} = ();
+    %{$_[0]->{dbh}->{f_meta_map}} = ();
+    } # CLEAR
+
+sub SCALAR
+{
+    scalar %{$_[0]->{dbh}->{f_meta}}
+    } # SCALAR
 
 # ====== STATEMENT =============================================================
 
@@ -668,6 +1144,9 @@ package DBD::File::Table;
 use strict;
 use Carp;
 require IO::File;
+require File::Basename;
+require File::Spec;
+require Cwd;
 
 # We may have a working flock () built-in but that doesn't mean that locking
 # will work on NFS (flock () may hang hard)
@@ -683,11 +1162,11 @@ my $locking = eval { flock STDOUT, 0; 1 };
 # must not rely on an instantiated DBD::File::Table
 sub file2table
 {
-    my ($self, $meta, $file, $file_is_table, $quoted) = @_;
+    my ($self, $meta, $file, $file_is_table, $respect_case) = @_;
 
-    $file eq "." || $file eq ".."	and return;
+    $file eq "." || $file eq ".."	and return; # XXX would break a possible DBD::Dir
 
-    my ($ext, $req) = ("", 0); # XXX
+    my ($ext, $req) = ("", 0);
     if ($meta->{f_ext}) {
 	($ext, my $opt) = split m/\//, $meta->{f_ext};
 	if ($ext && $opt) {
@@ -695,97 +1174,174 @@ sub file2table
 	    }
 	}
 
-    (my $tbl = $file) =~ s/$ext$//i;
-    $file_is_table and $file = "$tbl$ext";
-
-    # Fully Qualified File Name
-    unless ($quoted) { # table names are case insensitive in SQL
-	my $dir = $meta->{f_dir};
-	opendir my $dh, $dir or croak "Can't open '$dir': $!";
-	my @f = grep { lc $_ eq lc $file } readdir $dh;
-	@f == 1 and $tbl = $file = $f[0];
-	$tbl =~ s/$ext$//i; # XXX /i flag only when not quoted?
-	closedir $dh or croak "Can't close '$dir': $!";
+    # (my $tbl = $file) =~ s/$ext$//i;
+    my ($tbl, $dir, $user_spec_file);
+    if ($file_is_table and defined $meta->{f_file}) {
+	$tbl = $file;
+	($file, $dir, undef) = File::Basename::fileparse ($meta->{f_file});
+	$user_spec_file = 1;
 	}
-    my $fqfn = File::Spec->catfile ($meta->{f_dir}, $file);
-    my $fqbn = File::Spec->catfile ($meta->{f_dir}, $tbl);
+    else {
+	($tbl, $dir, undef) = File::Basename::fileparse ($file, $ext);
+	$user_spec_file = 0;
+	}
 
-    $file = $fqfn;
-    if ($ext) {
-	if ($req) {
-	    # File extension required
-	    $file =~ s/$ext$//i			or  return;
+    (Cwd::abs_path ($dir) eq $meta->{f_dir} or $dir eq "./") and
+	$dir = "";
+
+    !$respect_case and $meta->{sql_identifier_case} == 1 and # XXX SQL_IC_UPPER
+        $tbl = uc $tbl;
+    !$respect_case and $meta->{sql_identifier_case} == 2 and # XXX SQL_IC_LOWER
+        $tbl = lc $tbl;
+    my $searchdir = File::Spec->file_name_is_absolute ($dir)
+	? $dir
+	: File::Spec->catdir ($meta->{f_dir}, $dir);
+
+    unless ($user_spec_file) {
+	$file_is_table and $file = "$tbl$ext";
+
+	# Fully Qualified File Name
+	my $cmpsub;
+	if ($respect_case) {
+	    $cmpsub = sub {
+		my ($fn, undef, $sfx) = File::Basename::fileparse ($_, qr/\.[^.]*/);
+		$fn eq $tbl and
+		    return (lc $sfx eq lc $ext or !$req && !$sfx);
+		return 0;
+		}
 	    }
 	else {
-	    # File extension optional, skip if file with extension exists
-	    grep m/$ext$/i, glob "$fqfn.*"	and return;
-	    $file =~ s/$ext$//i;
+	    $cmpsub = sub {
+		my ($fn, undef, $sfx) = File::Basename::fileparse ($_, qr/\.[^.]*/);
+		lc $fn eq lc $tbl and
+		    return (lc $sfx eq lc $ext or !$req && !$sfx);
+		return 0;
+		}
+	    }
+
+	opendir my $dh, $searchdir or croak "Can't open '$searchdir': $!";
+	my @f = sort { length $b <=> length $a } grep { &$cmpsub ($_) } readdir $dh;
+	@f > 0 && @f <= 2 and $file = $f[0];
+	!$respect_case && $meta->{sql_identifier_case} == 4 and # XXX SQL_IC_MIXED
+	    ($tbl = $file) =~ s/$ext$//i;
+	closedir $dh or croak "Can't close '$searchdir': $!";
+
+	#(my $tdir = $dir) =~ s{^\./}{};	# XXX We do not want all tables to start with ./
+	#$tdir and $tbl = File::Spec->catfile ($tdir, $tbl);
+	$dir and $tbl = File::Spec->catfile ($dir, $tbl);
+
+	my $tmpfn = $file;
+	if ($ext) {
+	    if ($req) {
+		# File extension required
+		$tmpfn =~ s/$ext$//i			or  return;
+		}
+#	    else {
+#		# File extension optional, skip if file with extension exists
+#		grep m/$ext$/i, glob "$fqfn.*"	and return;
+#		$tmpfn =~ s/$ext$//i;
+#		}
 	    }
 	}
 
+    my $fqfn = Cwd::abs_path (File::Spec->catfile ($searchdir, $file));
+    my $fqbn = Cwd::abs_path (File::Spec->catfile ($searchdir, $tbl));
+
     $meta->{f_fqfn} = $fqfn;
-    $meta->{f_fqbn} = $file;
-    !defined ($meta->{f_lockfile}) && $meta->{f_lockfile} and
+    $meta->{f_fqbn} = $fqbn;
+    !defined $meta->{f_lockfile} && $meta->{f_lockfile} and
 	$meta->{f_fqln} = $meta->{f_fqbn} . $meta->{f_lockfile};
+
+    $meta->{table_name} = $tbl;
 
     return $tbl;
     } # file2table
 
-my $open_table_re = sprintf "(?:%s|%s|%s)",
-    quotemeta (File::Spec->curdir  ()),
-    quotemeta (File::Spec->updir   ()),
-    quotemeta (File::Spec->rootdir ());
-
-sub init_table_meta ($$$$$)
+sub bootstrap_table_meta
 {
-    my ($self, $dbh, $table, $file_is_table, $quoted) = @_;
+    my ($self, $dbh, $meta, $table) = @_;
 
-    defined $dbh->{f_meta}{$table} and "HASH" eq ref $dbh->{f_meta}{$table} or
-        $dbh->{f_meta}{$table} = {};
-    my $meta = $dbh->{f_meta}{$table};
     exists  $meta->{f_dir}	or $meta->{f_dir}	= $dbh->{f_dir};
     defined $meta->{f_ext}	or $meta->{f_ext}	= $dbh->{f_ext};
     defined $meta->{f_encoding}	or $meta->{f_encoding}	= $dbh->{f_encoding};
     exists  $meta->{f_lock}	or $meta->{f_lock}	= $dbh->{f_lock};
     exists  $meta->{f_lockfile}	or $meta->{f_lockfile}	= $dbh->{f_lockfile};
     defined $meta->{f_schema}	or $meta->{f_schema}	= $dbh->{f_schema};
-    unless (defined $meta->{f_fqfn}) {
-	my $tbl = $self->file2table ($meta, $table, $file_is_table, $quoted);
-	$tbl or $meta->{f_fqfn}	= undef;
-	}
-    } # init_table_meta
+    defined $meta->{sql_identifier_case} or
+        $meta->{sql_identifier_case} = $dbh->{sql_identifier_case};
+    } # bootstrap_table_meta
 
-sub default_table_meta ($$$)
+sub init_table_meta
 {
-    my ($self, $dbh, $table) = @_;
-    my $meta = { f_fqfn => $table, f_fqbn => $table };
-    return $meta;
+    my ($self, $dbh, $meta, $table) = @_;
+
+    return;
     } # init_table_meta
 
 sub get_table_meta ($$$$;$)
 {
-    my ($self, $dbh, $table, $file_is_table, $quoted) = @_;
-    unless (defined $quoted) {
-	$quoted = 0;
-	$table =~ s/^\"// and $quoted = 1;    # handle quoted identifiers
+    my ($self, $dbh, $table, $file_is_table, $respect_case) = @_;
+    unless (defined $respect_case) {
+	$respect_case = 0;
+	$table =~ s/^\"// and $respect_case = 1;    # handle quoted identifiers
 	$table =~ s/\"$//;
 	}
 
-    my $meta;
-    if (    $table !~ m/^$open_table_re/o
-	and $table !~ m{^[/\\]}      # root
-	and $table !~ m{^[a-z]\:}    # drive letter
-	) {
-	# should be done anyway, table_info might generate incomplete f_meta
-	$self->init_table_meta ($dbh, $table, $file_is_table, $quoted);
-	$meta = $dbh->{f_meta}->{$table};
-	}
-    else {
-	$meta = $self->default_table_meta ($dbh, $table);
+    defined $dbh->{f_meta_map}{$table} and $table = $dbh->{f_meta_map}{$table};
+
+    my $meta = {};
+    defined $dbh->{f_meta}{$table} and $meta = $dbh->{f_meta}{$table};
+
+    unless ($meta->{initialized}) {
+	$self->bootstrap_table_meta ($dbh, $meta, $table);
+
+	unless (defined $meta->{f_fqfn}) {
+	    $self->file2table ($meta, $table, $file_is_table, $respect_case) or return;
+	    }
+
+	if (defined $meta->{table_name} and $table ne $meta->{table_name}) {
+	    $dbh->{f_meta_map}{$table} = $meta->{table_name};
+	    $table = $meta->{table_name};
+	    }
+
+	# now we know a bit more - let's check if user can't use consequent spelling
+	# XXX add know issue about reset sql_identifier_case here ...
+	if (defined $dbh->{f_meta}{$table} && $dbh->{f_meta}{$table}{initialized}) {
+	    $meta = $dbh->{f_meta}{$table};
+	    }
+	else {
+	    $self->init_table_meta ($dbh, $meta, $table);
+	    $meta->{initialized} = 1;
+	    $dbh->{f_meta}{$table} = $meta;
+	    }
 	}
 
     return ($table, $meta);
     } # get_table_meta
+
+sub get_table_meta_attr
+{
+    my ($class, $meta, $attrib) = @_;
+    exists $meta->{$attrib} and
+	return $meta->{$attrib};
+    return;
+    } # get_table_meta_attr
+
+my %reset_on_modify = (
+    f_file     => "f_fqfn",
+    f_dir      => "f_fqfn",
+    f_ext      => "f_fqfn",
+    f_lockfile => "f_fqfn", # forces new file2table call
+);
+
+sub set_table_meta_attr
+{
+    my ($class, $meta, $attrib, $value) = @_;
+    defined $reset_on_modify{$attrib} and
+	delete $meta->{$reset_on_modify{$attrib}} and
+	delete $meta->{initialized};
+    $meta->{$attrib} = $value;
+    } # set_table_meta_attr
 
 # ====== FILE OPEN =============================================================
 
@@ -802,17 +1358,17 @@ sub open_file ($$$)
 	    -f $meta->{f_fqfn} and
 		croak "Cannot create table $attrs->{table}: Already exists";
 	    $fh = IO::File->new ($fn, "a+") or
-		croak "Cannot open $fn for writing: $!";
-	    $fh->seek (0, 0) or
-		croak "Error while seeking back: $!";
+		croak "Cannot open $fn for writing: $! (" . ($!+0) . ")";
 	    }
 	else {
 	    unless ($fh = IO::File->new ($fn, ($flags->{lockMode} ? "r+" : "r"))) {
-		croak "Cannot open $fn: $!";
+		croak "Cannot open $fn: $! (" . ($!+0) . ")";
 		}
 	    }
 
 	if ($fh) {
+	    $fh->seek (0, 0) or
+		croak "Error while seeking back: $!";
 	    if (my $enc = $meta->{f_encoding}) {
 		binmode $fh, ":encoding($enc)" or
 		    croak "Failed to set encoding layer '$enc' on $fn: $!";
@@ -830,11 +1386,11 @@ sub open_file ($$$)
 	    -f $fn and
 		croak "Cannot create table lock for $attrs->{table}: Already exists";
 	    $fh = IO::File->new ($fn, "a+") or
-		croak "Cannot open $fn for writing: $!";
+		croak "Cannot open $fn for writing: $! (" . ($!+0) . ")";
 	    }
 	else {
 	    unless ($fh = IO::File->new ($fn, ($flags->{lockMode} ? "r+" : "r"))) {
-		croak "Cannot open $fn: $!";
+		croak "Cannot open $fn: $! (" . ($!+0) . ")";
 		}
 	    }
 
@@ -863,8 +1419,9 @@ sub new
     my ($className, $data, $attrs, $flags) = @_;
     my $dbh = $data->{Database};
 
-    my $meta;
-    ($attrs->{table}, $meta) = $className->get_table_meta ($dbh, $attrs->{table}, 1);
+    my ($tblnm, $meta) = $className->get_table_meta ($dbh, $attrs->{table}, 1) or
+        croak "Cannot find appropriate file for table '$attrs->{table}'";
+    $attrs->{table} = $tblnm;
 
     $className->open_file ($meta, $attrs, $flags);
 
@@ -890,7 +1447,7 @@ sub drop ($)
     undef $meta->{lockfh};
     $meta->{f_fqfn} and unlink $meta->{f_fqfn};
     $meta->{f_fqln} and unlink $meta->{f_fqln};
-    delete $data->{Database}->{f_meta}->{$self->{table}};
+    delete $data->{Database}{f_meta}{$self->{table}};
     return 1;
     } # drop
 
@@ -938,22 +1495,22 @@ DBD::File - Base class for writing DBI drivers
 
 =head1 SYNOPSIS
 
- This module is a base class for writing other DBDs.
- It is not intended to function as a DBD itself.
- If you want to access flatfiles, use DBD::AnyData, or DBD::CSV,
- (both of which are subclasses of DBD::File).
+This module is a base class for writing other L<DBD|DBI::DBD>s.
+It is not intended to function as a DBD itself (though it is possible).
+If you want to access flat files, use L<DBD::AnyData|DBD::AnyData>, or
+L<DBD::CSV|DBD::CSV> (both of which are subclasses of DBD::File).
 
 =head1 DESCRIPTION
 
-The DBD::File module is not a true DBI driver, but an abstract
-base class for deriving concrete DBI drivers from it. The implication is,
-that these drivers work with plain files, for example CSV files or
-INI files. The module is based on the SQL::Statement module, a simple
-SQL engine.
+The DBD::File module is not a true L<DBI|DBI> driver, but an abstract
+base class for deriving concrete DBI drivers from it. The implication
+is, that these drivers work with plain files, for example CSV files or
+INI files. The module is based on the L<SQL::Statement|SQL::Statement>
+module, a simple SQL engine.
 
-See L<DBI> for details on DBI, L<SQL::Statement> for details on
-SQL::Statement and L<DBD::CSV>, L<DBD::DBM> or L<DBD::AnyData> for example
-drivers.
+See L<DBI|DBI> for details on DBI, L<SQL::Statement|SQL::Statement> for
+details on SQL::Statement and L<DBD::CSV|DBD::CSV>, L<DBD::DBM|DBD::DBM>
+or L<DBD::AnyData|DBD::AnyData> for example drivers.
 
 =head2 Metadata
 
@@ -970,58 +1527,66 @@ thus they all work like expected:
     RaiseError
     Warn                   (Not used)
 
-The following DBI attributes are handled by DBD::File:
+=head3 The following DBI attributes are handled by DBD::File:
 
-=over 4
-
-=item AutoCommit
+=head4 AutoCommit
 
 Always on
 
-=item ChopBlanks
+=head4 ChopBlanks
 
 Works
 
-=item NUM_OF_FIELDS
+=head4 NUM_OF_FIELDS
 
 Valid after C<< $sth->execute >>
 
-=item NUM_OF_PARAMS
+=head4 NUM_OF_PARAMS
 
 Valid after C<< $sth->prepare >>
 
-=item NAME
+=head4 NAME
 
 Valid after C<< $sth->execute >>; undef for Non-Select statements.
 
-=item NULLABLE
+=head4 NULLABLE
 
 Not really working, always returns an array ref of one's, as DBD::CSV
 doesn't verify input data. Valid after C<< $sth->execute >>; undef for
 Non-Select statements.
 
+=head3 The following DBI attributes and methods are not supported:
+
+=over 4
+
+=item bind_param_inout
+
+=item CursorName
+
+=item LongReadLen
+
+=item LongTruncOk
+
 =back
 
-These attributes and methods are not supported:
-
-    bind_param_inout
-    CursorName
-    LongReadLen
-    LongTruncOk
+=head3 DBD::File specific attributes
 
 In addition to the DBI attributes, you can use the following dbh
 attributes:
 
-=over 4
-
-=item f_dir
+=head4 f_dir
 
 This attribute is used for setting the directory where the files are
-opened and it defaults to the current directory ("."). Usually you set
-it on the dbh but it may be overridden on the statement handle.
-See L<BUGS AND LIMITATIONS>.
+opened and it defaults to the current directory (F<.>). Usually you set
+it on the dbh but it may be overridden per table (see L<f_meta>).
 
-=item f_ext
+When the value for C<f_dir> is a relative path, it's converted into the
+appropriate absolute path name (based on the current working directory)
+when the dbh attribute is set.
+
+See L<KNOWN BUGS AND LIMITATIONS>.
+
+=head4 f_ext
 
 This attribute is used for setting the file extension. The format is:
 
@@ -1030,8 +1595,17 @@ This attribute is used for setting the file extension. The format is:
 where the /flag is optional and the extension is case-insensitive.
 C<f_ext> allows you to specify an extension which:
 
- o makes DBD::File prefer F<table.extension> over F<table>.
- o makes the table name the filename minus the extension.
+=over
+
+=item *
+
+makes DBD::File prefer F<table.extension> over F<table>.
+
+=item *
+
+makes the table name the filename minus the extension.
+
+=back
 
     DBI:CSV:f_dir=data;f_ext=.csv
 
@@ -1052,7 +1626,10 @@ not.
 The C<r> flag means the file extension is required and any filename
 that does not match the extension is ignored.
 
-=item f_schema
+Usually you set it on the dbh but it may be overridden per table
+(see L<f_meta>).
+
+=head4 f_schema
 
 This will set the schema name and defaults to the owner of the
 directory in which the table file resides. You can set C<f_schema> to
@@ -1080,132 +1657,229 @@ By setting the schema you effect the results from the tables call:
     foo
     bar
 
-Defining f_schema to the empty string is equal to setting it to C<undef>
-so the DSN can be C<dbi:CSV:f_schema=;f_dir=.>.
+Defining C<f_schema> to the empty string is equal to setting it to C<undef>
+so the DSN can be C<"dbi:CSV:f_schema=;f_dir=.">.
 
-=item f_lock
+=head4 f_lock
 
 The C<f_lock> attribute is used to set the locking mode on the opened
 table files. Note that not all platforms support locking.  By default,
 tables are opened with a shared lock for reading, and with an
 exclusive lock for writing. The supported modes are:
 
-=over 2
+  0: No locking at all.
 
-=item 0
+  1: Shared locks will be used.
 
-No locking at all.
+  2: Exclusive locks will be used.
 
-=item 1
+But see L<KNOWN BUGS|/"KNOWN BUGS AND LIMITATIONS"> below.
 
-Shared locks will be used.
+=head4 f_lockfile
 
-=item 2
+If you wish to use a lockfile extension other than C<.lck>, simply specify
+the C<f_lockfile> attribute:
 
-Exclusive locks will be used.
+  $dbh = DBI->connect ("dbi:DBM:f_lockfile=.foo");
+  $dbh->{f_lockfile} = ".foo";
+  $dbh->{f_meta}{qux}{f_lockfile} = ".foo";
 
-=back
+If you wish to disable locking, set the C<f_lockfile> to C<0>.
 
-But see L</"KNOWN BUGS"> below.
-
-=item f_lockfile
-
-If you wish to use a lockfile extension other than '.lck', simply specify
-the f_lockfile attribute:
-
-  $dbh = DBI->connect('dbi:DBM:f_lockfile=.foo');
-  $dbh->{f_lockfile} = '.foo';
-  $dbh->{f_meta}->{qux}->{f_lockfile} = '.foo';
-
-If you wish to disable locking, set the f_lockfile equal to 0.
-
-  $dbh = DBI->connect('dbi:DBM:f_lockfile=0');
+  $dbh = DBI->connect ("dbi:DBM:f_lockfile=0");
   $dbh->{f_lockfile} = 0;
-  $dbh->{f_meta}->{qux}->{f_lockfile} = 0;
+  $dbh->{f_meta}{qux}{f_lockfile} = 0;
 
-=item f_encoding
+=head4 f_encoding
 
 With this attribute, you can set the encoding in which the file is opened.
-This is implemented using C<binmode $fh, ":encoding(<f_encoding>)">.
+This is implemented using C<< binmode $fh, ":encoding(<f_encoding>)" >>.
 
-=item f_meta
+=head4 f_meta
 
 Private data area which contains information about the tables this
-module handles. Meta data of a table might not be available unless the
-table has been accessed first time doing a statement on it. But it's
-possible to pre-initialize attributes for each table wanted to use.
+module handles. Meta data of a table might not be available until the
+table has been accessed for the first time e.g., by issuing a select
+on it however it's possible to pre-initialize attributes for each table
+you use.
 
-DBD::File recognizes the (public) attributes f_ext, f_dir, f_encoding, f_lock,
-and f_lockfile. Be very careful when modifying attributes you do not know,
-the consequence might be a destroyed table.
+DBD::File recognizes the (public) attributes C<f_ext>, C<f_dir>,
+C<f_file>, C<f_encoding>, C<f_lock>, C<f_lockfile>, C<f_schema>,
+C<col_names>, C<table_name> and C<sql_identifier_case>. Be very careful
+when modifying attributes you do not know, the consequence might be a
+destroyed or corrupted table.
 
-=back
+C<f_file> is an attribute applicable to table meta data only and you
+will not find a corresponding attribute in the dbh. Whilst it may be
+reasonable to have several tables with the same column names, it's not
+for the same file name. If you need access to the same file using
+different table names, use C<SQL::Statement> as the SQL engine and the
+C<AS> keyword:
 
-Internally private attributes to deal with SQL backends:
+    SELECT * FROM tbl AS t1, tbl AS t2 WHERE t1.id = t2.id
 
-=over 4
+C<f_file> can be an absolute path name or a relative path name. If
+it's relative, it's interpreted as being relative to the C<f_dir>
+attribute of the table meta data. When C<f_file> is set DBD::File
+will use C<f_file> as specified and will not attempt to work out an
+alternative for C<f_file> using the C<table name> and C<f_ext> attribute.
 
-=item sql_nano_version
+While C<f_meta> is a private and readonly attribute (which means, you
+cannot modify it's values), derived drivers might provide restricted
+write access through another attribute. Well known accessors are
+C<csv_tables> for L<DBD::CSV>, C<ad_tables> for L<DBD::AnyData> and
+C<dbm_tables> for L<DBD::DBM>.
 
-Contains the version of loaded DBI::SQL::Nano
+=head3 Internally private attributes to deal with SQL backends:
 
-=item sql_statement_version
-
-Contains the version of loaded SQL::Statement
-
-=item sql_handler
-
-Contains either 'SQL::Statement' or 'DBI::SQL::Nano'.
-
-=item sql_ram_tables
-
-Contains optionally temporary tables.
-
-=back
-
-Do not modify any of above private attributes unless you understand
+Do not modify any of these private attributes unless you understand
 the implications of doing so. The behavior of DBD::File and derived
 DBD's might be unpredictable when one or more of those attributes are
 modified.
 
+=head4 sql_nano_version
+
+Contains the version of loaded DBI::SQL::Nano
+
+=head4 sql_statement_version
+
+Contains the version of loaded SQL::Statement
+
+=head4 sql_handler
+
+Contains either the text 'SQL::Statement' or 'DBI::SQL::Nano'.
+
+=head4 sql_ram_tables
+
+Contains optionally temporary tables.
+
+=head4 sql_flags
+
+Contains optional flags to instantiate the SQL::Parser parsing engine
+when SQL::Statement is used as SQL engine. See L<SQL::Parser> for valid
+flags.
+
 =head2 Driver private methods
 
-=over 4
+=head3 Default DBI methods
 
-=item data_sources
+=head4 data_sources
 
 The C<data_sources> method returns a list of subdirectories of the current
-directory in the form "DBI:CSV:f_dir=$dirname".
+directory in the form "dbi:CSV:f_dir=$dirname".
 
 If you want to read the subdirectories of another directory, use
 
-    my ($drh) = DBI->install_driver ("CSV");
+    my ($drh)  = DBI->install_driver ("CSV");
     my (@list) = $drh->data_sources (f_dir => "/usr/local/csv_data" );
 
-=item list_tables
+=head4 list_tables
 
 This method returns a list of file names inside $dbh->{f_dir}.
 Example:
 
-    my ($dbh) = DBI->connect ("DBI:CSV:f_dir=/usr/local/csv_data");
+    my ($dbh)  = DBI->connect ("dbi:CSV:f_dir=/usr/local/csv_data");
     my (@list) = $dbh->func ("list_tables");
 
 Note that the list includes all files contained in the directory, even
 those that have non-valid table names, from the view of SQL.
 
-=back
+=head3 Additional methods
+
+The following methods are only available via their documented name when
+DBD::File is used directly. Because this is only reasonable for testing
+purposes, the real names must be used instead. Those names can be computed
+by replacing the C<f_> in the method name with the driver prefix.
+
+=head4 f_versions
+
+Signature:
+
+    sub f_versions (;$)
+    {
+	my ($table_name) = @_;
+	$table_name ||= ".";
+	...
+    }
+
+Returns the versions of the driver, including the DBI version, the Perl
+version, DBI::PurePerl version (if DBI::PurePerl is active) and the version
+of the SQL engine in use.
+
+    my $dbh = DBI->connect ("dbi:File:");
+    my $f_versions = $dbh->f_versions ();
+    print "$f_versions\n";
+    __END__
+    # DBD::File        0.39 using SQL::Statement 1.28
+    # DBI              1.612
+    # OS               netbsd (5.99.24)
+    # Perl             5.010001 (x86_64-netbsd-thread-multi)
+
+Called in list context, f_versions will return an array containing each
+line as single entry.
+
+Some drivers might use the optional (table name) argument and modify some
+version information related to the table (e.g. DBD::DBM provides storage
+backend information for the requested table, when it has a table name).
+
+=head4 f_get_meta
+
+Signature:
+
+    sub f_get_meta ($$)
+    {
+	my ($table_name, $attrib) = @_;
+	...
+    }
+
+Returns the value of a meta attribute set for a specific table, if any.
+See L<f_meta> for the possible attributes.
+
+A table name of C<'.'> (single dot) is interpreted as the default table.
+This will retrieve the appropriate attribute globally from the dbh.
+This has the same restrictions as C<< $dbh->{$attrib} >>.
+
+=head4 f_set_meta
+
+Signature:
+
+    sub f_set_meta ($$$)
+    {
+	my ($table_name, $attrib, $value) = @_;
+	...
+    }
+
+Sets the value of a meta attribute set for a specific table.
+See L<f_meta> for the possible attributes.
+
+A table name of C<'.'> (single dot) is interpreted as the default table.
+This causes in setting the appropriate attribute globally for the dbh.
+This has the same restrictions as C<< $dbh->{$attrib} = $value >>.
+
+=head4 f_clear_meta
+
+Signature:
+
+    sub f_clear_meta ($)
+    {
+	my ($table_name) = @_;
+	...
+    }
+
+Clears the table specific meta information in the private storage of the
+dbh.
 
 =head1 SQL ENGINES
 
-DBD::File currently supports two SQL engines: L<DBI::SQL::Nano> and
-L<SQL::Statement>. DBI::SQL::Nano supports a I<very> limited subset of
-SQL statements, but it might be faster for some very simple
-tasks. SQL::Statement in contrast supports a much larger subset of
-ANSI SQL.
+DBD::File currently supports two SQL engines: L<SQL::Statement|SQL::Statement>
+and L<DBI::SQL::Nano::Statement_|DBI::SQL::Nano>. DBI::SQL::Nano supports a
+I<very> limited subset of SQL statements, but it might be faster for some
+very simple tasks. SQL::Statement in contrast supports a much larger subset
+of ANSI SQL.
 
-To use SQL::Statement, the module version 1.28 of SQL::Statement is
-a prerequisite and the environment variable C<< DBI_SQL_NANO >> must
-not be set to a true value.
+To use SQL::Statement, you need at least version 1.28 of
+SQL::Statement and the environment variable C<DBI_SQL_NANO> must not
+be set to a true value.
 
 =head1 KNOWN BUGS AND LIMITATIONS
 
@@ -1213,7 +1887,7 @@ not be set to a true value.
 
 =item *
 
-This module uses flock() internally but flock is not available on all
+This module uses flock () internally but flock is not available on all
 platforms. On MacOS and Windows 95 there is no locking at all (perhaps
 not so important on MacOS and Windows 95, as there is only a single
 user).
@@ -1221,16 +1895,17 @@ user).
 =item *
 
 The module stores details about the handled tables in a private area
-of the driver handle (C<< $drh >>). This data area isn't shared between
-different driver instances, so several C<< DBI->connect() >> calls will
+of the driver handle (C<$drh>). This data area isn't shared between
+different driver instances, so several C<< DBI->connect () >> calls will
 cause different table instances and private data areas.
 
 This data area is filled for the first time when a table is accessed,
-either via an SQL statement or via C<< table_info >> and is not
-destroyed when the table is dropped or the driver handle is released.
+either via an SQL statement or via C<table_info> and is not
+destroyed until the table is dropped or the driver handle is released.
+Manual destruction is possible via L<f_clear_meta>.
 
-Following attributes are preserved in the data area and will evaluated
-instead of driver globals:
+The following attributes are preserved in the data area and will
+evaluated instead of driver globals:
 
 =over 8
 
@@ -1242,24 +1917,58 @@ instead of driver globals:
 
 =item f_lockfile
 
+=item f_encoding
+
+=item f_schema
+
+=item col_names
+
+=item sql_identifier_case
+
+=back
+
+The following attributes are preserved in the data area only and
+cannot be set globally.
+
+=over 8
+
+=item f_file
+
+=back
+
+The following attributes are preserved in the data area only and are
+computed when initializing the data area:
+
+=over 8
+
+=item f_fqfn
+
+=item f_fqbn
+
+=item f_fqln
+
+=item table_name
+
 =back
 
 For DBD::CSV tables this means, once opened 'foo.csv' as table named 'foo',
-another table named 'foo' accessing the file 'foo.csl' cannot be opened.
+another table named 'foo' accessing the file 'foo.txt' cannot be opened.
 Accessing 'foo' will always access the file 'foo.csv' in memorized
-C<< f_dir >>, locking C<< f_lockfile >> via memorized C<< f_lock >>.
+C<f_dir>, locking C<f_lockfile> via memorized C<f_lock>.
+
+You can use L<f_clear_meta> or the C<f_file> attribute for a specific table
+to work around this.
 
 =item *
 
-When used with SQL::Statement and the feature of temporary tables is
-used with
+When used with SQL::Statement and temporary tables e.g.,
 
   CREATE TEMP TABLE ...
 
-the table data processing passes DBD::File::Table. No file system calls
-will be made, no influence with existing (file based) tables with the same
-name will occur. Temporary tables are chosen in favor over file tables,
-but they will not covered by C<< table_info >>.
+the table data processing bypasses DBD::File::Table. No file system
+calls will be made and there are no clashes with existing (file based)
+tables with the same name. Temporary tables are chosen over file
+tables, but they will not covered by C<table_info>.
 
 =back
 
@@ -1286,7 +1995,8 @@ specified in the Perl README file.
 
 =head1 SEE ALSO
 
-L<DBI>, L<DBD::DBM>, L<DBD::CSV>, L<Text::CSV>, L<Text::CSV_XS>,
-L<SQL::Statement>, L<DBI::SQL::Nano>
+L<DBI|DBI>, L<DBD::DBM|DBD::DBM>, L<DBD::CSV|DBD::CSV>, L<Text::CSV|Text::CSV>,
+L<Text::CSV_XS|Text::CSV_XS>, L<SQL::Statement|SQL::Statement>, and
+L<DBI::SQL::Nano|DBI::SQL::Nano>
 
 =cut

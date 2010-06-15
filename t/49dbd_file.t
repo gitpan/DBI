@@ -3,18 +3,24 @@ $|=1;
 
 use strict;
 
+use Cwd;
+use File::Path;
+use File::Spec;
 use Test::More;
 
-my $using_dbd_gofer = ($ENV{DBI_AUTOPROXY}||'') =~ /^dbi:Gofer.*transport=/i;
-
-#use DBI;
+my $using_dbd_gofer = ($ENV{DBI_AUTOPROXY}||"") =~ /^dbi:Gofer.*transport=/i;
 
 my $tbl;
 BEGIN { $tbl = "db_". $$ . "_" };
-END   { $tbl and unlink glob "${tbl}*" }
+#END   { $tbl and unlink glob "${tbl}*" }
 
 use_ok ("DBI");
 use_ok ("DBD::File");
+
+my $dir = File::Spec->catdir (getcwd (), "test_output");
+
+rmtree $dir;
+mkpath $dir;
 
 my $rowidx = 0;
 my @rows = ( [ "Hello World" ], [ "Hello DBI Developers" ], );
@@ -24,6 +30,10 @@ my $dbh;
 # Check if we can connect at all
 ok ($dbh = DBI->connect ("dbi:File:"), "Connect clean");
 is (ref $dbh, "DBI::db", "Can connect to DBD::File driver");
+
+my $f_versions = $dbh->func ("f_versions");
+note $f_versions;
+ok ($f_versions, "f_versions");
 
 # Check if all the basic DBI attributes are accepted
 ok ($dbh = DBI->connect ("dbi:File:", undef, undef, {
@@ -40,9 +50,10 @@ ok ($dbh = DBI->connect ("dbi:File:f_ext=.txt;f_dir=.;f_encoding=cp1252;f_schema
 
 my $encoding = "iso-8859-1";
 
+# now use dir to prove file existence
 ok ($dbh = DBI->connect ("dbi:File:", undef, undef, {
-    f_ext	=> ".txt/r",
-    f_dir	=> ".",
+    f_ext	=> ".txt",
+    f_dir	=> $dir,
     f_schema	=> undef,
     f_encoding	=> $encoding,
     f_lock	=> 0,
@@ -59,20 +70,63 @@ ok ($sth = $dbh->prepare ("select * from t_sbdgf_53442Gz"), "Prepare select from
 	local $SIG{__DIE__} = sub { push @msg, @_ };
 	$sth->execute;
 	};
-    like ("@msg", qr{Cannot open ./t_sbdgf_}, "Cannot open non-existing file");
+    like ("@msg", qr{Cannot open .*/t_sbdgf_}, "Cannot open non-existing file");
+    }
+
+SKIP: {
+    my $fh;
+    my $tbl2 = $tbl . "2";
+
+    my $tbl2_file1 = File::Spec->catfile ($dir, "$tbl2.txt");
+    open  $fh, ">", $tbl2_file1 or skip;
+    print $fh "You cannot read this anyway ...";
+    close $fh;
+
+    my $tbl2_file2 = File::Spec->catfile ($dir, "$tbl2");
+    open  $fh, ">", $tbl2_file2 or skip;
+    print $fh "Neither that";
+    close $fh;
+
+    ok ($dbh->do ("drop table if exists $tbl2"), "drop manually created table $tbl2 (first file)");
+    ok (! -f $tbl2_file1, "$tbl2_file1 removed");
+    ok (  -f $tbl2_file2, "$tbl2_file2 exists");
+    ok ($dbh->do ("drop table if exists $tbl2"), "drop manually created table $tbl2 (second file)");
+    ok (! -f $tbl2_file2, "$tbl2_file2 removed");
     }
 
 my @tfhl;
 
 # Now test some basic SQL statements
-my $tbl_file = "$tbl.txt";
-ok ($dbh->do ("create table $tbl (txt varchar (20))"), "Create table $tbl");
+my $tbl_file = File::Spec->catfile ($dir, "$tbl.txt");
+ok ($dbh->do ("create table $tbl (txt varchar (20))"), "Create table $tbl") or diag $dbh->errstr;
 ok (-f $tbl_file, "Test table exists");
+
+is ($dbh->f_get_meta ($tbl, "f_fqfn"), $tbl_file, "get single table meta data");
+is_deeply ($dbh->f_get_meta ([$tbl, "t_sbdgf_53442Gz"], [qw(f_dir f_ext)]),
+           {
+	       $tbl => {
+		   f_dir => $dir,
+		   f_ext => q(.txt),
+	       },
+	       t_sbdgf_53442Gz =>  {
+		   f_dir => $dir,
+		   f_ext => q(.txt),
+	       },
+	   },
+	   "get multiple meta data");
 
 # Expected: ("unix", "perlio", "encoding(iso-8859-1)")
 # use Data::Peek; DDumper [ @tfh ];
 my @layer = grep { $_ eq "encoding($encoding)" } @tfhl;
 is (scalar @layer, 1, "encoding shows in layer");
+
+SKIP: {
+    $using_dbd_gofer and skip "modifying meta data doesn't work with Gofer-AutoProxy", 4;
+    ok ($dbh->f_set_meta ($tbl, "f_dir", $dir), "set single meta datum");
+    is ($tbl_file, $dbh->f_get_meta ($tbl, "f_fqfn"), "verify set single meta datum");
+    ok ($dbh->f_set_meta ($tbl, { f_dir => $dir }), "set multiple meta data");
+    is ($tbl_file, $dbh->f_get_meta ($tbl, "f_fqfn"), "verify set multiple meta attributes");
+    }
 
 ok ($sth = $dbh->prepare ("select * from $tbl"), "Prepare select * from $tbl");
 $rowidx = 0;

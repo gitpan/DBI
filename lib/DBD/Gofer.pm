@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 13773 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 14123 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 13773 2010-01-28 10:39:50Z hmbrand $
+#   $Id: Gofer.pm 14123 2010-06-08 12:19:31Z hmbrand $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -302,7 +302,7 @@
 
         if (my $dbh_attributes = $response->dbh_attributes) {
 
-            # XXX installed_methods piggbacks on dbh_attributes for now
+            # XXX installed_methods piggybacks on dbh_attributes for now
             if (my $installed_methods = delete $dbh_attributes->{dbi_installed_methods}) {
                 DBD::Gofer::install_methods_proxy($installed_methods)
                     if $dbh->{go_request_count}==1;
@@ -1270,7 +1270,7 @@ in such a way that appropriate http cache headers are added to the results
 so that web caches (squid etc) could be used to implement the caching.
 (MUST require the use of GET rather than POST requests.)
 
-Rework handling of installed_methods to not piggback on dbh_attributes?
+Rework handling of installed_methods to not piggyback on dbh_attributes?
 
 Perhaps support transactions for transports where it's possible (ie null and stream)?
 Would make stream transport (ie ssh) more useful to more people.

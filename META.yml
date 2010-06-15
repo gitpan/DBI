@@ -33,6 +33,7 @@ conflicts:
     DBD::RAM:        0.072
     SQL::Statement:  1.27
 recommends:
+    Clone:           0.31
     DB_File:         0
     MLDBM:           0
     Net::Daemon:     0
