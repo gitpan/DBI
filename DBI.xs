@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 14075 2010-05-28 10:15:56Z timbo $
+ * $Id: DBI.xs 14199 2010-06-29 13:58:07Z REHSACK $
  *
  * Copyright (c) 1994-2009  Tim Bunce  Ireland.
  *
@@ -2130,7 +2130,11 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
                         hv = newHV();
                     else av = newAV();
                     i = DBIc_NUM_FIELDS(imp_sth);
-                    assert(i == AvFILL(name_av)+1);
+		    if (DBIc_TRACE_LEVEL(imp_sth) >= 10)
+			PerlIO_printf(DBILOGFP,"       FETCH $h->{%s} from $h->{NAME} with $h->{NUM_OF_FIELDS} = %d"
+			                       " and %ld entries in $h->{NAME}\n",
+				neatsvpv(keysv,0), i, AvFILL(name_av)+1);
+                    assert((i == -1 && 0 == AvFILL(name_av)+1) || (i == AvFILL(name_av)+1));
                     while (--i >= 0) {
                         sv = newSVsv(AvARRAY(name_av)[i]);
                         name = SvPV_nolen(sv);

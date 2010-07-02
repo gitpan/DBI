@@ -2,26 +2,28 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2010-06-16 10:56:10 +0100 (Wed, 16 Jun 2010) $ $Revision: 14161 $)
+(As of $Date: 2010-07-02 15:17:53 +0100 (Fri, 02 Jul 2010) $ $Revision: 14227 $)
 
 =cut
 
-=head2 Changes in DBI 1.612 (svn r14158) 15th June 2010
+=head2 Changes in DBI 1.612 (svn r14226) 2nd July 2010
 
 NOTE: This is a minor release for the DBI core but a major release for
 DBD::File and drivers that depend on it, like DBD::DBM and DBD::CSV.
 
 This is also the first release where the bulk of the development work
 has been done by other people. I'd like to thank (in no particular order)
-Jens Rehsack, Martin J. Evans, and H. Merijn Brand for all their contributions.
+Jens Rehsack, Martin J. Evans, and H.Merijn Brand for all their contributions.
 
+  Fixed DBD::File's {ChopBlank} handling (it stripped \s instead of space
+    only as documented in DBI) (H.Merijn Brand)
   Fixed DBD::DBM breakage with SQL::Statement (Jens Rehsack, fixes RT#56561)
   Fixed DBD::File file handle leak (Jens Rehsack)
   Fixed problems in 50dbm.t when running tests with multiple
     dbms (Martin J. Evans)
   Fixed DBD::DBM bugs found during tests (Jens Rehsack)
   Fixed DBD::File doesn't find files without extensions under some
-    circumstances (Jens Rehsack, H. Merijn Brand, fixes RT#59038)
+    circumstances (Jens Rehsack, H.Merijn Brand, fixes RT#59038)
 
   Changed Makefile.PL to modernize with CONFLICTS, recommended dependencies
     and resources (Jens Rehsack)
@@ -37,7 +39,10 @@ Jens Rehsack, Martin J. Evans, and H. Merijn Brand for all their contributions.
   Synchronize API between SQL::Statement and DBI::SQL::Nano (Jens Rehsack)
   Merged some optimizations from SQL::Statement into DBI::SQL::Nano
     (Jens Rehsack)
-  Added basic test for DBD::File (H. Merijn Brand, Jens Rehsack)
+  Added basic test for DBD::File (H.Merijn Brand, Jens Rehsack)
+  Extract dealing with Perl SQL engines from DBD::File into
+    DBI::DBD::SqlEngine for better subclassing of 3rd party non-db DBDs
+    (Jens Rehsack)
 
   Updated and clarified documentation for finish method (Tim Bunce).
   Changes to DBD::File for better English and hopefully better

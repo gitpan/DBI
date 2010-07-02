@@ -1,4 +1,4 @@
-# $Id: DBI.pm 14120 2010-06-07 19:52:19Z hmbrand $
+# $Id: DBI.pm 14216 2010-06-30 20:01:37Z mjevans $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2010  Tim Bunce  Ireland
@@ -117,12 +117,12 @@ web page (generous volunteers do that).  So please don't send mail
 directly to him; he just doesn't have the time to answer questions
 personally. The I<dbi-users> mailing list has lots of experienced
 people who should be able to help you if you need it. If you do email
-Tim he's very likely to just forward it to the mailing list.
+Tim he is very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
 This is the DBI specification that corresponds to the DBI version 1.612
-($Revision: 14120 $).
+($Revision: 14216 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -135,7 +135,7 @@ Some DBI changes require changes in the drivers, but the drivers
 can take some time to catch up. Newer versions of the DBI have
 added features that may not yet be supported by the drivers you
 use.  Talk to the authors of your drivers if you need a new feature
-that's not yet supported.
+that is not yet supported.
 
 Features added after DBI 1.21 (February 2002) are marked in the
 text with the version number of the DBI release they first appeared in.
@@ -349,7 +349,7 @@ my $dbd_prefix_registry = {
   sapdb_   => { class => 'DBD::SAP_DB',		},
   solid_   => { class => 'DBD::Solid',		},
   sponge_  => { class => 'DBD::Sponge',		},
-  sql_     => { class => 'SQL::Statement',	},
+  sql_     => { class => 'DBI::DBD::SqlEngine',	},
   sqlite_  => { class => 'DBD::SQLite',  	},
   syb_     => { class => 'DBD::Sybase',		},
   sys_     => { class => 'DBD::Sys',		},
@@ -6008,7 +6008,7 @@ are treated as if padded with undef (NULL) values.
 
 If a scalar value is bound, instead of an array reference, it is
 treated as a I<variable> length array with all elements having the
-same value. It's does not influence the number of tuples executed,
+same value. It does not influence the number of tuples executed,
 so if all bound arrays have zero elements then zero tuples will
 be executed. If I<all> bound values are scalars then one tuple
 will be executed, making execute_array() act just like execute().
