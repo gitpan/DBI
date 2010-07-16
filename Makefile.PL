@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 14129 2010-06-10 11:18:48Z REHSACK $
+# $Id: Makefile.PL 14253 2010-07-16 15:28:40Z REHSACK $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -107,6 +107,9 @@ my %opts = (
 	    'DB_File'        => 0,
 	},
     },
+    PREREQ_PM => {
+	  ( $^O eq 'MSWin32' ? ( 'PathTools' => 3.31, ) : () ),
+    },
     CONFLICTS => {
 	'SQL::Statement' => '1.27',
 	'DBD::AnyData' => '0.09',
@@ -171,7 +174,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 14129 2010-06-10 11:18:48Z REHSACK $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 14253 2010-07-16 15:28:40Z REHSACK $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
