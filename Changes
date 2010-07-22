@@ -2,11 +2,18 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2010-07-16 20:29:24 +0100 (Fri, 16 Jul 2010) $ $Revision: 14254 $)
+(As of $Date: 2010-07-22 10:28:29 -0700 (Thu, 22 Jul 2010) $ $Revision: 14271 $)
 
 =cut
 
-=head2 Changes in DBI 1.612 (svn r14254) 14th July 2010
+=head2 Changes in DBI 1.613 (svn r14271) 22nd July 2010
+
+  Fixed Win32 prerequisite module from PathTools to File::Spec.
+
+  Changed attribute headings and fixed references in DBI pod (Martin J. Evans)
+  Corrected typos in DBI::FAQ and DBI::ProxyServer (Ansgar Burchardt)
+
+=head2 Changes in DBI 1.612 (svn r14254) 16th July 2010
 
 NOTE: This is a minor release for the DBI core but a major release for
 DBD::File and drivers that depend on it, like DBD::DBM and DBD::CSV.
