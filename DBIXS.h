@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBIXS.h 13837 2010-03-07 23:15:18Z timbo $
+ * $Id: DBIXS.h 14297 2010-07-30 14:08:56Z timbo $
  *
  * Copyright (c) 1994-2009  Tim Bunce  Ireland
  *
@@ -15,8 +15,11 @@
 #define DBIS    dbis    /* default name for dbistate_t variable */
 #endif
 
-/* first pull in the standard Perl header files for extensions  */
+/* Here for backwards compat. PERL_POLLUTE was removed in perl 5.13.3 */
 #define PERL_POLLUTE
+#undef PERL_POLLUTE /* XXX temp undef to simplify testing */
+
+/* first pull in the standard Perl header files for extensions  */
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
@@ -97,7 +100,7 @@ typedef struct dbih_com_std_st {
 
     I32  kids;          /* count of db's for dr's, st's for db's etc    */
     I32  active_kids;   /* kids which are currently DBIc_ACTIVE         */
-    U32 pad;            /* keep binary compat */
+    U32  pid;           /* pid of process that created handle */
     dbistate_t *dbistate;
 } dbih_com_std_t;
 
@@ -176,7 +179,7 @@ typedef struct {                /* -- FIELD DESCRIPTOR --               */
 } dbih_fdc_t;
 
 
-#define _imp2com(p,f)           ((p)->com.f)
+#define _imp2com(p,f)           ((p)->com.f) /* private */
 
 #define DBIc_FLAGS(imp)         _imp2com(imp, std.flags)
 #define DBIc_TYPE(imp)          _imp2com(imp, std.type)
@@ -262,10 +265,11 @@ typedef struct {                /* -- FIELD DESCRIPTOR --               */
 #define DBIcf_Executed    0x080000      /* do/execute called since commit/rollb */
 #define DBIcf_PrintWarn   0x100000      /* warn() on warning (err="0")          */
 #define DBIcf_Callbacks   0x200000      /* has Callbacks attribute hash         */
+#define DBIcf_AIADESTROY  0x400000      /* auto DBIcf_IADESTROY if pid changes  */
 /* NOTE: new flags may require clone() to be updated */
 
 #define DBIcf_INHERITMASK               /* what NOT to pass on to children */   \
-  (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY           \
+  (U32)( DBIcf_COMSET | DBIcf_IMPSET | DBIcf_ACTIVE | DBIcf_IADESTROY \
   | DBIcf_AutoCommit | DBIcf_BegunWork | DBIcf_Executed | DBIcf_Callbacks )
 
 /* general purpose bit setting and testing macros                       */
@@ -316,6 +320,10 @@ typedef struct {                /* -- FIELD DESCRIPTOR --               */
 #define DBIc_IADESTROY(imp)     (DBIc_FLAGS(imp) &   DBIcf_IADESTROY)
 #define DBIc_IADESTROY_on(imp)  (DBIc_FLAGS(imp) |=  DBIcf_IADESTROY)
 #define DBIc_IADESTROY_off(imp) (DBIc_FLAGS(imp) &= ~DBIcf_IADESTROY)
+
+#define DBIc_AIADESTROY(imp)     (DBIc_FLAGS(imp) &   DBIcf_AIADESTROY)
+#define DBIc_AIADESTROY_on(imp)  (DBIc_FLAGS(imp) |=  DBIcf_AIADESTROY)
+#define DBIc_AIADESTROY_off(imp) (DBIc_FLAGS(imp) &= ~DBIcf_AIADESTROY)
 
 #define DBIc_WARN(imp)          (DBIc_FLAGS(imp) &   DBIcf_WARN)
 #define DBIc_WARN_on(imp)       (DBIc_FLAGS(imp) |=  DBIcf_WARN)

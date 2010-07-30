@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 14123 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 14282 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 14123 2010-06-08 12:19:31Z hmbrand $
+#   $Id: Gofer.pm 14282 2010-07-26 00:12:54Z theory $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -29,6 +29,7 @@
         FetchHashKeyName
         HandleError HandleSetErr
         InactiveDestroy
+        AutoInactiveDestroy
         PrintError PrintWarn
         Profile
         RaiseError

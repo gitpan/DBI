@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 14120 2010-06-07 19:52:19Z hmbrand $
+#   $Id: Execute.pm 14282 2010-07-26 00:12:54Z theory $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -18,7 +18,7 @@ use DBI::Gofer::Response;
 
 use base qw(DBI::Util::_accessor);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 14120 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 14282 $ =~ /(\d+)/o);
 
 our @all_dbh_methods = sort map { keys %$_ } $DBI::DBI_methods{db}, $DBI::DBI_methods{common};
 our %all_dbh_methods = map { $_ => (DBD::_::db->can($_)||undef) } @all_dbh_methods;
@@ -166,7 +166,7 @@ sub _connect {
 
     # delete attributes we don't want to affect the server-side
     # (Could just do this on client-side and trust the client. DoS?)
-    delete @{$attr}{qw(Profile InactiveDestroy HandleError HandleSetErr TraceLevel Taint TaintIn TaintOut)};
+    delete @{$attr}{qw(Profile InactiveDestroy AutoInactiveDestroy HandleError HandleSetErr TraceLevel Taint TaintIn TaintOut)};
 
     $dsn = $self->forced_connect_dsn || $dsn || $self->default_connect_dsn
         or die "No forced_connect_dsn, requested dsn, or default_connect_dsn for request";

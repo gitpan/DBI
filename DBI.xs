@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 14199 2010-06-29 13:58:07Z REHSACK $
+ * $Id: DBI.xs 14292 2010-07-30 13:20:00Z timbo $
  *
  * Copyright (c) 1994-2009  Tim Bunce  Ireland.
  *
@@ -1247,6 +1247,7 @@ dbih_setup_handle(pTHX_ SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
 
     DBIc_MY_H(imp) = (HV*)SvRV(orv);    /* take _copy_ of pointer, not new ref  */
     DBIc_IMP_DATA(imp) = (imp_datasv) ? newSVsv(imp_datasv) : &PL_sv_undef;
+    _imp2com(imp, std.pid) = (U32)PerlProc_getpid();
 
     if (DBIc_TYPE(imp) <= DBIt_ST) {
         SV **tmp_svp;
@@ -1866,6 +1867,9 @@ dbih_set_attr_k(SV *h, SV *keysv, int dbikey, SV *valuesv)
     else if (strEQ(key, "Warn")) {
         (on) ? DBIc_WARN_on(imp_xxh) : DBIc_WARN_off(imp_xxh);
     }
+    else if (strEQ(key, "AutoInactiveDestroy")) {
+        (on) ? DBIc_AIADESTROY_on(imp_xxh) : DBIc_AIADESTROY_off(imp_xxh);
+    }
     else if (strEQ(key, "InactiveDestroy")) {
         (on) ? DBIc_IADESTROY_on(imp_xxh) : DBIc_IADESTROY_off(imp_xxh);
     }
@@ -2225,6 +2229,9 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
             }
             else if (keylen==10 && strEQ(key, "ActiveKids")) {
                 valuesv = newSViv(DBIc_ACTIVE_KIDS(imp_xxh));
+            }
+            else if (strEQ(key, "AutoInactiveDestroy")) {
+                valuesv = boolSV(DBIc_AIADESTROY(imp_xxh));
             }
             break;
 
@@ -3194,7 +3201,11 @@ XS(XS_DBI_dispatch)
             }
         }
 
-        if (DBIc_IADESTROY(imp_xxh)) { /* want's ineffective destroy    */
+        if (DBIc_AIADESTROY(imp_xxh)) { /* wants ineffective destroy after fork */
+            if ((U32)PerlProc_getpid() != _imp2com(imp_xxh, std.pid))
+                DBIc_set(imp_xxh, DBIcf_IADESTROY, 1);
+        }
+        if (DBIc_IADESTROY(imp_xxh)) {  /* wants ineffective destroy    */
             DBIc_ACTIVE_off(imp_xxh);
         }
         call_depth = 0;
@@ -3430,16 +3441,16 @@ XS(XS_DBI_dispatch)
             (void)(*CvXSUB(xscv))(aTHXo_ xscv); /* Call the C code directly */
 
             if (gimme == G_SCALAR) {    /* Enforce sanity in scalar context */
-                if (++markix != PL_stack_sp - stack_base ) {
-                    if (markix > PL_stack_sp - stack_base)
-                         *(stack_base + markix) = &PL_sv_undef;
-                    else *(stack_base + markix) = *PL_stack_sp;
-                    PL_stack_sp = stack_base + markix;
+                if (++markix != PL_stack_sp - PL_stack_base ) {
+                    if (markix > PL_stack_sp - PL_stack_base)
+                         *(PL_stack_base + markix) = &PL_sv_undef;
+                    else *(PL_stack_base + markix) = *PL_stack_sp;
+                    PL_stack_sp = PL_stack_base + markix;
                 }
                 outitems = 1;
             }
             else {
-                outitems = PL_stack_sp - (stack_base + markix);
+                outitems = PL_stack_sp - (PL_stack_base + markix);
             }
 
         }
@@ -3452,7 +3463,7 @@ XS(XS_DBI_dispatch)
 
         /* XXX restore local vars so ST(n) works below  */
         SP -= outitems;
-        ax = (SP - stack_base) + 1;
+        ax = (SP - PL_stack_base) + 1;
 
 #ifdef DBI_save_hv_fetch_ent
         if (is_FETCH)

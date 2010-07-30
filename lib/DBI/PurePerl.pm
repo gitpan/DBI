@@ -28,7 +28,7 @@ require utf8;
 } unless defined &utf8::is_utf8;
 
 $DBI::PurePerl = $ENV{DBI_PUREPERL} || 1;
-$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 14120 $ =~ /(\d+)/o);
+$DBI::PurePerl::VERSION = sprintf("2.%06d", q$Revision: 14285 $ =~ /(\d+)/o);
 
 $DBI::neat_maxlen ||= 400;
 
@@ -143,6 +143,7 @@ my %is_flag_attribute = map {$_ =>1 } qw(
 	TaintIn
 	TaintOut
 	InactiveDestroy
+	AutoInactiveDestroy
 	LongTruncOk
 	MultiThread
 	PrintError
@@ -224,7 +225,13 @@ sub  _install_method {
     return if $method_name eq 'can';
 
     push @pre_call_frag, q{
-	return if $h_inner; # ignore DESTROY for outer handle
+        # ignore DESTROY for outer handle (DESTROY for inner likely to follow soon)
+	return if $h_inner;
+        # handle AutoInactiveDestroy and InactiveDestroy
+        $h->{InactiveDestroy} = 1
+            if $h->{AutoInactiveDestroy} and $$ != $h->{dbi_pp_pid};
+        $h->{Active} = 0
+            if $h->{InactiveDestroy};
 	# copy err/errstr/state up to driver so $DBI::err etc still work
 	if ($h->{err} and my $drh = $h->{Driver}) {
 	    $drh->{$_} = $h->{$_} for ('err','errstr','state');
@@ -527,6 +534,7 @@ sub _setup_handle {
 	$h_inner->{Type}                ||= 'dr';
     }
     $h_inner->{"dbi_pp_call_depth"} = 0;
+    $h_inner->{"dbi_pp_pid"} = $$;
     $h_inner->{ErrCount} = 0;
     $h_inner->{Active} = 1;
 }
@@ -1168,6 +1176,7 @@ functionality:
 
   ActiveKids
   InactiveDestroy
+  AutoInactiveDestroy
   Kids
   Taint
   TaintIn

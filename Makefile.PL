@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 14266 2010-07-21 08:01:45Z REHSACK $
+# $Id: Makefile.PL 14296 2010-07-30 14:00:58Z timbo $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -45,7 +45,7 @@ if (($ENV{LANG}||'') =~ m/utf-?8/i) {
     print "*** If that then works, please email dbi-dev\@perl.org with details\n";
     print "*** including the output of 'perl -V'\n";
     print "\n";
-    sleep 4;
+    sleep 1;
 }
 
 if ($Config{useithreads}) {
@@ -54,7 +54,7 @@ if ($Config{useithreads}) {
     print "*** You should be aware that using multiple threads is\n";
     print "*** not recommended for production environments.\n";
     print "\n";
-    sleep 4;
+    sleep 1;
     $::opt_thread = 1;
 }
 else {
@@ -122,7 +122,7 @@ my %opts = (
     DIR => [ ],
     dynamic_lib => { OTHERLDFLAGS => "$::opt_g" },
     clean => { FILES=> "\$(DISTVNAME) Perl.xsi t/zv*_*.t dbi__null_test_tmp*"
-                ." dbiproxy$ext_pl dbiprof$ext_pl dbilogstrip$ext_pl dbiproxy.*log dbitrace.log dbi.prof ndtest.prt" },
+                ." dbiproxy$ext_pl dbiprof$ext_pl dbilogstrip$ext_pl dbiproxy.*log dbitrace.log dbi*.prof ndtest.prt" },
     dist  => {
 	DIST_DEFAULT=> 'clean distcheck disttest tardist',
 	PREOP => '$(MAKE) -f Makefile.old distdir',
@@ -174,7 +174,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 14266 2010-07-21 08:01:45Z REHSACK $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 14296 2010-07-30 14:00:58Z timbo $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
@@ -375,6 +375,9 @@ $(roadmap_pm): Roadmap.pod
 	$(MKPATH) $(inst_libdbi)
 	$(RM_F) $(roadmap_pm)
 	$(CP) Roadmap.pod $(roadmap_pm)
+
+ptest:  all
+	prove --blib --jobs 4 --shuffle
 
 faq:
 	: checkin any local changes not already checked in before overwriting

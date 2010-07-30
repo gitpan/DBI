@@ -1,4 +1,4 @@
-# $Id: DBI.pm 14271 2010-07-22 17:28:29Z timbo $
+# $Id: DBI.pm 14294 2010-07-30 13:26:20Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2010  Tim Bunce  Ireland
@@ -9,7 +9,7 @@
 require 5.008_001;
 
 BEGIN {
-$DBI::VERSION = "1.613"; # ==> ALSO update the version in the pod text below!
+$DBI::VERSION = "1.614"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -107,6 +107,9 @@ Before asking any questions, reread this document, consult the
 archives and read the DBI FAQ. The archives are listed
 at the end of this document and on the DBI home page.
 
+You might also like to read the Advanced DBI Tutorial at
+L<http://www.slideshare.net/Tim.Bunce/dbi-advanced-tutorial-2007>
+
 This document often uses terms like I<references>, I<objects>,
 I<methods>.  If you're not familiar with those terms then it would
 be a good idea to read at least the following perl manuals first:
@@ -121,8 +124,8 @@ Tim he is very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.613
-($Revision: 14271 $).
+This is the DBI specification that corresponds to the DBI version 1.614
+($Revision: 14294 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -1520,7 +1523,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	    # explicitly set attributes which are unlikely to be in the
 	    # attribute cache, i.e., boolean's and some others
 	    $attr->{$_} = $old_dbh->FETCH($_) for (qw(
-		AutoCommit ChopBlanks InactiveDestroy
+		AutoCommit ChopBlanks InactiveDestroy AutoInactiveDestroy
 		LongTruncOk PrintError PrintWarn Profile RaiseError
 		ShowErrorStatement TaintIn TaintOut
 	    ));
@@ -3615,26 +3618,48 @@ as normal when the last reference to it is removed, just as you'd expect.
 
 If set true then the handle will be treated by the DESTROY as if it was no
 longer Active, and so the I<database engine> related effects of DESTROYing a
-handle will be skipped.
-
-Think of the name as meaning 'treat the handle as not-Active in the DESTROY
-method'.
+handle will be skipped.  Think of the name as meaning 'treat the handle as
+not-Active in the DESTROY method'.
 
 For a database handle, this attribute does not disable an I<explicit>
 call to the disconnect method, only the implicit call from DESTROY
 that happens if the handle is still marked as C<Active>.
 
 This attribute is specifically designed for use in Unix applications
-that "fork" child processes. Either the parent or the child process,
-but not both, should set C<InactiveDestroy> true on all their shared handles.
-(Note that some databases, including Oracle, don't support passing a
-database connection across a fork.)
+that "fork" child processes.  For some drivers, when the child process exits
+the destruction of inherited handles cause the corresponding handles in the
+perent process to cease working.
+
+Either the parent or the child process, but not both, should set
+C<InactiveDestroy> true on all their shared handles. Alternatively the
+L</AutoInactiveDestroy> can be set in the parent on connect.
 
 To help tracing applications using fork the process id is shown in
 the trace log whenever a DBI or handle trace() method is called.
 The process id also shown for I<every> method call if the DBI trace
 level (not handle trace level) is set high enough to show the trace
 from the DBI's method dispatcher, e.g. >= 9.
+
+=head3 C<AutoInactiveDestroy>
+
+Type: boolean, inherited
+
+The L</InactiveDestroy> attribute, described above, needs to be explicitly set
+in the child process after a fork(). This is a problem if the code that performs
+the fork() is not under your control, perhaps in a third-party module.
+Use C<AutoInactiveDestroy> to get around this situation.
+
+If set true, the DESTROY method will check the process id of the handle and, if
+different from the current process id, it will set the I<InactiveDestroy> attribute.
+
+This is the example it's designed to deal with:
+
+    my $dbh = DBI->connect(...);
+    some_code_that_forks(); # Perhaps without your knowledge
+    # Child process dies, destroying the inherited dbh
+    $dbh->do(...); # Breaks because parent $dbh is now broken
+
+The C<AutoInactiveDestroy> attribute was added in DBI 1.614.
 
 =head3 C<PrintWarn>
 
