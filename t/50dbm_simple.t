@@ -75,6 +75,15 @@ EOP
     }
 }
 
+my $dbi_sql_nano = $ENV{DBI_SQL_NANO};
+unless( $dbi_sql_nano ) {
+    $@ = undef;
+    eval {
+	require SQL::Statement;
+    };
+    $@ and $dbi_sql_nano = 1;
+}
+
 do "t/lib.pl";
 
 my $dir = test_dir ();
@@ -93,12 +102,14 @@ my %tests_statement_results = (
 	"DELETE FROM  fruit WHERE dVal='to delete'", 2,
 	"UPDATE fruit SET dVal='apples' WHERE dKey=2", 1,
 	"DELETE FROM  fruit WHERE dKey=7", 1,
-	'SELECT * FROM fruit ORDER BY dKey DESC', [
+	"SELECT * FROM fruit ORDER BY dKey DESC", [
 	    [ 5, 'via placeholders' ],
 	    [ 3, '' ],
 	    [ 2, 'apples' ],
 	    [ 1, 'oranges' ],
 	],
+	"DELETE FROM fruit", 4,
+	$dbi_sql_nano ? () : ( "SELECT COUNT(*) FROM fruit", [ [ 0 ] ] ),
 	"DROP TABLE fruit", -1,
     ],
     3 => [
@@ -116,12 +127,14 @@ my %tests_statement_results = (
 	"DELETE FROM  multi_fruit WHERE dVal='to_delete'", 2,
 	"DELETE FROM  multi_fruit WHERE qux=17", 1,
 	"DELETE FROM  multi_fruit WHERE dKey=8", 1,
-	'SELECT * FROM multi_fruit ORDER BY dKey DESC', [
+	"SELECT * FROM multi_fruit ORDER BY dKey DESC", [
 	    [ 5, 'via placeholders', 15 ],
 	    [ 3, undef, 13 ],
 	    [ 2, 'apples', 12 ],
 	    [ 1, 'oranges', 11 ],
 	],
+	"DELETE FROM multi_fruit", 4,
+	$dbi_sql_nano ? () : ( "SELECT COUNT(*) FROM multi_fruit", [ [ 0 ] ] ),
 	"DROP TABLE multi_fruit", -1,
     ],
 );
@@ -140,25 +153,8 @@ for my $columns ( 2 .. 3 )
     @{ $expected_results{$columns} } = @{$tests[1]};
 }
 
-my $tests_offsets_group = 5;
-my $ndbm_types = scalar @dbm_types;
-my $nmldbm_types = scalar @mldbm_types;
-my $tests_without_mldbm = $tests_offsets_group + scalar(@{$test_statements{2}});
-   $tests_without_mldbm += grep { m/^(?:SELECT|UPDATE|DELETE)/ } @{ $test_statements{2} };
-my $tests_per_mldbm = $tests_offsets_group + scalar(@{$test_statements{3}});
-   $tests_per_mldbm += grep { m/^(?:SELECT|UPDATE|DELETE)/ } @{ $test_statements{3} };
-my $tests_with_mldbm = $tests_per_mldbm * ($nmldbm_types - 1);
-my $num_tests = $ndbm_types * ( $tests_without_mldbm + $tests_with_mldbm );
-printf "Test count: %d x ( ( %d + %d ) + %d x ( %d + %d ) ) = %d\n",
-    $ndbm_types, $tests_offsets_group, $tests_without_mldbm - $tests_offsets_group,
-                 $nmldbm_types - 1, $tests_offsets_group, $tests_per_mldbm - $tests_offsets_group,
-    $num_tests;
-    
-if (!$num_tests) {
+unless (@dbm_types) {
     plan skip_all => "No DBM modules available";
-}
-else {
-    plan tests => $num_tests;
 }
 
 for my $mldbm ( @mldbm_types ) {
@@ -170,11 +166,11 @@ for my $mldbm ( @mldbm_types ) {
     }
 }
 
+done_testing();
+
 sub do_test {
     my ($dtype, $mldbm, $columns) = @_;
 
-    my $test_builder = Test::More->builder;
-    my $starting_test_no = $test_builder->current_test;
     #diag ("Starting test: " . $starting_test_no);
 
     # The DBI can't test locking here, sadly, because of the risk it'll hang
@@ -240,10 +236,8 @@ sub do_test {
         my $comment = $1;
 
         my $sth = $dbh->prepare($sql);
-	unless( $sth ) {
-            skip "prepare failed: " . $dbh->errstr || 'unknown error',
-	        ($sql =~ /SELECT/) ? 2 : 1;
-	}
+        ok($sth, "prepare $sql") or diag($dbh->errstr || 'unknown error');
+
 	my @bind;
 	if($sth->{NUM_OF_PARAMS})
 	{
@@ -252,10 +246,9 @@ sub do_test {
         # if execute errors we will handle it, not PrintError:
         $sth->{PrintError} = 0;
         my $n = $sth->execute(@bind);
-        if ($sth->errstr and $sql !~ /^DROP/ ) {
-            skip "execute failed: " . $sth->errstr || 'unknown error',
-	        ($sql =~ /^(?:SELECT|UPDATE|DELETE)/) ? 2 : 1;
-        }
+        ok($n, 'execute') or diag($sth->errstr || 'unknown error');
+        next if (!defined($n));
+
 	is( $n, $results[$idx], $sql ) unless( 'ARRAY' eq ref $results[$idx] );
 	TODO: {
 	    local $TODO = "AUTOPROXY drivers might throw away sth->rows()" if($ENV{DBI_AUTOPROXY});

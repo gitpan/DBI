@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14120 2010-06-07 19:52:19Z hmbrand $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14312 2010-08-02 18:01:00Z mjevans $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 14120 2010-06-07 19:52:19Z hmbrand $
+# $Id: DBD.pm 14312 2010-08-02 18:01:00Z mjevans $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -1849,7 +1849,7 @@ of code. (Of course keep an eye on other people's work.)
   };
 
   /*  Rename functions for avoiding name clashes; prototypes are  */
-  /*  in dbd_xst.h                                                */
+  /*  in dbd_xsh.h                                                */
   #define dbd_init            drv_dr_init
   #define dbd_db_login6_sv    drv_db_login_sv
   #define dbd_db_do           drv_db_do
