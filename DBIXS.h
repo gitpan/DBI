@@ -1,8 +1,8 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBIXS.h 14297 2010-07-30 14:08:56Z timbo $
+ * $Id: DBIXS.h 14343 2010-08-27 20:55:43Z timbo $
  *
- * Copyright (c) 1994-2009  Tim Bunce  Ireland
+ * Copyright (c) 1994-2010  Tim Bunce  Ireland
  *
  * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
@@ -17,7 +17,6 @@
 
 /* Here for backwards compat. PERL_POLLUTE was removed in perl 5.13.3 */
 #define PERL_POLLUTE
-#undef PERL_POLLUTE /* XXX temp undef to simplify testing */
 
 /* first pull in the standard Perl header files for extensions  */
 #include <EXTERN.h>
