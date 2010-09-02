@@ -2,11 +2,11 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2010-08-30 21:18:46 +0100 (Mon, 30 Aug 2010) $ $Revision: 14359 $)
+(As of $Date: 2010-09-02 16:30:36 +0100 (Thu, 02 Sep 2010) $ $Revision: 14368 $)
 
 =cut
 
-=head2 Changes in DBI 1.614 (svn r14355) 30th August 2010
+=head2 Changes in DBI 1.614 (svn r14368) 2nd September 2010
 
   Fixed internals to not refer to old perl symbols that
     will no longer be visible in perl >5.13.3 (Andreas Koenig)
