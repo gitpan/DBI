@@ -28,7 +28,7 @@ require DBI;    # for looks_like_number()
 
 BEGIN
 {
-    $VERSION = sprintf( "1.%06d", q$Revision: 14245 $ =~ /(\d+)/o );
+    $VERSION = sprintf( "1.%06d", q$Revision: 14371 $ =~ /(\d+)/o );
 
     $versions->{nano_version} = $VERSION;
     if ( $ENV{DBI_SQL_NANO} || !eval { require SQL::Statement; $SQL::Statement::VERSION ge '1.28' } )
@@ -309,7 +309,7 @@ sub DROP ($$$)
         return ( -1, 0 );
     }
 
-    $self->do_err( $@ || $err[0] ) if ( $@ || @err );
+    croak( $@ || $err[0] ) if ( $@ || @err );
     return ( -1, 0 ) unless $table;
 
     $table->drop($data);

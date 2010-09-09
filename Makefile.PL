@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 14296 2010-07-30 14:00:58Z timbo $
+# $Id: Makefile.PL 14369 2010-09-02 19:12:09Z timbo $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -174,7 +174,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 14296 2010-07-30 14:00:58Z timbo $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 14369 2010-09-02 19:12:09Z timbo $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
