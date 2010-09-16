@@ -573,8 +573,7 @@ sub get_driver_versions
         my $drv_prefix  = DBI->driver_prefix($drv_class);
         my $ddgv        = $dbh->{ImplementorClass}->can("get_${drv_prefix}versions");
         my $drv_version = $ddgv ? &$ddgv( $dbh, $table ) : $dbh->{ $drv_prefix . "version" };
-        $drv_version ||= eval "\$" . $derived . "::VERSION";
-        ;    # XXX access $drv_class::VERSION via symbol table
+        $drv_version ||= eval { $derived->VERSION() };    # XXX access $drv_class::VERSION via symbol table
         $vsn{$drv_class} = $drv_version;
         $indent and $vmp{$drv_class} = " " x $indent . $drv_class;
         $indent += 2;
@@ -745,18 +744,18 @@ sub bind_param ($$$;$)
     if ( $attr && defined $val )
     {
         my $type = ref $attr eq "HASH" ? $attr->{TYPE} : $attr;
-        if (    $attr == DBI::SQL_BIGINT()
-             || $attr == DBI::SQL_INTEGER()
-             || $attr == DBI::SQL_SMALLINT()
-             || $attr == DBI::SQL_TINYINT() )
+        if (    $type == DBI::SQL_BIGINT()
+             || $type == DBI::SQL_INTEGER()
+             || $type == DBI::SQL_SMALLINT()
+             || $type == DBI::SQL_TINYINT() )
         {
             $val += 0;
         }
-        elsif (    $attr == DBI::SQL_DECIMAL()
-                || $attr == DBI::SQL_DOUBLE()
-                || $attr == DBI::SQL_FLOAT()
-                || $attr == DBI::SQL_NUMERIC()
-                || $attr == DBI::SQL_REAL() )
+        elsif (    $type == DBI::SQL_DECIMAL()
+                || $type == DBI::SQL_DOUBLE()
+                || $type == DBI::SQL_FLOAT()
+                || $type == DBI::SQL_NUMERIC()
+                || $type == DBI::SQL_REAL() )
         {
             $val += 0.;
         }

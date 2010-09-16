@@ -271,6 +271,14 @@ my %reset_on_modify = (
                       );
 __PACKAGE__->register_reset_on_modify( \%reset_on_modify );
 
+my %compat_map = (
+    map { $_ => "dbm_$_" } qw(type mldbm store_metadata),
+    dbm_ext => 'f_ext',
+    dbm_file => 'f_file',
+    dbm_lockfile => ' f_lockfile',
+    );
+__PACKAGE__->register_compat_map (\%compat_map);
+
 sub bootstrap_table_meta
 {
     my ( $self, $dbh, $meta, $table ) = @_;
@@ -391,6 +399,7 @@ sub open_file
         my $tie_class = $meta->{dbm_tietype};
         eval { tie %{ $meta->{hash} }, $tie_class, @tie_args };
         $@ and croak "Cannot tie(\%h $tie_class @tie_args): $@";
+	-f $meta->{f_fqfn} or croak( "No such file: '" . $meta->{f_fqfn} . "'" );
     }
 
     unless ( $flags->{createMode} )
