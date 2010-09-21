@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14312 2010-08-02 18:01:00Z mjevans $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14436 2010-09-20 22:29:43Z timbo $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 14312 2010-08-02 18:01:00Z mjevans $
+# $Id: DBD.pm 14436 2010-09-20 22:29:43Z timbo $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -3324,15 +3324,18 @@ sub dbd_edit_mm_attribs {
     my %test_variants = (
 	p => {	name => "DBI::PurePerl",
 		match => qr/^\d/,
-		add => [ '$ENV{DBI_PUREPERL} = 2' ],
+		add => [ '$ENV{DBI_PUREPERL} = 2',
+			 'END { delete $ENV{DBI_PUREPERL}; }' ],
 	},
 	g => {	name => "DBD::Gofer",
 		match => qr/^\d/,
-		add => [ q{$ENV{DBI_AUTOPROXY} = 'dbi:Gofer:transport=null;policy=pedantic'} ],
+		add => [ q{$ENV{DBI_AUTOPROXY} = 'dbi:Gofer:transport=null;policy=pedantic'},
+			 q|END { delete $ENV{DBI_AUTOPROXY}; }| ],
 	},
 	n => {	name => "DBI::SQL::Nano",
 		match => qr/^(?:49dbd_file|5\ddbm_\w+|85gofer)\.t$/,
-		add => [ q{$ENV{DBI_SQL_NANO} = 1} ],
+		add => [ q{$ENV{DBI_SQL_NANO} = 1},
+			 q|END { delete $ENV{DBI_SQL_NANO}; }| ],
 	},
     #   mx => {	name => "DBD::Multiplex",
     #           add => [ q{local $ENV{DBI_AUTOPROXY} = 'dbi:Multiplex:';} ],
