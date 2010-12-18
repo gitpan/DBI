@@ -28,7 +28,7 @@ require DBI;    # for looks_like_number()
 
 BEGIN
 {
-    $VERSION = sprintf( "1.%06d", q$Revision: 14371 $ =~ /(\d+)/o );
+    $VERSION = sprintf( "1.%06d", q$Revision: 14495 $ =~ /(\d+)/o );
 
     $versions->{nano_version} = $VERSION;
     if ( $ENV{DBI_SQL_NANO} || !eval { require SQL::Statement; $SQL::Statement::VERSION ge '1.28' } )
@@ -110,7 +110,7 @@ sub prepare
                 $self->{where_clause} = $self->parse_where_clause($clauses) if ($clauses);
             }
         };
-        /^\s*INSERT\s+INTO\s+(\S+)\s*(\((.*?)\))?\s*VALUES\s*\((.+)\)/is
+        /^\s*INSERT\s+(?:INTO\s+)?(\S+)\s*(\((.*?)\))?\s*VALUES\s*\((.+)\)/is
           && do
         {
             $self->{command}      = 'INSERT';

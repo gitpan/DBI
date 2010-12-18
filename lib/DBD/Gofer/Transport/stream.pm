@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 10905 2008-03-10 22:01:04Z timbo $
+#   $Id: stream.pm 14572 2010-12-14 21:34:51Z REHSACK $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use Carp;
 
 use base qw(DBD::Gofer::Transport::pipeone);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 10905 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 14572 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     go_persist
@@ -127,7 +127,7 @@ sub transmit_request_by_transport {
 
     # send frozen request
     local $\;
-    print $wfh $encoded_request # autoflush enabled
+    $wfh->print($encoded_request) # autoflush enabled
         or do {
             # XXX should make new connection and retry
             $self->_connection_kill;

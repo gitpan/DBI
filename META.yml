@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               DBI
-version:            1.615
+version:            1.616
 abstract:           Database independent interface for Perl
 author:
     - Tim Bunce (dbi-users@perl.org)

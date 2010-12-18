@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 14422 2010-09-17 20:38:27Z mjevans $
+ * $Id: DBI.xs 14572 2010-12-14 21:34:51Z REHSACK $
  *
  * Copyright (c) 1994-2009  Tim Bunce  Ireland.
  *
@@ -2130,15 +2130,28 @@ dbih_get_attr_k(SV *h, SV *keysv, int dbikey)
                     int upcase = (key[5] == 'u');
                     AV *av = Nullav;
                     HV *hv = Nullhv;
+                    int num_fields_mismatch = 0;
+
                     if (strEQ(&key[strlen(key)-5], "_hash"))
                         hv = newHV();
                     else av = newAV();
                     i = DBIc_NUM_FIELDS(imp_sth);
-		    if (DBIc_TRACE_LEVEL(imp_sth) >= 10)
+
+                    /* catch invalid NUM_FIELDS */
+                    if (i != AvFILL(name_av)+1) {
+                        /* flag as mismatch, except for "-1 and empty" case */
+                        if ( ! (i == -1 && 0 == AvFILL(name_av)+1) )
+                            num_fields_mismatch = 1;
+                        i = AvFILL(name_av)+1; /* limit for safe iteration over array */
+                    }
+
+		    if (DBIc_TRACE_LEVEL(imp_sth) >= 10 || (num_fields_mismatch && DBIc_WARN(imp_xxh))) {
 			PerlIO_printf(DBILOGFP,"       FETCH $h->{%s} from $h->{NAME} with $h->{NUM_OF_FIELDS} = %d"
-			                       " and %ld entries in $h->{NAME}\n",
-				neatsvpv(keysv,0), i, AvFILL(name_av)+1);
-                    assert((i == -1 && 0 == AvFILL(name_av)+1) || (i == AvFILL(name_av)+1));
+			                       " and %ld entries in $h->{NAME}%s\n",
+				neatsvpv(keysv,0), DBIc_NUM_FIELDS(imp_sth), AvFILL(name_av)+1,
+                                (num_fields_mismatch) ? " (possible bug in driver)" : "");
+                    }
+
                     while (--i >= 0) {
                         sv = newSVsv(AvARRAY(name_av)[i]);
                         name = SvPV_nolen(sv);
@@ -2660,8 +2673,8 @@ dbi_profile(SV *h, imp_xxh_t *imp_xxh, SV *statement_sv, SV *method, NV t1, NV t
     }
     statement_pv = SvPV_nolen(statement_sv);
 
-    if (DBIc_DBISTATE(imp_xxh)->debug >= 4)
-        PerlIO_printf(DBIc_LOGPIO(imp_xxh), "       dbi_profile +%fs %s %s\n",
+    if (DBIc_TRACE_LEVEL(imp_xxh) >= 4)
+        PerlIO_printf(DBIc_LOGPIO(imp_xxh), "       dbi_profile +%" NVff "s %s %s\n",
             ti, method_pv, neatsvpv(statement_sv,0));
 
     dest_node = _profile_next_node(profile, "Data");
@@ -3075,11 +3088,12 @@ XS(XS_DBI_dispatch)
 
 #ifdef DBI_USE_THREADS
 {
-    PerlInterpreter * h_perl = DBIc_THR_USER(imp_xxh) ;
+    PerlInterpreter * h_perl;
+    is_DESTROY_wrong_thread:
+    h_perl = DBIc_THR_USER(imp_xxh) ;
     if (h_perl != my_perl) {
         /* XXX could call a 'handle clone' method here?, for dbh's at least */
         if (is_DESTROY) {
-    is_DESTROY_wrong_thread:
             if (trace_level >= 3) {
                 PerlIO_printf(DBILOGFP,"    DESTROY ignored because DBI %sh handle (%s) is owned by thread %p not current thread %p\n",
                       dbih_htype_name(DBIc_TYPE(imp_xxh)), HvNAME(DBIc_IMP_STASH(imp_xxh)),
@@ -3513,7 +3527,7 @@ XS(XS_DBI_dispatch)
             if (is_DESTROY) /* show handle as first arg to DESTROY */
                 /* want to show outer handle so trace makes sense       */
                 /* but outer handle has been destroyed so we fake it    */
-                PerlIO_printf(logfp,"(%s=HASH(%p)", HvNAME(SvSTASH(SvRV(orig_h))), (void*)DBIc_MY_H(imp_xxh));
+                PerlIO_printf(logfp,"(%s=HASH(0x%p)", HvNAME(SvSTASH(SvRV(orig_h))), (void*)DBIc_MY_H(imp_xxh));
             else
                 PerlIO_printf(logfp,"(%s", neatsvpv(st1,0));
             if (items >= 3)
@@ -4424,7 +4438,7 @@ trace(class, level_sv=&PL_sv_undef, file=Nullsv)
 #ifdef MULTIPLICITY
                 (void *)my_perl,
 #else
-                0,
+                NULL,
 #endif
                 log_where(Nullsv, 0, "", "", 1, 1, 0)
             );
@@ -5040,7 +5054,7 @@ DESTROY(sth)
     /* we don't test IMPSET here because this code applies to pure-perl drivers */
     if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
         DBIc_ACTIVE_off(imp_sth);
-        if (DBIc_DBISTATE(imp_sth)->debug)
+        if (DBIc_TRACE_LEVEL(imp_sth))
                 PerlIO_printf(DBIc_LOGPIO(imp_sth), "         DESTROY %s skipped due to InactiveDestroy\n", SvPV_nolen(sth));
     }
     if (DBIc_ACTIVE(imp_sth)) {

@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14436 2010-09-20 22:29:43Z timbo $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14572 2010-12-14 21:34:51Z REHSACK $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 14436 2010-09-20 22:29:43Z timbo $
+# $Id: DBD.pm 14572 2010-12-14 21:34:51Z REHSACK $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -2308,6 +2308,10 @@ This is where a statement will really be executed.
 
   int dbd_st_execute(SV* sth, imp_sth_t* imp_sth);
 
+C<dbd_st_execute> should return -2 for any error, -1 if the number of
+rows affected is unknown else it should be the number of affected
+(updated, inserted) rows.
+
 Note that you must be aware a statement may be executed repeatedly.
 Also, you should not expect that C<finish()> will be called between two
 executions, so you might need code, like the following, near the start
@@ -3333,7 +3337,7 @@ sub dbd_edit_mm_attribs {
 			 q|END { delete $ENV{DBI_AUTOPROXY}; }| ],
 	},
 	n => {	name => "DBI::SQL::Nano",
-		match => qr/^(?:49dbd_file|5\ddbm_\w+|85gofer)\.t$/,
+		match => qr/^(?:48dbi_dbd_sqlengine|49dbd_file|5\ddbm_\w+|85gofer)\.t$/,
 		add => [ q{$ENV{DBI_SQL_NANO} = 1},
 			 q|END { delete $ENV{DBI_SQL_NANO}; }| ],
 	},
