@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 14572 2010-12-14 21:34:51Z REHSACK $
+ * $Id: DBI.xs 14545 2010-11-22 10:13:15Z timbo $
  *
  * Copyright (c) 1994-2009  Tim Bunce  Ireland.
  *

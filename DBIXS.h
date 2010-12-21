@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBIXS.h 14343 2010-08-27 20:55:43Z timbo $
+ * $Id: DBIXS.h 14562 2010-12-06 10:26:17Z mjevans $
  *
  * Copyright (c) 1994-2010  Tim Bunce  Ireland
  *

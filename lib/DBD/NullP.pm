@@ -5,9 +5,9 @@
     require Carp;
 
     @EXPORT = qw(); # Do NOT @EXPORT anything.
-    $VERSION = sprintf("12.%06d", q$Revision: 14572 $ =~ /(\d+)/o);
+    $VERSION = sprintf("12.%06d", q$Revision: 14563 $ =~ /(\d+)/o);
 
-#   $Id: NullP.pm 14572 2010-12-14 21:34:51Z REHSACK $
+#   $Id: NullP.pm 14563 2010-12-06 11:25:20Z timbo $
 #
 #   Copyright (c) 1994-2007 Tim Bunce
 #

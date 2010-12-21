@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 14572 2010-12-14 21:34:51Z REHSACK $
+#   $Id: stream.pm 14598 2010-12-21 22:53:25Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -14,7 +14,7 @@ use Carp;
 
 use base qw(DBD::Gofer::Transport::pipeone);
 
-our $VERSION = sprintf("0.%06d", q$Revision: 14572 $ =~ /(\d+)/o);
+our $VERSION = sprintf("0.%06d", q$Revision: 14598 $ =~ /(\d+)/o);
 
 __PACKAGE__->mk_accessors(qw(
     go_persist
@@ -129,13 +129,14 @@ sub transmit_request_by_transport {
     local $\;
     $wfh->print($encoded_request) # autoflush enabled
         or do {
-            # XXX should make new connection and retry
+            my $err = $!;
+            # XXX could/should make new connection and retry
             $self->_connection_kill;
-            die "Error sending request: $!";
+            die "Error sending request: $err";
         };
     $self->trace_msg("Request sent: $encoded_request\n",0) if $trace >= 4;
 
-    return;
+    return undef; # indicate no response yet (so caller calls receive_response_by_transport)
 }
 
 
