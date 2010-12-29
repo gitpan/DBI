@@ -2,11 +2,11 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2010-12-21 23:19:57 +0000 (Tue, 21 Dec 2010) $ $Revision: 14601 $)
+(As of $Date: 2010-12-29 14:34:14 +0000 (Wed, 29 Dec 2010) $ $Revision: 14614 $)
 
 =cut
 
-=head2 Changes in DBI 1.617 (svn r14601) 21st December 2010
+=head2 Changes in DBI 1.617 (svn r14614) 29th December 2010
 
   Fixed spurious dbi_profile lines written to the log when
     profiling is enabled and a trace flag, like SQL, is used.
@@ -20,6 +20,10 @@ DBI::Changes - List of significant changes to the DBI
 
   Optimized connect() to remove redundant FETCH of \%attrib values.
   Improved initialization phases in DBI::DBD::SqlEngine (Jens Rehsack)
+
+  Added DBD::Gofer::Transport::corostream. A experimental proof-of-concept
+    transport that enables asynchronous database calls with few code changes.
+    Including asynchronous use of DBI frameworks like DBIx::Class.
 
   Added additional notes on DBDs which avoid creating a statement in
     the do() method and the effects on error handlers (Martin J. Evans)
