@@ -5,6 +5,7 @@ use DBI qw(:sql_types);
 use Config;
 use Cwd;
 use strict;
+use Data::Dumper;
 
 $^W = 1;
 $| = 1;
@@ -13,7 +14,7 @@ require File::Basename;
 require File::Spec;
 require VMS::Filespec if $^O eq 'VMS';
 
-use Test::More tests => 210;
+use Test::More tests => 215;
 
 do {
     # provide some protection against growth in size of '.' during the test
@@ -252,6 +253,15 @@ $r = $csr_b->fetchall_arrayref([0], 1);
 ok($r);
 is_deeply($r, [[$row_a[0]]]);
 
+$r = $csr_b->fetchall_arrayref([], 1);
+is @$r, 1, 'should fetch one row';
+
+$r = $csr_b->fetchall_arrayref([], 99999);
+ok @$r, 'should fetch all the remaining rows';
+
+$r = $csr_b->fetchall_arrayref([], 99999);
+is $r, undef, 'should return undef as there are no more rows';
+
 # ---
 
 print "selectrow_array\n";
@@ -318,7 +328,7 @@ ok($r->[0] eq $row_b[0]);
 print "selectcol_arrayref column slice\n";
 $r = $dbh->selectcol_arrayref($std_sql, { Columns => [3,2] }, $dir);
 ok($r);
-# use Data::Dumper; warn Dumper([\@row_b, $r]);
+# warn Dumper([\@row_b, $r]);
 ok(@$r == $rows * 2);
 ok($r->[0] eq $row_b[2]);
 ok($r->[1] eq $row_b[1]);
@@ -354,6 +364,17 @@ $se_sth1->bind_param($_, "val$_") for (1..11);
 ok( !eval { $se_sth1->execute } );
 like $@, qr/\[for Statement "select mode from \?" with ParamValues: 1='val1', 2='val2', 3='val3', 4='val4', 5='val5', 6='val6', 7='val7', 8='val8', 9='val9', 10='val10', 11='val11'\]/;
 
+# this test relies on the fact that ShowErrorStatement is set above
+TODO: {
+    local $TODO = "rt66127 not fixed yet";
+    eval {
+        local $se_sth1->{PrintError} = 0;
+        $se_sth1->execute(1,2);
+    };
+    unlike($@, qr/ParamValues:/, 'error string does not contain ParamValues');
+    is($se_sth1->{ParamValues}, undef, 'ParamValues is empty')
+    or diag(Dumper($se_sth1->{ParamValues}));
+};
 # check that $dbh->{Statement} tracks last _executed_ sth
 $se_sth1 = $dbh->prepare("select mode from ?");
 ok($se_sth1->{Statement} eq "select mode from ?");

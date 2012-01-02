@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14600 2010-12-21 23:08:28Z timbo $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14850 2011-05-12 08:54:16Z mjevans $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 14600 2010-12-21 23:08:28Z timbo $
+# $Id: DBD.pm 14850 2011-05-12 08:54:16Z mjevans $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -2641,6 +2641,15 @@ code like this:
 
 where I<A_TABLE_NAME> is the name of a table that always exists (such as a
 database system catalogue).
+
+=item $drh->default_user
+
+The default implementation of default_user will get the database
+username and password fields from C<$ENV{DBI_USER}> and
+C<$ENV{DBI_PASS}>. You can override this method. It is called as
+follows:
+
+  ($user, $pass) = $drh->default_user($user, $pass, $attr)
 
 =back
 
