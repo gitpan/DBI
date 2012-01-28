@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 14850 2011-05-12 08:54:16Z mjevans $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 15098 2012-01-25 20:02:20Z timbo $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 14850 2011-05-12 08:54:16Z mjevans $
+# $Id: DBD.pm 15098 2012-01-25 20:02:20Z timbo $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -1975,7 +1975,7 @@ as described in L</Driver.h> above.
 The (obsolete) macros such as C<DBIh_EVENT2> should be removed from drivers.
 
 The names C<dbis> and C<DBIS>, which were used in previous versions of
-this document, should be replaced with the C<DBIc_STATE(imp_xxh)> macro.
+this document, should be replaced with the C<DBIc_DBISTATE(imp_xxh)> macro.
 
 The name C<DBILOGFP>, which was also used in previous versions of this
 document, should be replaced by C<DBIc_LOGPIO(imp_xxh)>.

@@ -2,11 +2,16 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-01-02 15:51:59 +0000 (Mon, 02 Jan 2012) $ $Revision: 15063 $)
+(As of $Date: 2012-01-27 12:43:33 +0000 (Fri, 27 Jan 2012) $ $Revision: 15104 $)
 
 =cut
 
-=head2 Changes in DBI 1.617 (svn r15064) 2nd January 2012
+=head2 Changes in DBI 1.617 (svn r15107) 27th January 2012
+
+  NOTE: The officially supported minimum perl version will change
+  from perl 5.8.1 (2003) to perl 5.8.3 (2004) in a future release.
+  (The last change, from perl 5.6 to 5.8.1, was announced
+  in July 2008 and implemented in DBI 1.611 in April 2010.)
 
   Fixed ParamTypes example in the pod (Martin J. Evans)
   Fixed the definition of ArrayTupleStatus and remove confusion over
@@ -16,6 +21,7 @@ DBI::Changes - List of significant changes to the DBI
   Fixed $dbh->clone({}) RT73250 (Tim Bunce)
   Fixed is_nested_call logic error RT73118 (Reini Urban)
 
+  Enhanced performance for threaded perls (Dave Mitchell, Tim Bunce)
   Enhanced and standardized driver trace level mechanism (Tim Bunce)
   Removed old code that was an inneffective attempt to detect
     people doing DBI->{Attrib}.
@@ -28,6 +34,7 @@ DBI::Changes - List of significant changes to the DBI
   Added some more fetchall_arrayref(..., $maxrows) tests (Tim Bunce)
   Clarified docs for fetchall_arrayref called on an inactive handle.
   Clarified docs for clone method (Tim Bunce)
+  Added note to DBI::Profile about async queries (Marcel Grünauer).
   Reserved spatialite_ as a driver prefix for DBD::Spatialite
   Reserved mo_ as a driver prefix for DBD::MO
   Updated link to the SQL Reunion 95 docs, RT69577 (Ash Daminato)
