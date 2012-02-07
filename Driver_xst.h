@@ -1,5 +1,5 @@
 /*
-#  $Id: Driver_xst.h 15062 2012-01-02 15:16:55Z timbo $
+#  $Id: Driver_xst.h 15124 2012-02-03 15:13:41Z timbo $
 #  Copyright (c) 2002  Tim Bunce  Ireland
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -69,7 +69,7 @@ dbdxst_bind_params(SV *sth, imp_sth_t *imp_sth, I32 items, I32 ax)
         }
 	sprintf(errmsg,"called with %d bind variables when %d are needed",
 		(int)items-1, DBIc_NUM_PARAMS(imp_sth));
-        DBIh_SET_ERR_CHAR(sth, imp_sth, "-1", -1, errmsg, Nullch, Nullch);
+        DBIh_SET_ERR_CHAR(sth, (imp_xxh_t*)imp_sth, "-1", -1, errmsg, Nullch, Nullch);
 	return 0;
     }
     idx = sv_2mortal(newSViv(0));
@@ -95,7 +95,7 @@ dbdxst_fetchall_arrayref(SV *sth, SV *slice, SV *batch_row_count)
     if (SvOK(slice)) {  /* should never get here */
 	char errmsg[99];
 	sprintf(errmsg,"slice param not supported by XS version of fetchall_arrayref");
-        DBIh_SET_ERR_CHAR(sth, imp_sth, "-1", -1, errmsg, Nullch, Nullch);
+        DBIh_SET_ERR_CHAR(sth, (imp_xxh_t*)imp_sth, "-1", -1, errmsg, Nullch, Nullch);
 	return &PL_sv_undef;
     }
     else {

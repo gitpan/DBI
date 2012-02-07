@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 15098 2012-01-25 20:02:20Z timbo $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 15128 2012-02-04 20:51:39Z timbo $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 15098 2012-01-25 20:02:20Z timbo $
+# $Id: DBD.pm 15128 2012-02-04 20:51:39Z timbo $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce
@@ -789,11 +789,11 @@ registered driver-private prefix. For example, for DBD::Oracle
 $method_name must being with 'C<ora_>', and for DBD::AnyData it
 must begin with 'C<ad_>'.
 
-The attributes can be used to provide fine control over how the DBI
-dispatcher handles the dispatching of the method. However, at this
-point, it's undocumented and very liable to change. (Volunteers to
-polish up and document the interface are very welcome to get in
-touch via dbi-dev@perl.org)
+The C<\%attr> attributes can be used to provide fine control over how the DBI
+dispatcher handles the dispatching of the method. However it's undocumented
+at the moment. See the IMA_* #define's in DBI.xs and the O=>0x000x values in
+the initialization of %DBI::DBI_methods in DBI.pm.  (Volunteers to polish up
+and document the interface are very welcome to get in touch via dbi-dev@perl.org).
 
 Methods installed using install_method default to the standard error
 handling behaviour for DBI methods: clearing err and errstr before

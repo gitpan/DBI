@@ -2,9 +2,19 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-01-27 12:43:33 +0000 (Fri, 27 Jan 2012) $ $Revision: 15104 $)
+(As of $Date: 2012-02-07 22:36:52 +0000 (Tue, 07 Feb 2012) $ $Revision: 15132 $)
 
 =cut
+
+=head2 Changes in DBI 1.618-TRIAL (svn r15135) 7th January 2012
+
+  Fixed compiler warnings in Driver_xst.h (Martin J. Evans)
+  Fixed compiler warning in DBI.xs (H.Merijn Brand)
+
+  Significantly optimized method dispatch (Dave Mitchell)
+  Corrected typo in example in docs (David Precious)
+  Added note that calling clone() without an arg may warn in future.
+  Minor changes to the install_method() docs in DBI::DBD.
 
 =head2 Changes in DBI 1.617 (svn r15107) 30th January 2012
 

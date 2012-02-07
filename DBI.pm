@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15065 2012-01-02 19:48:43Z timbo $
+# $Id: DBI.pm 15126 2012-02-04 20:20:10Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.617"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.618"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -126,8 +126,8 @@ Tim he is very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.617
-($Revision: 15065 $).
+This is the DBI specification that corresponds to the DBI version 1.618
+($Revision: 15126 $).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -826,15 +826,17 @@ sub install_driver {		# croaks on failure
 
 sub setup_driver {
     my ($class, $driver_class) = @_;
-    my $type;
-    foreach $type (qw(dr db st)){
-	my $class = $driver_class."::$type";
+    my $h_type;
+    foreach $h_type (qw(dr db st)){
+	my $h_class = $driver_class."::$h_type";
 	no strict 'refs';
-	push @{"${class}::ISA"},     "DBD::_::$type"
-	    unless UNIVERSAL::isa($class, "DBD::_::$type");
-	my $mem_class = "DBD::_mem::$type";
-	push @{"${class}_mem::ISA"}, $mem_class
-	    unless UNIVERSAL::isa("${class}_mem", $mem_class)
+	push @{"${h_class}::ISA"},     "DBD::_::$h_type"
+	    unless UNIVERSAL::isa($h_class, "DBD::_::$h_type");
+	# The _mem class stuff is (IIRC) a crufty hack for global destruction
+	# timing issues in early versions of perl5 and possibly no longer needed.
+	my $mem_class = "DBD::_mem::$h_type";
+	push @{"${h_class}_mem::ISA"}, $mem_class
+	    unless UNIVERSAL::isa("${h_class}_mem", $mem_class)
 	    or $DBI::PurePerl;
     }
 }
@@ -4320,13 +4322,13 @@ The attributes for the cloned connect are the same as those used
 for the I<original> connect, with any other attributes in C<\%attr>
 merged over them.  Effectively the same as doing:
 
-  %attribues_used = ( %original_attributes, %attr );
+  %attributes_used = ( %original_attributes, %attr );
 
 If \%attr is not given then it defaults to a hash containing all
 the attributes in the attribute cache of $dbh excluding any non-code
 references, plus the main boolean attributes (RaiseError, PrintError,
 AutoCommit, etc.). I<This behaviour is unreliable and so use of clone without
-an argument is deprecated.>
+an argument is deprecated and may cause a warning in a future release.>
 
 The clone method can be used even if the database handle is disconnected.
 
