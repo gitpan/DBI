@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 14369 2010-09-02 19:12:09Z timbo $
+# $Id: Makefile.PL 15136 2012-02-09 15:22:18Z timbo $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -59,7 +59,7 @@ if ($Config{useithreads}) {
 }
 else {
 
-    if ($Config{archname} =~ /thread/ && $::opt_thread) {
+    if ($Config{archname} =~ /\bthread/ && $::opt_thread) {
 	# oh dear... tell it like it is:
 	print "\n";
 	print "DBI versions from 1.29 onwards no longer support the old style\n";
@@ -174,7 +174,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 14369 2010-09-02 19:12:09Z timbo $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 15136 2012-02-09 15:22:18Z timbo $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
