@@ -1,11 +1,15 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15147 2012-02-13 17:46:47Z timbo $
+ * $Id: DBI.xs 15169 2012-02-22 20:23:07Z mjevans $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
  * See COPYRIGHT section in DBI.pm for usage and distribution rights.
  */
+#define NEED_grok_number
+#define NEED_grok_numeric_radix
+#define NEED_newRV_noinc
+#define NEED_sv_2pv_flags
 
 #define IN_DBI_XS 1     /* see DBIXS.h */
 #define PERL_NO_GET_CONTEXT
@@ -4286,10 +4290,12 @@ PROTOTYPES: DISABLE
 
 
 BOOT:
+    {
+        MY_CXT_INIT;
+        (void)MY_CXT; /* avoid 'unused variable' warning */
+    }
     (void)cv;
     (void)items; /* avoid 'unused variable' warning */
-    MY_CXT_INIT;
-    (void)MY_CXT; /* avoid 'unused variable' warning */
     dbi_bootinit(NULL);
 
 
