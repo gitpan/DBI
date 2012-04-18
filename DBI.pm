@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15137 2012-02-09 15:22:56Z timbo $
+# $Id: DBI.pm 15268 2012-04-18 11:34:59Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.618"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.619"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -93,17 +93,16 @@ I don't recommend the DBI cpanforum (at http://www.cpanforum.com/dist/DBI)
 because relatively few people read it compared with dbi-users@perl.org.
 
 To help you make the best use of the dbi-users mailing list,
-and any other lists or forums you may use, I I<strongly>
-recommend that you read "How To Ask Questions The Smart Way"
-by Eric Raymond: L<http://www.catb.org/~esr/faqs/smart-questions.html>.
+and any other lists or forums you may use, I recommend that you read
+"Getting Answers" by Mike Ash: L<http://mikeash.com/getting_answers.html>.
 
 If you think you've found a bug then please also read
 "How to Report Bugs Effectively" by Simon Tatham:
 L<http://www.chiark.greenend.org.uk/~sgtatham/bugs.html>.
 
 The DBI home page at L<http://dbi.perl.org/> and the DBI FAQ
-at L<http://faq.dbi-support.com/> are always worth a visit.
-They include links to other resources.
+at L<http://faq.dbi-support.com/> may be worth a visit.
+They include links to other resources, but are rather out-dated.
 
 Before asking any questions, reread this document, consult the
 archives and read the DBI FAQ. The archives are listed
@@ -126,8 +125,8 @@ Tim he is very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to the DBI version 1.618
-($Revision: 15137 $).
+This is the DBI specification that corresponds to DBI version 1.619
+(see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that
 you have the latest copy.
@@ -419,7 +418,7 @@ my $keeperr = { O=>0x0004 };
 	data_sources	=> { U =>[1,2,'[\%attr]' ], O=>0x0200 },
 	take_imp_data	=> { U =>[1,1], O=>0x10000 },
 	clone   	=> { U =>[1,2,'[\%attr]'], T=>0x200 },
-	connected   	=> { U =>[1,0], O => 0x0004, T=>0x200 },
+	connected   	=> { U =>[1,0], O => 0x0004, T=>0x200, H=>3 },
 	begin_work   	=> { U =>[1,2,'[ \%attr ]'], O=>0x0400, T=>0x1000 },
 	commit     	=> { U =>[1,1], O=>0x0480|0x0800, T=>0x1000 },
 	rollback   	=> { U =>[1,1], O=>0x0480|0x0800, T=>0x1000 },
@@ -520,10 +519,8 @@ END {
 
 
 sub CLONE {
-    my $olddbis = $DBI::_dbistate;
     _clone_dbis() unless $DBI::PurePerl; # clone the DBIS structure
-    DBI->trace_msg(sprintf "CLONE DBI for new thread %s\n",
-	$DBI::PurePerl ? "" : sprintf("(dbis %x -> %x)",$olddbis, $DBI::_dbistate));
+    DBI->trace_msg("CLONE DBI for new thread\n");
     while ( my ($driver, $drh) = each %DBI::installed_drh) {
 	no strict 'refs';
 	next if defined &{"DBD::${driver}::CLONE"};
@@ -2032,11 +2029,18 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	}
 	elsif ($mode eq 'HASH') {
 	    $max_rows = -1 unless defined $max_rows;
+            # XXX both these could be made faster (and unified) by pre-binding
+            # a local hash using bind_columns and then copying it per row, so
+            # we'd be able to replace the expensive fetchrow_hashref with
+            # fetchrow_arrayref. So the main loop would end up being like:
+            #   push @rows, { %bound_hash }
+            #       while ($max_rows-- and $sth->fetchrow_arrayref);
+            # XXX Also, it would be very helpful for DBIx::Class and others
+            # if a slice could 'rename' columns. Some kind of 'renaming slice'
+            # could be incorporated here.
 	    if (keys %$slice) {
 		my @o_keys = keys %$slice;
 		my @i_keys = map { lc } keys %$slice;
-                # XXX this could be made faster by pre-binding a local hash
-                # using bind_columns and then copying it per row
 		while ($max_rows-- and $row = $sth->fetchrow_hashref('NAME_lc')) {
 		    my %hash;
 		    @hash{@o_keys} = @{$row}{@i_keys};
@@ -6747,7 +6751,7 @@ statement, like SELECT. Typically the attribute will be C<undef>
 in these situations.
 
 For drivers which support stored procedures and multiple result sets
-(see more_results) these attributes relate to the I<current> result set.
+(see L</more_results>) these attributes relate to the I<current> result set.
 
 See also L</finish> to learn more about the effect it
 may have on some attributes.

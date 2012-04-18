@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15169 2012-02-22 20:23:07Z mjevans $
+ * $Id: DBI.xs 15270 2012-04-18 11:49:01Z timbo $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
@@ -80,6 +80,25 @@ extern Pid_t getpid (void);
 #define DBI_save_hv_fetch_ent
 #endif
 
+/* prior to 5.8.9: when a CV is duped, the mg dup method is called,
+ * then *afterwards*, any_ptr is copied from the old CV to the new CV.
+ * This wipes out anything which the dup method did to any_ptr.
+ * This needs working around */
+#if defined(USE_ITHREADS) && (PERL_VERSION == 8) && (PERL_SUBVERSION < 9)
+#  define BROKEN_DUP_ANY_PTR
+#endif
+
+/* types of method name */
+
+typedef enum {
+    methtype_ordinary, /* nothing special about this method name */
+    methtype_DESTROY,
+    methtype_FETCH,
+    methtype_can,
+    methtype_fetch_star, /* fetch*, i.e. fetch() or fetch_...() */
+    methtype_set_err
+} meth_types;
+
 
 static imp_xxh_t *dbih_getcom      _((SV *h));
 static imp_xxh_t *dbih_getcom2     _((pTHX_ SV *h, MAGIC **mgp));
@@ -100,22 +119,54 @@ static int      sql_type_cast_svpv _((pTHX_ SV *sv, int sql_type, U32 flags, voi
 static I32      dbi_hash _((const char *string, long i));
 static void     dbih_dumphandle _((pTHX_ SV *h, const char *msg, int level));
 static int      dbih_dumpcom _((pTHX_ imp_xxh_t *imp_xxh, const char *msg, int level));
-static int      method_cache_free(pTHX_ SV* sv, MAGIC* mg);
-static int      method_cache_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param);
-static GV*      inner_method_lookup(pTHX_ HV *stash, CV *cv, const char *meth_name);
+static int      dbi_ima_free(pTHX_ SV* sv, MAGIC* mg);
+#if defined(USE_ITHREADS) && !defined(BROKEN_DUP_ANY_PTR)
+static int      dbi_ima_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param);
+#endif
 char *neatsvpv _((SV *sv, STRLEN maxlen));
 SV * preparse(SV *dbh, const char *statement, IV ps_return, IV ps_accept, void *foo);
-
-DBISTATE_DECLARE;
+static meth_types get_meth_type(const char * const name);
 
 struct imp_drh_st { dbih_drc_t com; };
 struct imp_dbh_st { dbih_dbc_t com; };
 struct imp_sth_st { dbih_stc_t com; };
 struct imp_fdh_st { dbih_fdc_t com; };
 
+/* identify the type of a method name for dispatch behaviour */
+/* (should probably be folded into the IMA flags mechanism)  */
+
+static meth_types
+get_meth_type(const char * const name)
+{
+    switch (name[0]) {
+    case 'D':
+        if strEQ(name,"DESTROY")
+            return methtype_DESTROY;
+        break;
+    case 'F':
+        if strEQ(name,"FETCH")
+            return methtype_FETCH;
+        break;
+    case 'c':
+        if strEQ(name,"can")
+            return methtype_can;
+        break;
+    case 'f':
+        if strnEQ(name,"fetch", 5) /* fetch* */
+            return methtype_fetch_star;
+        break;
+    case 's':
+        if strEQ(name,"set_err")
+            return methtype_set_err;
+        break;
+    }
+    return methtype_ordinary;
+}
+
 
 /* Internal Method Attributes (attached to dispatch methods when installed) */
-/* NOTE: don't include SVs in dbi_ima_t as they won't be cloned by threads */
+/* NOTE: when adding SVs to dbi_ima_t, update dbi_ima_dup() dbi_ima_free()
+ * to ensure that they are duped and correctly ref-counted */
 
 typedef struct dbi_ima_st {
     U8 minargs;
@@ -130,6 +181,16 @@ typedef struct dbi_ima_st {
     U32 method_trace;
     const char *usage_msg;
     U32 flags;
+    meth_types meth_type;
+
+    /* cached outer to inner method mapping */
+    HV *stash;          /* the stash we found the GV in */
+    GV *gv;             /* the GV containing the inner sub */
+    U32 generation;     /* cache invalidation */
+#ifdef BROKEN_DUP_ANY_PTR
+    PerlInterpreter *my_perl; /* who owns this struct */
+#endif
+
 } dbi_ima_t;
 
 /* These values are embedded in the data passed to install_method       */
@@ -184,105 +245,53 @@ static char *dbi_build_opt = "-nothread";
 #define FNV_32_PRIME ((UV)0x01000193)
 
 
-
-/* ext magic attached to outer CV methods to quickly locate the
- * corresponding inner method
+/* perl doesn't know anything about the dbi_ima_t struct attached to the
+ * CvXSUBANY(cv).any_ptr slot, so add some magic to the CV to handle
+ * duping and freeing.
  */
 
-static MGVTBL method_cache_vtbl = { 0, 0, 0, 0, method_cache_free,
-                                    0, method_cache_dup
+static MGVTBL dbi_ima_vtbl = { 0, 0, 0, 0, dbi_ima_free,
+                                    0,
+#if defined(USE_ITHREADS) && !defined(BROKEN_DUP_ANY_PTR)
+                                    dbi_ima_dup
+#else
+                                    0
+#endif
 #if (PERL_VERSION > 8) || ((PERL_VERSION == 8) && (PERL_SUBVERSION >= 9))
                                     , 0
 #endif
                                     };
 
-typedef struct {
-    HV *stash;          /* the stash we found the GV in */
-    GV *gv;             /* the GV containing the inner sub */
-    U32 generation;     /* cache invalidation */
-} method_cache_t;
-
-static int method_cache_free(pTHX_ SV* sv, MAGIC* mg)
+static int dbi_ima_free(pTHX_ SV* sv, MAGIC* mg)
 {
-    method_cache_t *c = (method_cache_t *)(mg->mg_ptr);
-    SvREFCNT_dec(c->stash);
-    SvREFCNT_dec(c->gv);
-    Safefree(c);
+    dbi_ima_t *ima = (dbi_ima_t *)(CvXSUBANY((CV*)sv).any_ptr);
+#ifdef BROKEN_DUP_ANY_PTR
+    if (ima->my_perl != my_perl)
+        return 0;
+#endif
+    SvREFCNT_dec(ima->stash);
+    SvREFCNT_dec(ima->gv);
+    Safefree(ima);
     return 0;
 }
 
-static int method_cache_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param)
+#if defined(USE_ITHREADS) && !defined(BROKEN_DUP_ANY_PTR)
+static int dbi_ima_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param)
 {
-    method_cache_t *c;
-    Newxc(mg->mg_ptr, 1, method_cache_t, char);
-    c = (method_cache_t *)(mg->mg_ptr);
-    c->stash = NULL;
-    c->gv    = NULL;
+    dbi_ima_t *ima, *nima;
+    CV *cv  = (CV*) mg->mg_ptr;
+    CV *ncv = (CV*)ptr_table_fetch(PL_ptr_table, (cv));
+
+    (void)param; /* avoid 'unused variable' warning */
+    ima = (dbi_ima_t*) CvXSUBANY(cv).any_ptr;
+    Newx(nima, 1, dbi_ima_t);
+    *nima = *ima; /* structure copy */
+    CvXSUBANY(ncv).any_ptr = nima;
+    nima->stash = NULL;
+    nima->gv    = NULL;
     return 0;
 }
-
-static GV* inner_method_lookup(pTHX_ HV *stash, CV *cv, const char *meth_name)
-{
-    GV *gv;
-    method_cache_t *c;
-    MAGIC *mg = SvMAGIC(cv);
-
-    if (mg) {
-        if (mg->mg_virtual != &method_cache_vtbl) {
-            /* usually cache is the first magic in the list;
-             * if not, find it and bump it to the top */
-            MAGIC *nmg = mg->mg_moremagic;
-            while (nmg) {
-                if (nmg->mg_virtual == &method_cache_vtbl)
-                    break;
-                mg = nmg;
-                nmg = mg->mg_moremagic;
-            }
-            if (nmg) {
-                mg->mg_moremagic = nmg->mg_moremagic;
-                nmg->mg_moremagic = SvMAGIC(cv);
-                SvMAGIC(cv) = nmg;
-                mg = nmg;
-            }
-            else {
-                mg = NULL;
-                goto no_match;
-            }
-        }
-
-        if (  (c=(method_cache_t *)(mg->mg_ptr))
-            && c->stash == stash
-            && c->generation == PL_sub_generation + MY_cache_gen(stash)
-        )
-            return c->gv;
-
-        /* clear stale cache */
-        SvREFCNT_dec(c->stash);
-        SvREFCNT_dec(c->gv);
-        c->stash = NULL;
-        c->gv    = NULL;
-    }
-
-  no_match:
-    gv = gv_fetchmethod_autoload(stash, meth_name, FALSE);
-    if (!gv)
-        return NULL;
-
-    /* create new cache entry */
-    if (!mg) {
-        c = 0; /* silence "may be used uninitialized in this function" */
-        Newx(c, 1, method_cache_t);
-        mg = sv_magicext((SV*)cv, NULL, DBI_MAGIC, &method_cache_vtbl,
-                            (char *)c, 0);
-        mg->mg_flags |= MGf_DUP;
-    }
-    SvREFCNT_inc(stash);
-    SvREFCNT_inc(gv);
-    c->stash = stash;
-    c->gv    = gv;
-    c->generation = PL_sub_generation + MY_cache_gen(stash);
-    return gv;
-}
+#endif
 
 
 
@@ -299,12 +308,19 @@ typedef struct {
 
 START_MY_CXT
 
-#if defined(MULTIPLICITY) || defined(PERL_OBJECT) || defined(PERL_CAPI)
-#   undef DBIS
-#   define DBIS                 (MY_CXT.dbi_state)
-#endif
+#undef DBIS
+#define DBIS                   (MY_CXT.dbi_state)
 
 #define g_dbi_last_h            (MY_CXT.dbi_last_h)
+
+/* allow the 'static' dbi_state struct to be accessed from other files */
+dbistate_t**
+_dbi_state_lval(pTHX)
+{
+    dMY_CXT;
+    return &(MY_CXT.dbi_state);
+}
+
 
 /* --- */
 
@@ -510,15 +526,12 @@ dbi_bootinit(dbistate_t * parent_dbis)
     dbistate_t* DBISx;
 
     DBISx = (struct dbistate_st*)malloc_using_sv(sizeof(struct dbistate_st));
-
-    /* publish address of dbistate so dynaloaded DBD's can find it,
-     * taking care to store the value in the same way it'll be used
-     * to avoid problems on some architectures, for example see
-     * http://rt.cpan.org/Public/Bug/Display.html?id=32309
-     */
-    sv_setiv(get_sv(DBISTATE_PERLNAME, GV_ADDMULTI), 0); /* force SvIOK */
     DBIS = DBISx;
-    DBIS_PUBLISHED_LVALUE = DBISx;
+
+    /* make DBIS available to DBD modules the "old" (<= 1.618) way,
+     * so that unrecompiled DBD's will still work against a newer DBI */
+    sv_setiv(get_sv("DBI::_dbistate", GV_ADDMULTI),
+            PTR2IV(MY_CXT.dbi_state));
 
     /* store version and size so we can spot DBI/DBD version mismatch   */
     DBIS->check_version = check_version;
@@ -535,12 +548,6 @@ dbi_bootinit(dbistate_t * parent_dbis)
 #ifdef DBI_USE_THREADS
     DBIS->thr_owner   = PERL_GET_THX;
 #endif
-
-    DBISTATE_INIT; /* check DBD code to set DBIS from DBISTATE_PERLNAME */
-
-    if (DBIS_TRACE_LEVEL > 9) {
-        sv_dump(DBISTATE_ADDRSV);
-    }
 
     /* store some function pointers so DBD's can call our functions     */
     DBIS->getcom      = dbih_getcom;
@@ -1089,17 +1096,31 @@ dbih_inner(pTHX_ SV *orv, const char *what)
 static imp_xxh_t *
 dbih_getcom(SV *hrv) /* used by drivers via DBIS func ptr */
 {
-    dTHX;
-    imp_xxh_t *imp_xxh = dbih_getcom2(aTHX_ hrv, 0);
-    if (!imp_xxh)       /* eg after take_imp_data */
-        croak("Invalid DBI handle %s, has no dbi_imp_data", neatsvpv(hrv,0));
-    return imp_xxh;
+    MAGIC *mg;
+    SV *sv;
+
+    /* short-cut common case */
+    if (   SvROK(hrv)
+        && (sv = SvRV(hrv))
+        && SvRMAGICAL(sv)
+        && (mg = SvMAGIC(sv))
+        && mg->mg_type == DBI_MAGIC
+        && mg->mg_ptr
+    )
+        return (imp_xxh_t *) mg->mg_ptr;
+
+    {
+        dTHX;
+        imp_xxh_t *imp_xxh = dbih_getcom2(aTHX_ hrv, 0);
+        if (!imp_xxh)       /* eg after take_imp_data */
+            croak("Invalid DBI handle %s, has no dbi_imp_data", neatsvpv(hrv,0));
+        return imp_xxh;
+    }
 }
 
 static imp_xxh_t *
 dbih_getcom2(pTHX_ SV *hrv, MAGIC **mgp) /* Get com struct for handle. Must be fast.    */
 {
-    imp_xxh_t *imp_xxh;
     MAGIC *mg;
     SV *sv;
 
@@ -1134,14 +1155,7 @@ dbih_getcom2(pTHX_ SV *hrv, MAGIC **mgp) /* Get com struct for handle. Must be f
     if (mgp)    /* let caller pickup magic struct for this handle */
         *mgp = mg;
 
-    if (!mg->mg_obj)    /* eg after take_imp_data */
-        return 0;
-
-    /* ignore 'cast increases required alignment' warning       */
-    /* not a problem since we created the pointers anyway.      */
-    imp_xxh = (imp_xxh_t*)(void*)SvPVX(mg->mg_obj);
-
-    return imp_xxh;
+    return (imp_xxh_t *) mg->mg_ptr;
 }
 
 
@@ -1478,7 +1492,10 @@ dbih_setup_handle(pTHX_ SV *orv, char *imp_class, SV *parent, SV *imp_datasv)
     }
 
     /* Use DBI magic on inner handle to carry handle attributes         */
-    sv_magic(SvRV(h), dbih_imp_sv, DBI_MAGIC, Nullch, 0);
+    /* Note that we store the imp_sv in mg_obj, but as a shortcut,      */
+    /* also store a direct pointer to imp, aka PVX(dbih_imp_sv),        */
+    /* in mg_ptr (with mg_len set to null, so it wont be freed)         */
+    sv_magic(SvRV(h), dbih_imp_sv, DBI_MAGIC, (char*)imp, 0);
     SvREFCNT_dec(dbih_imp_sv);  /* since sv_magic() incremented it      */
     SvRMAGICAL_on(SvRV(h));     /* so DBI magic gets sv_clear'd ok      */
 
@@ -3108,7 +3125,7 @@ XS(XS_DBI_dispatch)
     I32 trace_flags = DBIS->debug;      /* local copy may change during dispatch */
     I32 trace_level = (trace_flags & DBIc_TRACE_LEVEL_MASK);
     int is_DESTROY;
-    int is_FETCH;
+    meth_types meth_type;
     int is_unrelated_to_Statement = 0;
     int keep_error = FALSE;
     UV  ErrCount = UV_MAX;
@@ -3119,13 +3136,29 @@ XS(XS_DBI_dispatch)
     int is_orig_method_name = 1;
 
     const char  *meth_name = GvNAME(CvGV(cv));
-    const dbi_ima_t     *ima = (dbi_ima_t*)CvXSUBANY(cv).any_ptr;
-    const U32   ima_flags  = (ima) ? ima->flags : 0;
+    dbi_ima_t *ima = (dbi_ima_t*)CvXSUBANY(cv).any_ptr;
+    U32   ima_flags;
     imp_xxh_t   *imp_xxh   = NULL;
     SV          *imp_msv   = Nullsv;
     SV          *qsv       = Nullsv; /* quick result from a shortcut method   */
 
 
+#ifdef BROKEN_DUP_ANY_PTR
+    if (ima->my_perl != my_perl) {
+        /* we couldn't dup the ima struct at clone time, so do it now */
+        dbi_ima_t *nima;
+        Newx(nima, 1, dbi_ima_t);
+        *nima = *ima; /* structure copy */
+        CvXSUBANY(cv).any_ptr = nima;
+        nima->stash = NULL;
+        nima->gv    = NULL;
+        nima->my_perl = my_perl;
+        ima = nima;
+    }
+#endif
+
+    ima_flags  = ima->flags;
+    meth_type = ima->meth_type;
     if (trace_level >= 9) {
         PerlIO *logfp = DBILOGFP;
         PerlIO_printf(logfp,"%c   >> %-11s DISPATCH (%s rc%ld/%ld @%ld g%x ima%lx pid#%ld)",
@@ -3136,7 +3169,7 @@ XS(XS_DBI_dispatch)
         PerlIO_flush(logfp);
     }
 
-    if ( ( (is_DESTROY=(*meth_name=='D' && strEQ(meth_name,"DESTROY")))) ) {
+    if ( ( (is_DESTROY=(meth_type == methtype_DESTROY))) ) {
         /* note that croak()'s won't propagate, only append to $@ */
         keep_error = TRUE;
     }
@@ -3147,8 +3180,13 @@ XS(XS_DBI_dispatch)
        data (without having to go through FETCH and STORE methods) and
        for tie and non-tie methods to call each other.
     */
-    if (SvROK(h) && SvRMAGICAL(SvRV(h)) && (mg=mg_find(SvRV(h),'P'))!=NULL) {
-
+    if (SvROK(h)
+        && SvRMAGICAL(SvRV(h))
+        && (
+               ((mg=SvMAGIC(SvRV(h)))->mg_type == 'P')
+            || ((mg=mg_find(SvRV(h),'P')) != NULL)
+           )
+    ) {
         if (mg->mg_obj==NULL || !SvOK(mg->mg_obj) || SvRV(mg->mg_obj)==NULL) {  /* maybe global destruction */
             if (trace_level >= 3)
                 PerlIO_printf(DBILOGFP,
@@ -3198,7 +3236,7 @@ XS(XS_DBI_dispatch)
 
     imp_xxh = dbih_getcom2(aTHX_ h, 0); /* get common Internal Handle Attributes        */
     if (!imp_xxh) {
-        if (strEQ(meth_name, "can")) {  /* ref($h)->can("foo")          */
+        if (meth_type == methtype_can) {  /* ref($h)->can("foo")        */
             const char *can_meth = SvPV_nolen(st1);
             SV *rv = &PL_sv_undef;
             GV *gv = gv_fetchmethod_autoload(gv_stashsv(orig_h,FALSE), can_meth, FALSE);
@@ -3257,12 +3295,12 @@ XS(XS_DBI_dispatch)
 #endif
 
     /* Check method call against Internal Method Attributes */
-    if (ima) {
+    if (ima_flags) {
 
         if (ima_flags & (IMA_STUB|IMA_FUNC_REDIRECT|IMA_KEEP_ERR|IMA_KEEP_ERR_SUB|IMA_CLEAR_STMT)) {
 
             if (ima_flags & IMA_STUB) {
-                if (*meth_name == 'c' && strEQ(meth_name,"can")) {
+                if (meth_type == methtype_can) {
                     const char *can_meth = SvPV_nolen(st1);
                     SV *dbi_msv = Nullsv;
                     /* find handle implementors method (GV or CV) */
@@ -3292,6 +3330,7 @@ XS(XS_DBI_dispatch)
                     croak("%s->%s() invalid redirect method name %s",
                             neatsvpv(h,0), meth_name, neatsvpv(meth_name_sv,0));
                 meth_name = SvPV_nolen(meth_name_sv);
+                meth_type = get_meth_type(meth_name);
                 is_orig_method_name = 0;
             }
             if (ima_flags & IMA_KEEP_ERR)
@@ -3389,7 +3428,7 @@ XS(XS_DBI_dispatch)
 
     /* --- dispatch --- */
 
-    if (!keep_error && !(*meth_name=='s' && strEQ(meth_name,"set_err"))) {
+    if (!keep_error && meth_type != methtype_set_err) {
         SV *err_sv;
         if (trace_level && SvOK(err_sv=DBIc_ERR(imp_xxh))) {
             PerlIO *logfp = DBILOGFP;
@@ -3412,7 +3451,8 @@ XS(XS_DBI_dispatch)
                * Other restrictions may be added over time.
                * It's an undocumented hack.
                */
-          || (!is_nested_call && !PL_dirty && strNE(meth_name, "set_err") && strNE(meth_name, "DESTROY") &&
+          || (!is_nested_call && !PL_dirty && meth_type != methtype_set_err &&
+               meth_type != methtype_DESTROY &&
                (hook_svp = hv_fetch((HV*)SvRV(*tmp_svp), "*", 1, 0))
              )
         )
@@ -3487,7 +3527,7 @@ XS(XS_DBI_dispatch)
 
     /* The "quick_FETCH" logic...                                       */
     /* Shortcut for fetching attributes to bypass method call overheads */
-    if ( (is_FETCH = (*meth_name=='F' && strEQ(meth_name,"FETCH"))) && !DBIc_COMPAT(imp_xxh)) {
+    if (meth_type == methtype_FETCH && !DBIc_COMPAT(imp_xxh)) {
         STRLEN kl;
         const char *key = SvPV(st1, kl);
         SV **attr_svp;
@@ -3504,18 +3544,18 @@ XS(XS_DBI_dispatch)
             if (*key == 'P' && strEQ(key, "Profile"))
                 profile_t1 = 0.0;
         }
+        if (qsv) { /* skip real method call if we already have a 'quick' value */
+            ST(0) = sv_mortalcopy(qsv);
+            outitems = 1;
+            goto post_dispatch;
+        }
     }
 
-    if (qsv) { /* skip real method call if we already have a 'quick' value */
-
-        ST(0) = sv_mortalcopy(qsv);
-        outitems = 1;
-
-    }
-    else {
+    {
+        CV *meth_cv;
 #ifdef DBI_save_hv_fetch_ent
         HE save_mh;
-        if (is_FETCH)
+        if (meth_type == methtype_FETCH)
             save_mh = PL_hv_fetch_ent_mh; /* XXX nested tied FETCH bug17575 workaround */
 #endif
 
@@ -3532,12 +3572,31 @@ XS(XS_DBI_dispatch)
             }
         }
 
-        if (is_orig_method_name)
-            imp_msv = (SV*)inner_method_lookup(aTHX_ DBIc_IMP_STASH(imp_xxh),
-                                            cv, meth_name);
-        else
+        if (is_orig_method_name
+            && ima->stash == DBIc_IMP_STASH(imp_xxh)
+            && ima->generation == PL_sub_generation +
+                                        MY_cache_gen(DBIc_IMP_STASH(imp_xxh))
+        )
+            imp_msv = (SV*)ima->gv;
+        else {
             imp_msv = (SV*)gv_fetchmethod_autoload(DBIc_IMP_STASH(imp_xxh),
                                             meth_name, FALSE);
+            if (is_orig_method_name) {
+                /* clear stale entry, if any */
+                SvREFCNT_dec(ima->stash);
+                SvREFCNT_dec(ima->gv);
+                if (!imp_msv) {
+                    ima->stash = NULL;
+                    ima->gv    = NULL;
+                }
+                else {
+                    ima->stash = (HV*)SvREFCNT_inc(DBIc_IMP_STASH(imp_xxh));
+                    ima->gv    = (GV*)SvREFCNT_inc(imp_msv);
+                    ima->generation = PL_sub_generation +
+                                        MY_cache_gen(DBIc_IMP_STASH(imp_xxh));
+                }
+            }
+        }
 
         /* if method was a 'func' then try falling back to real 'func' method */
         if (!imp_msv && (ima_flags & IMA_FUNC_REDIRECT)) {
@@ -3548,6 +3607,7 @@ XS(XS_DBI_dispatch)
                 PUTBACK;
                 ++items;
                 meth_name = "func";
+                meth_type = methtype_ordinary;
             }
         }
 
@@ -3579,7 +3639,7 @@ XS(XS_DBI_dispatch)
             PerlIO_flush(logfp);
         }
 
-        if (!imp_msv || !GvCV(imp_msv)) {
+        if (!imp_msv || ! ((meth_cv = GvCV(imp_msv))) ) {
             if (PL_dirty || is_DESTROY) {
                 outitems = 0;
                 goto post_dispatch;
@@ -3600,44 +3660,39 @@ XS(XS_DBI_dispatch)
          */
 
         /* SHORT-CUT ALERT! */
-        if (use_xsbypass && isGV(imp_msv) && CvISXSUB(GvCV(imp_msv))
-            && CvXSUB(GvCV(imp_msv))) {
+        if (use_xsbypass && CvISXSUB(meth_cv) && CvXSUB(meth_cv)) {
 
             /* If we are calling an XSUB we jump directly to its C code and
              * bypass perl_call_sv(), pp_entersub() etc. This is fast.
-             * This code is copied from a small section of pp_entersub().
+             * This code is based on a small section of pp_entersub().
              */
-            I32 markix = TOPMARK;
-            CV *xscv   = GvCV(imp_msv);
-            (void)(*CvXSUB(xscv))(aTHXo_ xscv); /* Call the C code directly */
+            (void)(*CvXSUB(meth_cv))(aTHXo_ meth_cv); /* Call the C code directly */
 
             if (gimme == G_SCALAR) {    /* Enforce sanity in scalar context */
-                if (++markix != PL_stack_sp - PL_stack_base ) {
-                    if (markix > PL_stack_sp - PL_stack_base)
-                         *(PL_stack_base + markix) = &PL_sv_undef;
-                    else *(PL_stack_base + markix) = *PL_stack_sp;
-                    PL_stack_sp = PL_stack_base + markix;
+                if (ax != PL_stack_sp - PL_stack_base ) { /* outitems != 1 */
+                    ST(0) =
+                        (ax > PL_stack_sp - PL_stack_base)
+                            ? &PL_sv_undef  /* outitems == 0 */
+                            : *PL_stack_sp; /* outitems > 1 */
+                    PL_stack_sp = PL_stack_base + ax;
                 }
                 outitems = 1;
             }
             else {
-                outitems = PL_stack_sp - (PL_stack_base + markix);
+                outitems = PL_stack_sp - (PL_stack_base + ax - 1);
             }
 
         }
         else {
             /* sv_dump(imp_msv); */
-            outitems = call_sv(isGV(imp_msv) ? (SV*)GvCV(imp_msv) : imp_msv,
+            outitems = call_sv((SV*)meth_cv,
                 (is_DESTROY ? gimme | G_EVAL | G_KEEPERR : gimme) );
         }
-        SPAGAIN;
 
-        /* XXX restore local vars so ST(n) works below  */
-        SP -= outitems;
-        ax = (SP - PL_stack_base) + 1;
+        XSprePUSH; /* reset SP to base of stack frame */
 
 #ifdef DBI_save_hv_fetch_ent
-        if (is_FETCH)
+        if (meth_type == methtype_FETCH)
             PL_hv_fetch_ent_mh = save_mh;       /* see start of block */
 #endif
     }
@@ -3663,7 +3718,7 @@ XS(XS_DBI_dispatch)
 
     if (trace_level >= (is_nested_call ? 3 : 1)) {
         PerlIO *logfp = DBILOGFP;
-        const int is_fetch  = (*meth_name=='f' && DBIc_TYPE(imp_xxh)==DBIt_ST && strnEQ(meth_name,"fetch",5));
+        const int is_fetch  = (meth_type == methtype_fetch_star && DBIc_TYPE(imp_xxh)==DBIt_ST);
         const int row_count = (is_fetch) ? DBIc_ROW_COUNT((imp_sth_t*)imp_xxh) : 0;
         if (is_fetch && row_count>=2 && trace_level<=4 && SvOK(ST(0))) {
             /* skip the 'middle' rows to reduce output */
@@ -3827,7 +3882,7 @@ XS(XS_DBI_dispatch)
         const char *err_meth_name = meth_name;
         char intro[200];
 
-        if (*meth_name=='s' && strEQ(meth_name,"set_err")) {
+        if (meth_type == methtype_set_err) {
             SV **sem_svp = hv_fetch((HV*)SvRV(h), "dbi_set_err_method", 18, GV_ADDWARN);
             if (SvOK(*sem_svp))
                 err_meth_name = SvPV_nolen(*sem_svp);
@@ -4297,6 +4352,9 @@ BOOT:
     (void)cv;
     (void)items; /* avoid 'unused variable' warning */
     dbi_bootinit(NULL);
+    /* make this sub into a fake XS so it can bee seen by DBD::* modules;
+     * never actually call it as an XS sub, or it will crash and burn! */
+    (void) newXS("DBI::_dbi_state_lval", (XSUBADDR_t)_dbi_state_lval, __FILE__);
 
 
 I32
@@ -4532,7 +4590,8 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
     SV *trace_msg = (DBIS_TRACE_LEVEL >= 10) ? sv_2mortal(newSVpv("",0)) : Nullsv;
     CV *cv;
     SV **svp;
-    dbi_ima_t *ima = NULL;
+    dbi_ima_t *ima;
+    MAGIC *mg;
     (void)dbi_class;
 
     if (strnNE(meth_name, "DBI::", 5))  /* XXX m/^DBI::\w+::\w+$/       */
@@ -4541,15 +4600,13 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
     if (trace_msg)
         sv_catpvf(trace_msg, "install_method %-21s", meth_name);
 
+    Newxz(ima, 1, dbi_ima_t);
+
     if (attribs && SvOK(attribs)) {
         /* convert and store method attributes in a fast access form    */
-        SV *sv;
         if (SvTYPE(SvRV(attribs)) != SVt_PVHV)
             croak("install_method %s: bad attribs", meth_name);
 
-        sv = newSV(sizeof(*ima));
-        ima = (dbi_ima_t*)(void*)SvPVX(sv);
-        memzero((char*)ima, sizeof(*ima));
         DBD_ATTRIB_GET_IV(attribs, "O",1, svp, ima->flags);
         DBD_ATTRIB_GET_UV(attribs, "T",1, svp, ima->method_trace);
         DBD_ATTRIB_GET_IV(attribs, "H",1, svp, ima->hidearg);
@@ -4575,6 +4632,19 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
         PerlIO_printf(DBILOGFP,"%s\n", SvPV_nolen(trace_msg));
     cv = newXS(meth_name, XS_DBI_dispatch, file);
     CvXSUBANY(cv).any_ptr = ima;
+    ima->meth_type = get_meth_type(GvNAME(CvGV(cv)));
+
+    /* Attach magic to handle duping and freeing of the dbi_ima_t struct.
+     * Due to the poor interface of the mg dup function, sneak a pointer
+     * to the original CV in the mg_ptr field (we get called with a
+     * pointer to the mg, but not the SV) */
+    mg = sv_magicext((SV*)cv, NULL, DBI_MAGIC, &dbi_ima_vtbl,
+                        (char *)cv, 0);
+#ifdef BROKEN_DUP_ANY_PTR
+    ima->my_perl = my_perl; /* who owns this struct */
+#else
+    mg->mg_flags |= MGf_DUP;
+#endif
     ST(0) = &PL_sv_yes;
     }
 
@@ -4966,6 +5036,7 @@ take_imp_data(h)
     dbih_getcom2(aTHX_ h, &mg); /* get the MAGIC so we can change it    */
     imp_xxh_sv = mg->mg_obj;    /* take local copy of the imp_data pointer */
     mg->mg_obj = Nullsv;        /* sever the link from handle to imp_xxh */
+    mg->mg_ptr = NULL;          /* and sever the shortcut too */
     if (DBIc_TRACE_LEVEL(imp_xxh) >= 9)
         sv_dump(imp_xxh_sv);
     /* --- housekeeping */

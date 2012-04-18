@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 15136 2012-02-09 15:22:18Z timbo $
+# $Id: Makefile.PL 15248 2012-03-26 21:47:22Z timbo $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -49,12 +49,14 @@ if (($ENV{LANG}||'') =~ m/utf-?8/i) {
 }
 
 if ($Config{useithreads}) {
-    print "\n";
-    print "*** You are using a perl configured with threading enabled.\n";
-    print "*** You should be aware that using multiple threads is\n";
-    print "*** not recommended for production environments.\n";
-    print "\n";
-    sleep 1;
+    if ($] < 5.012) { # recent perls are reasonably fre of thread bugs
+        print "\n";
+        print "*** You are using a perl configured with threading enabled.\n";
+        print "*** You should be aware that using multiple threads is\n";
+        print "*** not recommended for production environments.\n";
+        print "\n";
+        sleep 1;
+    }
     $::opt_thread = 1;
 }
 else {
@@ -174,7 +176,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 15136 2012-02-09 15:22:18Z timbo $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 15248 2012-03-26 21:47:22Z timbo $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
