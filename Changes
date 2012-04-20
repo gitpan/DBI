@@ -2,17 +2,26 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-04-18 12:50:34 +0100 (Wed, 18 Apr 2012) $ $Revision: 15271 $)
+(As of $Date: 2012-04-20 11:31:04 +0100 (Fri, 20 Apr 2012) $ $Revision: 15276 $)
 
 =cut
 
-=head2 Changes in DBI 1.619-TRIAL (svn r15271) 18th April 2012
+=head2 Changes in DBI 1.619-TRIAL (svn r15276) 20th April 2012
 
-  Further method dispatch optimizations thanks to Dave Mitchell.
-  Optimized driver access to DBI internal state thanks to Dave Mitchell.
-  Optimized driver access to handle data thanks to Dave Mitchell.
   Fixed the connected method to stop showing the password in
     trace file (Martin J. Evans).
+  Fixed _install_method to set CvFILE correctly
+    thanks to Dagfinn Ilmari Mannsåker. RT#76572
+  Fixed SqlEngine "list_tables" thanks to David McMath
+    and Norbert Gruener. RT#67223 RT#69260
+
+  Optimized DBI method dispatch thanks to Dave Mitchell.
+  Optimized driver access to DBI internal state thanks to Dave Mitchell.
+  Optimized driver access to handle data thanks to Dave Mitchell.
+  Optimized fetchall_arrayref with hash slice thanks
+    to Dagfinn Ilmari Mannsåker. RT#76520
+  Allow renaming columns in fetchall_arrayref hash slices
+    thanks to Dagfinn Ilmari Mannsåker. RT#76572
 
 =head2 Changes in DBI 1.618 (svn r15170) 25rd February 2012
 

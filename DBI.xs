@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15270 2012-04-18 11:49:01Z timbo $
+ * $Id: DBI.xs 15274 2012-04-19 08:02:29Z mjevans $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
@@ -4630,7 +4630,10 @@ _install_method(dbi_class, meth_name, file, attribs=Nullsv)
     }
     if (trace_msg)
         PerlIO_printf(DBILOGFP,"%s\n", SvPV_nolen(trace_msg));
+    file = savepv(file);
     cv = newXS(meth_name, XS_DBI_dispatch, file);
+    SvPVX((SV *)cv) = file;
+    SvLEN((SV *)cv) = 1;
     CvXSUBANY(cv).any_ptr = ima;
     ima->meth_type = get_meth_type(GvNAME(CvGV(cv)));
 
