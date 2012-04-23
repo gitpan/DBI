@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15273 2012-04-18 18:37:16Z mjevans $
+# $Id: DBI.pm 15294 2012-04-23 21:57:57Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -342,6 +342,7 @@ my $dbd_prefix_registry = {
   ram_         => { class => 'DBD::RAM',            },
   rdb_         => { class => 'DBD::RDB',            },
   sapdb_       => { class => 'DBD::SAP_DB',         },
+  snmp_        => { class => 'DBD::SNMP',           },
   solid_       => { class => 'DBD::Solid',          },
   spatialite_  => { class => 'DBD::Spatialite',     },
   sponge_      => { class => 'DBD::Sponge',         },
@@ -352,6 +353,7 @@ my $dbd_prefix_registry = {
   tdat_        => { class => 'DBD::Teradata',       },
   tmpl_        => { class => 'DBD::Template',       },
   tmplss_      => { class => 'DBD::TemplateSS',     },
+  tree_        => { class => 'DBD::TreeData',       },
   tuber_       => { class => 'DBD::Tuber',          },
   uni_         => { class => 'DBD::Unify',          },
   vt_          => { class => 'DBD::Vt',             },

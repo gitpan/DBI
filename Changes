@@ -2,16 +2,16 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-04-20 11:31:04 +0100 (Fri, 20 Apr 2012) $ $Revision: 15276 $)
+(As of $Date: 2012-04-23 22:57:57 +0100 (Mon, 23 Apr 2012) $ $Revision: 15294 $)
 
 =cut
 
-=head2 Changes in DBI 1.619-TRIAL (svn r15276) 20th April 2012
+=head2 Changes in DBI 1.619 (svn r15294) 23rd April 2012
 
   Fixed the connected method to stop showing the password in
     trace file (Martin J. Evans).
   Fixed _install_method to set CvFILE correctly
-    thanks to Dagfinn Ilmari Mannsåker. RT#76572
+    thanks to sprout RT#76296
   Fixed SqlEngine "list_tables" thanks to David McMath
     and Norbert Gruener. RT#67223 RT#69260
 
@@ -22,6 +22,7 @@ DBI::Changes - List of significant changes to the DBI
     to Dagfinn Ilmari Mannsåker. RT#76520
   Allow renaming columns in fetchall_arrayref hash slices
     thanks to Dagfinn Ilmari Mannsåker. RT#76572
+  Reserved snmp_ and tree_ for DBD::SNMP and DBD::TreeData
 
 =head2 Changes in DBI 1.618 (svn r15170) 25rd February 2012
 
