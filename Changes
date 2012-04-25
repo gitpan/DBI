@@ -2,9 +2,16 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-04-23 22:57:57 +0100 (Mon, 23 Apr 2012) $ $Revision: 15294 $)
+(As of $Date: 2012-04-25 13:29:58 +0100 (Wed, 25 Apr 2012) $ $Revision: 15300 $)
 
 =cut
+
+=head2 Changes in DBI 1.620 (svn r15300) 25th April 2012
+
+  Modified column renaming in fetchall_arrayref, added in 1.619,
+    to work on column index numbers not names (an incompatible change).
+  Reworked the fetchall_arrayref documentation.
+  Hash slices in fetchall_arrayref now detect invalid column names.
 
 =head2 Changes in DBI 1.619 (svn r15294) 23rd April 2012
 
