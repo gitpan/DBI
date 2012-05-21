@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15300 2012-04-25 12:29:58Z timbo $
+# $Id: DBI.pm 15315 2012-05-21 12:49:55Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.620"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.621"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -125,7 +125,7 @@ Tim he is very likely to just forward it to the mailing list.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to DBI version 1.620
+This is the DBI specification that corresponds to DBI version 1.621
 (see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that
@@ -6597,7 +6597,7 @@ Binds a Perl variable and/or some attributes to an output column
 You do not need to bind output columns in order to fetch data.
 For maximum portability between drivers, bind_col() should be called
 after execute() and not before.
-See also C<bind_columns> for an example.
+See also L</bind_columns> for an example.
 
 The binding is performed at a low level using Perl aliasing.
 Whenever a row is fetched from the database $var_to_bind appears

@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15274 2012-04-19 08:02:29Z mjevans $
+ * $Id: DBI.xs 15304 2012-05-14 08:17:22Z mjevans $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
@@ -283,6 +283,7 @@ static int dbi_ima_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param)
     CV *ncv = (CV*)ptr_table_fetch(PL_ptr_table, (cv));
 
     (void)param; /* avoid 'unused variable' warning */
+    mg->mg_ptr = (char *)ncv;
     ima = (dbi_ima_t*) CvXSUBANY(cv).any_ptr;
     Newx(nima, 1, dbi_ima_t);
     *nima = *ima; /* structure copy */
