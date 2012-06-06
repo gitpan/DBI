@@ -30,7 +30,7 @@ You can also activate DBI::ProfileDumper from within your code:
   # another way to say it
   use DBI::ProfileDumper;
   $dbh->{Profile} = DBI::ProfileDumper->new(
-                        Path => [ '!Statement' ]
+                        Path => [ '!Statement' ],
                         File => 'dbi.prof' );
 
   # using a custom path
@@ -177,7 +177,7 @@ use DBI::Profile;
 
 our @ISA = ("DBI::Profile");
 
-our $VERSION = sprintf("2.%06d", q$Revision: 13956 $ =~ /(\d+)/o);
+our $VERSION = sprintf("2.%06d", q$Revision: 15324 $ =~ /(\d+)/o);
 
 use Carp qw(croak);
 use Fcntl qw(:flock);

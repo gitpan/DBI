@@ -8,9 +8,9 @@
     require DBI::Gofer::Response;
     require Carp;
 
-    our $VERSION = sprintf("0.%06d", q$Revision: 15289 $ =~ /(\d+)/o);
+    our $VERSION = sprintf("0.%06d", q$Revision: 15326 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 15289 2012-04-23 12:28:54Z mjevans $
+#   $Id: Gofer.pm 15326 2012-06-06 16:32:38Z timbo $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
@@ -837,6 +837,8 @@ use.
 The C<...> represents attributes that influence the operation of the Gofer
 driver or transport. These are described below or in the documentation of the
 transport module being used.
+
+=encoding ISO8859-1
 
 =head1 DESCRIPTION
 

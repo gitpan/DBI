@@ -2,16 +2,24 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-05-21 13:49:55 +0100 (Mon, 21 May 2012) $ $Revision: 15315 $)
+(As of $Date: 2012-06-06 17:37:26 +0100 (Wed, 06 Jun 2012) $ $Revision: 15327 $)
+
+=encoding ISO8859-1
 
 =cut
+
+=head2 Changes in DBI 1.622 (svn r15327) 6th June 2012
+
+  Fixed lack of =encoding in non-ASCII pod docs. RT#77588
+
+  Corrected typo in DBI::ProfileDumper thanks to Finn Hakansson.
 
 =head2 Changes in DBI 1.621 (svn r15315) 21st May 2012
 
   Fixed segmentation fault when a thread is created from
     within another thread RT#77137, thanks to Dave Mitchell.
-  Updated Changes to credit Booking.com for sponsoring Dave Mitchell
-    recent DBI optimization work.
+  Updated previous Changes to credit Booking.com for sponsoring
+    Dave Mitchell's recent DBI optimization work.
 
 =head2 Changes in DBI 1.620 (svn r15300) 25th April 2012
 
