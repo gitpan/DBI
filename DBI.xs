@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15304 2012-05-14 08:17:22Z mjevans $
+ * $Id: DBI.xs 15351 2012-07-13 12:26:04Z timbo $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
@@ -282,7 +282,7 @@ static int dbi_ima_dup(pTHX_ MAGIC* mg, CLONE_PARAMS *param)
     CV *cv  = (CV*) mg->mg_ptr;
     CV *ncv = (CV*)ptr_table_fetch(PL_ptr_table, (cv));
 
-    (void)param; /* avoid 'unused variable' warning */
+    PERL_UNUSED_VAR(param);
     mg->mg_ptr = (char *)ncv;
     ima = (dbi_ima_t*) CvXSUBANY(cv).any_ptr;
     Newx(nima, 1, dbi_ima_t);
@@ -941,7 +941,7 @@ set_trace_file(SV *file)
             return 0;
         }
         close_trace_file(aTHX);
-        SvREFCNT_inc(io);
+        (void)SvREFCNT_inc(io);
         DBIS->logfp_ref = io;
     }
     else if (isGV_with_GP(file)) {
@@ -951,7 +951,7 @@ set_trace_file(SV *file)
             return 0;
         }
         close_trace_file(aTHX);
-        SvREFCNT_inc(io);
+        (void)SvREFCNT_inc(io);
         DBIS->logfp_ref = io;
     }
     else {
@@ -1156,6 +1156,9 @@ dbih_getcom2(pTHX_ SV *hrv, MAGIC **mgp) /* Get com struct for handle. Must be f
     if (mgp)    /* let caller pickup magic struct for this handle */
         *mgp = mg;
 
+    if (!mg)    /* may happen during global destruction */
+        return (imp_xxh_t *) 0;
+
     return (imp_xxh_t *) mg->mg_ptr;
 }
 
@@ -1235,7 +1238,7 @@ dbih_make_com(SV *p_h, imp_xxh_t *p_imp_xxh, const char *imp_class, STRLEN imp_s
     SV *dbih_imp_sv;
     imp_xxh_t *imp;
     int trace_level;
-    (void)extra; /* unused arg */
+    PERL_UNUSED_VAR(extra);
 
     if ( (imp_stash = gv_stashpv(imp_class, FALSE)) == NULL)
         croak(errmsg, imp_class, "unknown package");
@@ -1819,7 +1822,7 @@ dbih_sth_bind_col(SV *sth, SV *col, SV *ref, SV *attribs)
     int fields = DBIc_NUM_FIELDS(imp_sth);
 
     if (fields <= 0) {
-        attribs = attribs;      /* avoid 'unused variable' warning      */
+        PERL_UNUSED_VAR(attribs);
         croak("Statement has no result columns to bind%s",
             DBIc_ACTIVE(imp_sth)
                 ? "" : " (perhaps you need to call execute first)");
@@ -3389,11 +3392,44 @@ XS(XS_DBI_dispatch)
     /* record this inner handle for use by DBI::var::FETCH      */
     if (is_DESTROY) {
 
+        /* force destruction of any outstanding children */
+        if ((tmp_svp = hv_fetch((HV*)SvRV(h), "ChildHandles", 12, FALSE)) && SvROK(*tmp_svp)) {
+            AV *av = (AV*)SvRV(*tmp_svp);
+            I32 kidslots;
+            PerlIO *logfp = DBILOGFP;
+
+            for (kidslots = AvFILL(av); kidslots >= 0; --kidslots) {
+                SV **hp = av_fetch(av, kidslots, FALSE);
+                if (!hp || !SvROK(*hp) || SvTYPE(SvRV(*hp))!=SVt_PVHV)
+                    break;
+
+                if (trace_level >= 1) {
+                    PerlIO_printf(logfp, "on DESTROY handle %s still has child %s (refcnt %ld, obj %d, dirty=%d)\n",
+                        neatsvpv(h,0), neatsvpv(*hp, 0), (long)SvREFCNT(*hp), !!sv_isobject(*hp), PL_dirty);
+                    if (trace_level >= 9)
+                        sv_dump(SvRV(*hp));
+                }
+                if (sv_isobject(*hp)) { /* call DESTROY on the handle */
+                    PUSHMARK(SP);
+                    XPUSHs(*hp);
+                    PUTBACK;
+                    call_method("DESTROY", G_DISCARD|G_EVAL|G_KEEPERR);
+                }
+                else {
+                    imp_xxh_t *imp_xxh = dbih_getcom2(aTHX_ *hp, 0);
+                    if (imp_xxh && DBIc_COMSET(imp_xxh)) {
+                        dbih_clearcom(imp_xxh);
+                        sv_setsv(*hp, &PL_sv_undef);
+                    }
+                }
+            }
+        }
+
         if (DBIc_TYPE(imp_xxh) <= DBIt_DB ) {   /* is dbh or drh */
             imp_xxh_t *parent_imp;
 
             if (SvOK(DBIc_ERR(imp_xxh)) && (parent_imp = DBIc_PARENT_COM(imp_xxh))
-                && !PL_dirty
+                && !PL_dirty /* XXX - remove? */
             ) {
                 /* copy err/errstr/state values to $DBI::err etc still work */
                 sv_setsv(DBIc_ERR(parent_imp),    DBIc_ERR(imp_xxh));
@@ -4348,10 +4384,10 @@ PROTOTYPES: DISABLE
 BOOT:
     {
         MY_CXT_INIT;
-        (void)MY_CXT; /* avoid 'unused variable' warning */
+        PERL_UNUSED_VAR(MY_CXT);
     }
-    (void)cv;
-    (void)items; /* avoid 'unused variable' warning */
+    PERL_UNUSED_VAR(cv);
+    PERL_UNUSED_VAR(items);
     dbi_bootinit(NULL);
     /* make this sub into a fake XS so it can bee seen by DBD::* modules;
      * never actually call it as an XS sub, or it will crash and burn! */
@@ -4481,7 +4517,7 @@ _new_handle(class, parent, attr_ref, imp_datasv, imp_class)
     if (DBIS_TRACE_LEVEL >= 5) {
         PerlIO_printf(DBILOGFP, "    New %s (for %s, parent=%s, id=%s)\n",
             neatsvpv(class,0), SvPV_nolen(imp_class), neatsvpv(parent,0), neatsvpv(imp_datasv,0));
-        (void)cv; /* avoid unused warning */
+        PERL_UNUSED_VAR(cv);
     }
 
     (void)hv_store((HV*)SvRV(attr_ref), "ImplementorClass", 16, SvREFCNT_inc(imp_class), 0);
@@ -4665,7 +4701,7 @@ trace(class, level_sv=&PL_sv_undef, file=Nullsv)
     dMY_CXT;
     IV level;
     if (!DBIS) {
-        ix=ix;          /* avoid 'unused variable' warnings     */
+        PERL_UNUSED_VAR(ix);
         croak("DBI not initialised");
     }
     /* Return old/current value. No change if new value not given.      */
@@ -4740,7 +4776,7 @@ dbi_profile(h, statement, method, t1, t2)
     NV t2
     CODE:
     SV *leaf = &PL_sv_undef;
-    (void)cv;   /* avoid unused var warnings */
+    PERL_UNUSED_VAR(cv);
     if (SvROK(method))
         method = SvRV(method);
     if (dbih_inner(aTHX_ h, NULL)) {    /* is a DBI handle */
@@ -4781,8 +4817,8 @@ dbi_profile_merge_nodes(dest, ...)
         if (!SvROK(dest) || SvTYPE(SvRV(dest)) != SVt_PVAV)
             croak("dbi_profile_merge_nodes(%s,...) destination is not an array reference", neatsvpv(dest,0));
         if (items <= 1) {
-            (void)cv;   /* avoid unused var warnings */
-            (void)ix;
+            PERL_UNUSED_VAR(cv);
+            PERL_UNUSED_VAR(ix);
             RETVAL = 0;
         }
         else {
@@ -4955,7 +4991,7 @@ take_imp_data(h)
     SV *imp_xxh_sv;
     SV **tmp_svp;
     CODE:
-    (void)cv; /* unused */
+    PERL_UNUSED_VAR(cv);
     /*
      * Remove and return the imp_xxh_t structure that's attached to the inner
      * hash of the handle. Effectively this removes the 'brain' of the handle
@@ -5133,7 +5169,7 @@ fetchrow_array(sth)
     PPCODE:
     SV *retsv;
     if (CvDEPTH(cv) == 99) {
-        ix = ix;        /* avoid 'unused variable' warning'             */
+        PERL_UNUSED_VAR(ix);
         croak("Deep recursion, probably fetchrow-fetch-fetchrow loop");
     }
     PUSHMARK(sp);
@@ -5245,7 +5281,7 @@ fetch(sth)
     CODE:
     int num_fields;
     if (CvDEPTH(cv) == 99) {
-        (void)ix; /* avoid 'unused variable' warning' */
+        PERL_UNUSED_VAR(ix);
         croak("Deep recursion. Probably fetch-fetchrow-fetch loop.");
     }
     PUSHMARK(sp);
@@ -5527,8 +5563,8 @@ swap_inner_handle(rh1, rh2, allow_reparent=0)
         XSRETURN_NO;
     }
 
-    SvREFCNT_inc(h1i);
-    SvREFCNT_inc(h2i);
+    (void)SvREFCNT_inc(h1i);
+    (void)SvREFCNT_inc(h2i);
 
     sv_unmagic(h1, 'P');                /* untie(%$h1)          */
     sv_unmagic(h2, 'P');                /* untie(%$h2)          */

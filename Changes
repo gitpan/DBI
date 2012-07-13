@@ -2,11 +2,18 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-06-06 17:37:26 +0100 (Wed, 06 Jun 2012) $ $Revision: 15327 $)
+(As of $Date: 2012-07-13 13:26:04 +0100 (Fri, 13 Jul 2012) $ $Revision: 15351 $)
 
 =encoding ISO8859-1
 
 =cut
+
+=head2 Changes in DBI 1.623
+
+  Added logic to force destruction of children before parents
+    during global destruction. Currently experimental.
+
+  Fixed unused variable / self-assignment compiler warnings.
 
 =head2 Changes in DBI 1.622 (svn r15327) 6th June 2012
 
