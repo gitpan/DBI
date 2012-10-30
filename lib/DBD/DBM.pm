@@ -24,7 +24,7 @@ package DBD::DBM;
 #################
 use base qw( DBD::File );
 use vars qw($VERSION $ATTRIBUTION $drh $methods_already_installed);
-$VERSION     = '0.06';
+$VERSION     = '0.07';
 $ATTRIBUTION = 'DBD::DBM by Jens Rehsack';
 
 # no need to have driver() unless you need private methods
@@ -229,10 +229,9 @@ sub dbm_schema
 {
     my ( $sth, $tname ) = @_;
     return $sth->set_err( $DBI::stderr, 'No table name supplied!' ) unless $tname;
-    return $sth->set_err( $DBI::stderr, "Unknown table '$tname'!" )
-      unless (     $sth->{Database}->{f_meta}
-               and $sth->{Database}->{f_meta}->{$tname} );
-    return $sth->{Database}->{f_meta}->{$tname}->{schema};
+    my $tbl_meta = $sth->{Database}->func( $tname, "f_schema", "get_sql_engine_meta" )
+      or return $sth->set_err( $sth->{Database}->err(), $sth->{Database}->errstr() );
+    return $tbl_meta->{$tname}->{f_schema};
 }
 # you could put some :st private methods here
 
@@ -256,17 +255,6 @@ use Fcntl;
 
 my $dirfext = $^O eq 'VMS' ? '.sdbm_dir' : '.dir';
 
-sub file2table
-{
-    my ( $self, $meta, $file, $file_is_table, $quoted ) = @_;
-
-    my $tbl = $self->SUPER::file2table( $meta, $file, $file_is_table, $quoted ) or return;
-
-    $meta->{f_dontopen} = 1;
-
-    return $tbl;
-}
-
 my %reset_on_modify = (
                         dbm_type  => "dbm_tietype",
                         dbm_mldbm => "dbm_tietype",
@@ -274,12 +262,12 @@ my %reset_on_modify = (
 __PACKAGE__->register_reset_on_modify( \%reset_on_modify );
 
 my %compat_map = (
-    ( map { $_ => "dbm_$_" } qw(type mldbm store_metadata) ),
-    dbm_ext => 'f_ext',
-    dbm_file => 'f_file',
-    dbm_lockfile => ' f_lockfile',
-    );
-__PACKAGE__->register_compat_map (\%compat_map);
+                   ( map { $_ => "dbm_$_" } qw(type mldbm store_metadata) ),
+                   dbm_ext      => 'f_ext',
+                   dbm_file     => 'f_file',
+                   dbm_lockfile => ' f_lockfile',
+                 );
+__PACKAGE__->register_compat_map( \%compat_map );
 
 sub bootstrap_table_meta
 {
@@ -322,6 +310,8 @@ sub init_table_meta
 {
     my ( $self, $dbh, $meta, $table ) = @_;
 
+    $meta->{f_dontopen} = 1;
+
     unless ( defined( $meta->{dbm_tietype} ) )
     {
         my $tie_type = $meta->{dbm_type};
@@ -353,10 +343,11 @@ sub init_table_meta
     $self->SUPER::init_table_meta( $dbh, $meta, $table );
 }
 
-sub open_file
+sub open_data
 {
-    my ( $self, $meta, $attrs, $flags ) = @_;
-    $self->SUPER::open_file( $meta, $attrs, $flags );
+    my ( $className, $meta, $attrs, $flags ) = @_;
+    $className->SUPER::open_data( $meta, $attrs, $flags );
+
     unless ( $flags->{dropMode} )
     {
         # TIEING
@@ -401,7 +392,7 @@ sub open_file
         my $tie_class = $meta->{dbm_tietype};
         eval { tie %{ $meta->{hash} }, $tie_class, @tie_args };
         $@ and croak "Cannot tie(\%h $tie_class @tie_args): $@";
-	-f $meta->{f_fqfn} or croak( "No such file: '" . $meta->{f_fqfn} . "'" );
+        -f $meta->{f_fqfn} or croak( "No such file: '" . $meta->{f_fqfn} . "'" );
     }
 
     unless ( $flags->{createMode} )
