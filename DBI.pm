@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15460 2012-10-29 21:07:20Z timbo $
+# $Id: DBI.pm 15478 2012-11-19 23:05:46Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -314,6 +314,7 @@ my $dbd_prefix_registry = {
   amzn_        => { class => 'DBD::Amazon',         },
   best_        => { class => 'DBD::BestWins',       },
   csv_         => { class => 'DBD::CSV',            },
+  cubrid_      => { class => 'DBD::cubrid',         },
   db2_         => { class => 'DBD::DB2',            },
   dbi_         => { class => 'DBI',                 },
   dbm_         => { class => 'DBD::DBM',            },
@@ -6804,13 +6805,13 @@ the C<DBD> backend.
 
 Type: array-ref, read-only
 
-Like C</NAME> but always returns lowercase names.
+Like L</NAME> but always returns lowercase names.
 
 =head3 C<NAME_uc>
 
 Type: array-ref, read-only
 
-Like C</NAME> but always returns uppercase names.
+Like L</NAME> but always returns uppercase names.
 
 =head3 C<NAME_hash>
 
@@ -7263,7 +7264,7 @@ See L<perlop/"Quote and Quote-like Operators"> for more details.
 Perl 5.7 and later support a new threading model called iThreads.
 (The old "5.005 style" threads are not supported by the DBI.)
 
-In the iThreads model each thread has it's own copy of the perl
+In the iThreads model each thread has its own copy of the perl
 interpreter.  When a new thread is created the original perl
 interpreter is 'cloned' to create a new copy for the new thread.
 
@@ -7585,7 +7586,7 @@ as the I<trace settings> and are stored together in a single integer.
 For normal use you only need to set the trace level, and generally
 only to a value between 1 and 4.
 
-Each handle has it's own trace settings, and so does the DBI.
+Each handle has its own trace settings, and so does the DBI.
 When you call a method the DBI merges the handles settings into its
 own for the duration of the call: the trace flags of the handle are
 OR'd into the trace flags of the DBI, and if the handle has a higher

@@ -28,10 +28,10 @@ require DBI;    # for looks_like_number()
 
 BEGIN
 {
-    $VERSION = sprintf( "1.%06d", q$Revision: 15391 $ =~ /(\d+)/o );
+    $VERSION = sprintf( "1.%06d", q$Revision: 14600 $ =~ /(\d+)/o );
 
     $versions->{nano_version} = $VERSION;
-    if ( $ENV{DBI_SQL_NANO} || !eval { require SQL::Statement; $SQL::Statement::VERSION ge '1.400' } )
+    if ( $ENV{DBI_SQL_NANO} || !eval { require SQL::Statement; $SQL::Statement::VERSION ge '1.28' } )
     {
         @DBI::SQL::Nano::Statement::ISA = qw(DBI::SQL::Nano::Statement_);
         @DBI::SQL::Nano::Table::ISA     = qw(DBI::SQL::Nano::Table_);
@@ -695,8 +695,15 @@ sub params
     {
         return $self->{"params"}->[$val_num];
     }
+    if (wantarray)
+    {
+        return @{ $self->{"params"} };
+    }
+    else
+    {
+        return scalar @{ $self->{"params"} };
+    }
 
-    return wantarray ? @{ $self->{"params"} } : scalar @{ $self->{"params"} };
 }
 
 sub open_tables
