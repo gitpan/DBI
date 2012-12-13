@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15478 2012-11-19 23:05:46Z timbo $
+# $Id: DBI.pm 15513 2012-12-13 14:31:59Z REHSACK $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -6805,13 +6805,13 @@ the C<DBD> backend.
 
 Type: array-ref, read-only
 
-Like L</NAME> but always returns lowercase names.
+Like C</NAME> but always returns lowercase names.
 
 =head3 C<NAME_uc>
 
 Type: array-ref, read-only
 
-Like L</NAME> but always returns uppercase names.
+Like C</NAME> but always returns uppercase names.
 
 =head3 C<NAME_hash>
 
@@ -7624,7 +7624,7 @@ drivers can define others. DBI trace flag names begin with a capital
 letter and driver specific names begin with a lowercase letter, as
 usual.
 
-Currently the DBI only defines two trace flags:
+Currently the DBI defines these trace flags:
 
   ALL - turn on all DBI and driver flags (not recommended)
   SQL - trace SQL statements executed

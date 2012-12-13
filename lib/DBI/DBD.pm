@@ -5,10 +5,10 @@ use vars qw($VERSION);	# set $VERSION early so we don't confuse PAUSE/CPAN etc
 
 # don't use Revision here because that's not in svn:keywords so that the
 # examples that use it below won't be messed up
-$VERSION = sprintf("12.%06d", q$Id: DBD.pm 15128 2012-02-04 20:51:39Z timbo $ =~ /(\d+)/o);
+$VERSION = sprintf("12.%06d", q$Id: DBD.pm 15372 2012-08-29 07:09:55Z REHSACK $ =~ /(\d+)/o);
 
 
-# $Id: DBD.pm 15128 2012-02-04 20:51:39Z timbo $
+# $Id: DBD.pm 15372 2012-08-29 07:09:55Z REHSACK $
 #
 # Copyright (c) 1997-2006 Jonathan Leffler, Jochen Wiedmann, Steffen
 # Goeldner and Tim Bunce

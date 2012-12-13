@@ -1,6 +1,6 @@
 /* vim: ts=8:sw=4:expandtab
  *
- * $Id: DBI.xs 15477 2012-11-19 23:00:40Z timbo $
+ * $Id: DBI.xs 15513 2012-12-13 14:31:59Z REHSACK $
  *
  * Copyright (c) 1994-2012  Tim Bunce  Ireland.
  *
@@ -1975,6 +1975,7 @@ sql_type_cast_svpv(pTHX_ SV *sv, int sql_type, U32 flags, void *v)
         && SvPVX(sv)   /* we have a buffer to discard */
         ) {
             SvOOK_off(sv);
+            sv_force_normal(sv);
             if (SvLEN(sv))
                 Safefree(SvPVX(sv));
             SvPOK_off(sv);
