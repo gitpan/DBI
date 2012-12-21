@@ -3,7 +3,7 @@
 #  DBD::DBM - a DBI driver for DBM files
 #
 #  Copyright (c) 2004 by Jeff Zucker < jzucker AT cpan.org >
-#  Copyright (c) 2010 by Jens Rehsack & H.Merijn Brand
+#  Copyright (c) 2010-2013 by Jens Rehsack & H.Merijn Brand
 #
 #  All rights reserved.
 #
@@ -85,7 +85,7 @@ sub validate_STORE_attr
     if ( $attrib eq "dbm_ext" or $attrib eq "dbm_lockfile" )
     {
         ( my $newattrib = $attrib ) =~ s/^dbm_/f_/g;
-        carp "Attribute '$attrib' is depreciated, use '$newattrib' instead" if( $^W );
+        carp "Attribute '$attrib' is depreciated, use '$newattrib' instead" if ($^W);
         $attrib = $newattrib;
     }
 
@@ -99,7 +99,7 @@ sub validate_FETCH_attr
     if ( $attrib eq "dbm_ext" or $attrib eq "dbm_lockfile" )
     {
         ( my $newattrib = $attrib ) =~ s/^dbm_/f_/g;
-        carp "Attribute '$attrib' is depreciated, use '$newattrib' instead" if( $^W );
+        carp "Attribute '$attrib' is depreciated, use '$newattrib' instead" if ($^W);
         $attrib = $newattrib;
     }
 
@@ -723,7 +723,7 @@ But here's a sample to get you started.
 
 =head1 USAGE
 
-This section will explain some useage cases in more detail. To get an
+This section will explain some usage cases in more detail. To get an
 overview about the available attributes, see L</Metadata>.
 
 =head2 Specifying Files and Directories
@@ -1325,11 +1325,11 @@ C<Storable>.
 
 =item C<YAML::MLDBM>
 
-Additional serializer for MLDBM. YAML is very portable between languanges.
+Additional serializer for MLDBM. YAML is very portable between languages.
 
 =item C<MLDBM::Serializer::JSON>
 
-Additional serializer for MLDBM. JSON is very portable between languanges,
+Additional serializer for MLDBM. JSON is very portable between languages,
 probably more than YAML.
 
 =back
@@ -1438,7 +1438,7 @@ maintained it till 2007. After that, in 2010, Jens Rehsack & H.Merijn Brand
 took over maintenance.
 
  Copyright (c) 2004 by Jeff Zucker, all rights reserved.
- Copyright (c) 2010 by Jens Rehsack & H.Merijn Brand, all rights reserved.
+ Copyright (c) 2010-2013 by Jens Rehsack & H.Merijn Brand, all rights reserved.
 
 You may freely distribute and/or modify this module under the terms of
 either the GNU General Public License (GPL) or the Artistic License, as

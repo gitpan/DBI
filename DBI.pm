@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15513 2012-12-13 14:31:59Z REHSACK $
+# $Id: DBI.pm 15542 2012-12-21 17:11:32Z REHSACK $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
