@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 15248 2012-03-26 21:47:22Z timbo $
+# $Id: Makefile.PL 15546 2012-12-28 09:43:53Z REHSACK $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -103,8 +103,8 @@ my %opts = (
 	recommends => {
 	    'RPC::PlServer'  => 0.2001,
 	    'Net::Daemon'    => 0,
-	    'SQL::Statement' => 1.28,
-	    'Clone'          => 0.31,
+	    'SQL::Statement' => 1.402,
+	    'Clone'          => 0.34,
 	    'MLDBM'          => 0,
 	    'DB_File'        => 0,
 	},
@@ -113,11 +113,13 @@ my %opts = (
 	  ( $^O eq 'MSWin32' ? ( 'File::Spec' => 3.31, ) : () ),
     },
     CONFLICTS => {
-	'SQL::Statement' => '1.27',
-	'DBD::AnyData' => '0.09',
-	'DBD::CSV' => '0.29',
+	'SQL::Statement' => '1.33',
+	'DBD::AnyData' => '0.110',
+	'DBD::CSV' => '0.36',
 	'DBD::RAM' => '0.072',
 	'DBD::PO' => '2.10',
+	'DBD::Google' => '0.51',
+	'DBD::Amazon' => '0.10',
     },
     LICENSE => 'perl',
     EXE_FILES => [ "dbiproxy$ext_pl", "dbiprof$ext_pl", "dbilogstrip$ext_pl" ],
@@ -176,7 +178,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 15248 2012-03-26 21:47:22Z timbo $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 15546 2012-12-28 09:43:53Z REHSACK $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 

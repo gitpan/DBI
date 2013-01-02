@@ -2,13 +2,13 @@
 
 DBI::Changes - List of significant changes to the DBI
 
-(As of $Date: 2012-12-21 17:11:32 +0000 (Fri, 21 Dec 2012) $ $Revision: 15542 $)
+(As of $Date: 2012-12-21 18:15:43 +0000 (Fri, 21 Dec 2012) $ $Revision: 15545 $)
 
 =encoding ISO8859-1
 
 =cut
 
-=head2 Changes in DBI 1.623 (svn r15545) 21st Dec 2012
+=head2 Changes in DBI 1.623 (svn r15547) 2nd Jan 2012
 
   Fixed RT#64330 - ping wipes out errstr (Martin J. Evans).
   Fixed RT#75868 - DBD::Proxy shouldn't call connected() on the server.
