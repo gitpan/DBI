@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 15546 2012-12-28 09:43:53Z REHSACK $
+# $Id: Makefile.PL 15586 2013-03-22 20:34:32Z timbo $
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -178,7 +178,7 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $_ = '' unless defined $_;
 }
 
-# If working from git-svn, the $Id: Makefile.PL 15546 2012-12-28 09:43:53Z REHSACK $'s in the mod's should be completed
+# If working from git-svn, the $Id: Makefile.PL 15586 2013-03-22 20:34:32Z timbo $'s in the mod's should be completed
 # before any other action is taken
 $is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
@@ -374,7 +374,7 @@ $(changes_pm): Changes
 	$(CP) Changes $(changes_pm)
 
 ptest:  all
-	prove --blib --jobs 4 --shuffle
+	prove --blib --jobs 8 --shuffle
 
 faq:
 	: checkin any local changes not already checked in before overwriting

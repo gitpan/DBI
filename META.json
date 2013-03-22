@@ -4,7 +4,7 @@
       "Tim Bunce (dbi-users@perl.org)"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "ExtUtils::MakeMaker version 6.6302, CPAN::Meta::Converter version 2.120921",
+   "generated_by" : "ExtUtils::MakeMaker version 6.6501, CPAN::Meta::Converter version 2.120921",
    "license" : [
       "perl_5"
    ],
@@ -65,5 +65,5 @@
       },
       "x_MailingList" : "mailto:dbi-dev@perl.org"
    },
-   "version" : "1.623"
+   "version" : "1.624"
 }

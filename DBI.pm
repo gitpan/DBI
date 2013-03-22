@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15542 2012-12-21 17:11:32Z REHSACK $
+# $Id: DBI.pm 15587 2013-03-22 20:37:34Z timbo $
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.623"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.624"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -84,48 +84,60 @@ I<The synopsis above only lists the major methods and parameters.>
 
 =head2 GETTING HELP
 
-If you have questions about DBI, or DBD driver modules, you can get
-help from the I<dbi-users@perl.org> mailing list.  You don't have to subscribe
-to the list in order to post, though I'd recommend it. You can get help on
-subscribing and using the list by emailing I<dbi-users-help@perl.org>.
+=head3 General
 
-I don't recommend the DBI cpanforum (at http://www.cpanforum.com/dist/DBI)
-because relatively few people read it compared with dbi-users@perl.org.
+Before asking any questions, reread this document, consult the
+archives and read the DBI FAQ. The archives are listed
+at the end of this document and on the DBI home page L<http://dbi.perl.org/support/>
+
+You might also like to read the Advanced DBI Tutorial at
+L<http://www.slideshare.net/Tim.Bunce/dbi-advanced-tutorial-2007>
 
 To help you make the best use of the dbi-users mailing list,
 and any other lists or forums you may use, I recommend that you read
 "Getting Answers" by Mike Ash: L<http://mikeash.com/getting_answers.html>.
 
-If you think you've found a bug then please also read
-"How to Report Bugs Effectively" by Simon Tatham:
-L<http://www.chiark.greenend.org.uk/~sgtatham/bugs.html>.
+=head3 Mailing Lists
 
-The DBI home page at L<http://dbi.perl.org/> and the DBI FAQ
-at L<http://faq.dbi-support.com/> may be worth a visit.
-They include links to other resources, but are rather out-dated.
-
-Before asking any questions, reread this document, consult the
-archives and read the DBI FAQ. The archives are listed
-at the end of this document and on the DBI home page.
-
-You might also like to read the Advanced DBI Tutorial at
-L<http://www.slideshare.net/Tim.Bunce/dbi-advanced-tutorial-2007>
-
-This document often uses terms like I<references>, I<objects>,
-I<methods>.  If you're not familiar with those terms then it would
-be a good idea to read at least the following perl manuals first:
-L<perlreftut>, L<perldsc>, L<perllol>, and L<perlboot>.
+If you have questions about DBI, or DBD driver modules, you can get
+help from the I<dbi-users@perl.org> mailing list. This is the best way to get
+help. You don't have to subscribe to the list in order to post, though I'd
+recommend it. You can get help on subscribing and using the list by emailing
+I<dbi-users-help@perl.org>.
 
 Please note that Tim Bunce does not maintain the mailing lists or the
-web page (generous volunteers do that).  So please don't send mail
+web pages (generous volunteers do that).  So please don't send mail
 directly to him; he just doesn't have the time to answer questions
 personally. The I<dbi-users> mailing list has lots of experienced
 people who should be able to help you if you need it. If you do email
 Tim he is very likely to just forward it to the mailing list.
 
+=head3 Online
+
+StackOverflow has a DBI tag L<http://stackoverflow.com/questions/tagged/dbi>
+with over 400 questions.
+
+The DBI home page at L<http://dbi.perl.org/> and the DBI FAQ
+at L<http://faq.dbi-support.com/> may be worth a visit.
+They include links to other resources, but I<are rather out-dated>.
+
+I don't recommend the DBI cpanforum (at http://www.cpanforum.com/dist/DBI)
+because relatively few people read it compared with dbi-users@perl.org.
+
+=head3 Reporting a Bug
+
+If you think you've found a bug then please read
+"How to Report Bugs Effectively" by Simon Tatham:
+L<http://www.chiark.greenend.org.uk/~sgtatham/bugs.html>.
+
+Your problem is most likely related to the specific DBD driver module you're
+using. If that's the case then click on the 'Bugs' link on the L<http://metacpan.org>
+page for your driver. Only submit a bug report against the DBI itself if you're
+sure that your issue isn't related to the driver you're using.
+
 =head2 NOTES
 
-This is the DBI specification that corresponds to DBI version 1.623
+This is the DBI specification that corresponds to DBI version 1.624
 (see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that
@@ -2137,6 +2149,11 @@ modules.  It is the driver modules which do most of the real work. The DBI
 provides a standard interface and framework for the drivers to operate
 within.
 
+This document often uses terms like I<references>, I<objects>,
+I<methods>.  If you're not familiar with those terms then it would
+be a good idea to read at least the following perl manuals first:
+L<perlreftut>, L<perldsc>, L<perllol>, and L<perlboot>.
+
 
 =head2 Architecture of a DBI Application
 
@@ -3359,9 +3376,9 @@ use func() and gain direct access to driver-private methods.
   $is_implemented = $h->can($method_name);
 
 Returns true if $method_name is implemented by the driver or a
-default method is provided by the DBI.
+default method is provided by the DBI's driver base class.
 It returns false where a driver hasn't implemented a method and the
-default method is provided by the DBI is just an empty stub.
+default method is provided by the DBI's driver base class is just an empty stub.
 
 =head3 C<parse_trace_flags>
 
