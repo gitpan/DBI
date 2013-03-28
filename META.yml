@@ -40,4 +40,4 @@ resources:
   license: http://dev.perl.org/licenses/
   repository: https://svn.perl.org/modules/dbi/trunk/
   x_MailingList: mailto:dbi-dev@perl.org
-version: 1.624
+version: 1.625
