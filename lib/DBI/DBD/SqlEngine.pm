@@ -33,7 +33,7 @@ use strict;
 use Carp;
 use vars qw( @ISA $VERSION $drh %methods_installed);
 
-$VERSION = "0.05";
+$VERSION = "0.06";
 
 $drh = undef;    # holds driver handle(s) once initialized
 
@@ -143,7 +143,10 @@ sub connect ($$;$$$)
         my $two_phased_init;
         defined $dbh->{sql_init_phase} and $two_phased_init = ++$dbh->{sql_init_phase};
         my %second_phase_attrs;
-	my @func_inits;
+        my @func_inits;
+
+        # this must be done to allow DBI.pm reblessing got handle after successful connecting
+        exists $attr->{RootClass} and $second_phase_attrs{RootClass} = delete $attr->{RootClass};
 
         my ( $var, $val );
         while ( length $dbname )
@@ -162,8 +165,10 @@ sub connect ($$;$$$)
             {
                 $var = $1;
                 ( $val = $2 ) =~ s/\\(.)/$1/g;
-		exists $attr->{$var} and carp("$var is given in DSN *and* \$attr during DBI->connect()") if($^W);
-		exists $attr->{$var} or $attr->{$var} = $val;
+                exists $attr->{$var}
+                  and carp("$var is given in DSN *and* \$attr during DBI->connect()")
+                  if ($^W);
+                exists $attr->{$var} or $attr->{$var} = $val;
             }
             elsif ( $var =~ m/^(.+?)=>(.*)/s )
             {
@@ -171,55 +176,55 @@ sub connect ($$;$$$)
                 ( $val = $2 ) =~ s/\\(.)/$1/g;
                 my $ref = eval $val;
                 # $dbh->$var($ref);
-		push(@func_inits, $var, $ref);
+                push( @func_inits, $var, $ref );
             }
         }
 
-	# The attributes need to be sorted in a specific way as the
-	# assignment is through tied hashes and calls STORE on each
-	# attribute.  Some attributes require to be called prior to
-	# others
-	# e.g. f_dir *must* be done before xx_tables in DBD::File
-	# The dbh attribute sql_init_order is a hash with the order
-	# as key (low is first, 0 .. 100) and the attributes that
-	# are set to that oreder as anon-list as value:
-	# {  0 => [qw( AutoCommit PrintError RaiseError Profile ... )],
-	#   10 => [ list of attr to be dealt with immediately after first ],
-	#   50 => [ all fields that are unspecified or default sort order ],
-	#   90 => [ all fields that are needed after other initialisation ],
-	#   }
+        # The attributes need to be sorted in a specific way as the
+        # assignment is through tied hashes and calls STORE on each
+        # attribute.  Some attributes require to be called prior to
+        # others
+        # e.g. f_dir *must* be done before xx_tables in DBD::File
+        # The dbh attribute sql_init_order is a hash with the order
+        # as key (low is first, 0 .. 100) and the attributes that
+        # are set to that oreder as anon-list as value:
+        # {  0 => [qw( AutoCommit PrintError RaiseError Profile ... )],
+        #   10 => [ list of attr to be dealt with immediately after first ],
+        #   50 => [ all fields that are unspecified or default sort order ],
+        #   90 => [ all fields that are needed after other initialisation ],
+        #   }
 
-	my %order = map {
-	    my $order = $_;
-	    map { ( $_ => $order ) } @{ $dbh->{sql_init_order}{$order} };
-	} sort { $a <=> $b } keys %{ $dbh->{sql_init_order} || {} };
-	my @ordered_attr =
-	  map  { $_->[0] }
-	  sort { $a->[1] <=> $b->[1] }
-	  map  { [ $_, defined $order{$_} ? $order{$_} : 50 ] }
-	  keys %$attr;
+        my %order = map {
+            my $order = $_;
+            map { ( $_ => $order ) } @{ $dbh->{sql_init_order}{$order} };
+        } sort { $a <=> $b } keys %{ $dbh->{sql_init_order} || {} };
+        my @ordered_attr =
+          map  { $_->[0] }
+          sort { $a->[1] <=> $b->[1] }
+          map  { [ $_, defined $order{$_} ? $order{$_} : 50 ] }
+          keys %$attr;
 
-	# initialize given attributes ... lower weighted before higher weighted
-	foreach my $a (@ordered_attr)
-	{
-	    exists $attr->{$a} or next;
-	    $two_phased_init and eval {
-		$dbh->{$a} = $attr->{$a};
-		delete $attr->{$a};
-	    };
-	    $@ and $second_phase_attrs{$a} = delete $attr->{$a};
-	    $two_phased_init or $dbh->STORE($a, delete $attr->{$a});
-	}
+        # initialize given attributes ... lower weighted before higher weighted
+        foreach my $a (@ordered_attr)
+        {
+            exists $attr->{$a} or next;
+            $two_phased_init and eval {
+                $dbh->{$a} = $attr->{$a};
+                delete $attr->{$a};
+            };
+            $@ and $second_phase_attrs{$a} = delete $attr->{$a};
+            $two_phased_init or $dbh->STORE( $a, delete $attr->{$a} );
+        }
 
-	$two_phased_init and $dbh->func( 1, "init_default_attributes" );
-	%$attr = %second_phase_attrs;
+        $two_phased_init and $dbh->func( 1, "init_default_attributes" );
+        %$attr = %second_phase_attrs;
 
-	for( my $i = 0; $i < scalar(@func_inits); $i += 2 )
-	{
-	    my $func = $func_inits[$i];
-	    my $arg = $func_inits[$i+1];
-	    $dbh->$func($arg);
-	}
+        for ( my $i = 0; $i < scalar(@func_inits); $i += 2 )
+        {
+            my $func = $func_inits[$i];
+            my $arg  = $func_inits[ $i + 1 ];
+            $dbh->$func($arg);
+        }
 
         $dbh->func("init_done");
 
@@ -633,6 +638,9 @@ sub STORE ($$$)
     {
         # Driver private attributes are lower cased
 
+        ( $attrib, $value ) = $dbh->func( $attrib, $value, "validate_STORE_attr" );
+        $attrib or return;
+
         my $attr_prefix;
         $attrib =~ m/^([a-z]+_)/ and $attr_prefix = $1;
         unless ($attr_prefix)
@@ -643,9 +651,6 @@ sub STORE ($$$)
         }
         my $valid_attrs = $attr_prefix . "valid_attrs";
         my $ro_attrs    = $attr_prefix . "readonly_attrs";
-
-        ( $attrib, $value ) = $dbh->func( $attrib, $value, "validate_STORE_attr" );
-        $attrib or return;
 
         exists $dbh->{$valid_attrs}
           and ( $dbh->{$valid_attrs}{$attrib}
@@ -2086,7 +2091,7 @@ After the method C<open_data> has been run successfully, the table's meta
 information are in a state which allowes the table's data accessor methods
 will be able to fetch/store row information. Implementation details heavily
 depends on the table implementation, whereby the most famous is surely
-L<DBD::File/DBD::File::Table|DBD::File::Table>.
+L<DBD::File::Table|DBD::File/DBD::File::Table>.
 
 =head1 SQL ENGINES
 

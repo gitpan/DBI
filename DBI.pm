@@ -1,4 +1,4 @@
-# $Id: DBI.pm 15595 2013-03-28 18:44:41Z timbo $
+# $Id$
 # vim: ts=8:sw=4:et
 #
 # Copyright (c) 1994-2012  Tim Bunce  Ireland
@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.625"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.626"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -137,7 +137,7 @@ sure that your issue isn't related to the driver you're using.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to DBI version 1.625
+This is the DBI specification that corresponds to DBI version 1.626
 (see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that

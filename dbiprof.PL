@@ -7,7 +7,7 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 13336 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision$ =~ /(\d+)/o);
 
 use Data::Dumper;
 use DBI::ProfileData;

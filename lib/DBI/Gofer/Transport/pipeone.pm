@@ -1,6 +1,6 @@
 package DBI::Gofer::Transport::pipeone;
 
-#   $Id: pipeone.pm 12536 2009-02-24 22:37:09Z timbo $
+#   $Id: pipeone.pm 12536 2009-02-24 22:37:09Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

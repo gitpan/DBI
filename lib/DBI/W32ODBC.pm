@@ -1,7 +1,7 @@
 package
   DBI;	# hide this non-DBI package from simple indexers
 
-# $Id: W32ODBC.pm 8696 2007-01-24 23:12:38Z timbo $
+# $Id: W32ODBC.pm 8696 2007-01-24 23:12:38Z Tim $
 #
 # Copyright (c) 1997,1999 Tim Bunce
 # With many thanks to Patrick Hollins for polishing.

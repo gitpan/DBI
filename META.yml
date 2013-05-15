@@ -38,6 +38,6 @@ requires:
 resources:
   homepage: http://dbi.perl.org/
   license: http://dev.perl.org/licenses/
-  repository: https://svn.perl.org/modules/dbi/trunk/
+  repository: https://github.com/perl5-dbi/dbi
   x_MailingList: mailto:dbi-dev@perl.org
-version: 1.625
+version: 1.626

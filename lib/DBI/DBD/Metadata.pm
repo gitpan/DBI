@@ -1,6 +1,6 @@
 package DBI::DBD::Metadata;
 
-# $Id: Metadata.pm 14213 2010-06-30 19:29:18Z mjevans $
+# $Id: Metadata.pm 14213 2010-06-30 19:29:18Z Martin $
 #
 # Copyright (c) 1997-2003 Jonathan Leffler, Jochen Wiedmann,
 # Steffen Goeldner and Tim Bunce

@@ -1,6 +1,6 @@
 package DBI::Gofer::Execute;
 
-#   $Id: Execute.pm 14282 2010-07-26 00:12:54Z theory $
+#   $Id: Execute.pm 14282 2010-07-26 00:12:54Z David $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::null;
 
-#   $Id: null.pm 10087 2007-10-16 12:42:37Z timbo $
+#   $Id: null.pm 10087 2007-10-16 12:42:37Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

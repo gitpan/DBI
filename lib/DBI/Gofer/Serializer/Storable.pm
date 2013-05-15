@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(DBI::Gofer::Serializer::Base);
 
-#   $Id: Storable.pm 15585 2013-03-22 20:31:22Z timbo $
+#   $Id: Storable.pm 15585 2013-03-22 20:31:22Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

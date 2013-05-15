@@ -1,4 +1,4 @@
-# $Id: ODBC.pm 11373 2008-06-02 19:01:33Z timbo $
+# $Id: ODBC.pm 11373 2008-06-02 19:01:33Z Tim $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #

@@ -1,4 +1,4 @@
-/* @(#)$Id: dbd_xsh.h 11724 2008-09-02 13:34:31Z mjevans $
+/* @(#)$Id$
  *
  * Copyright 2000-2002 Tim Bunce
  * Copyright 2002      Jonathan Leffler

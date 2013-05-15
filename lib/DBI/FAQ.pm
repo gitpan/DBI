@@ -1,5 +1,5 @@
 ###
-### $Id: FAQ.pm 14934 2011-09-14 10:02:25Z timbo $
+### $Id: FAQ.pm 14934 2011-09-14 10:02:25Z Tim $
 ###
 ### DBI Frequently Asked Questions POD
 ###

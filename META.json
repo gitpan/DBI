@@ -61,9 +61,9 @@
          "http://dev.perl.org/licenses/"
       ],
       "repository" : {
-         "url" : "https://svn.perl.org/modules/dbi/trunk/"
+         "url" : "https://github.com/perl5-dbi/dbi"
       },
       "x_MailingList" : "mailto:dbi-dev@perl.org"
    },
-   "version" : "1.625"
+   "version" : "1.626"
 }

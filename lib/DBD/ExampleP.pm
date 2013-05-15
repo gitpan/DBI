@@ -11,7 +11,7 @@
     $VERSION = sprintf("12.%06d", q$Revision: 14310 $ =~ /(\d+)/o);
 
 
-#   $Id: ExampleP.pm 14310 2010-08-02 06:35:25Z REHSACK $
+#   $Id: ExampleP.pm 14310 2010-08-02 06:35:25Z Jens $
 #
 #   Copyright (c) 1994,1997,1998 Tim Bunce
 #

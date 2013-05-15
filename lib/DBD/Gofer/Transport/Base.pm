@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::Base;
 
-#   $Id: Base.pm 14120 2010-06-07 19:52:19Z hmbrand $
+#   $Id: Base.pm 14120 2010-06-07 19:52:19Z H.Merijn $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

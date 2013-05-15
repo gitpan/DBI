@@ -10,7 +10,7 @@
 
     our $VERSION = sprintf("0.%06d", q$Revision: 15326 $ =~ /(\d+)/o);
 
-#   $Id: Gofer.pm 15326 2012-06-06 16:32:38Z timbo $
+#   $Id: Gofer.pm 15326 2012-06-06 16:32:38Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl 12537 2009-02-24 22:45:40Z timbo $
+# $Id$
 #
 # Copyright (c) 1994-1998 Tim Bunce
 #
@@ -14,7 +14,7 @@
 
 BEGIN {
     print "$0 @ARGV\n";
-    print q{DBI test application $Revision: 12537 $}."\n";
+    print q{DBI test application $Revision$}."\n";
     $| = 1;
 }
 

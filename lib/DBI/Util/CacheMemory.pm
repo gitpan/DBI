@@ -1,6 +1,6 @@
 package DBI::Util::CacheMemory;
 
-#   $Id: CacheMemory.pm 10314 2007-11-26 22:25:33Z timbo $
+#   $Id: CacheMemory.pm 10314 2007-11-26 22:25:33Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

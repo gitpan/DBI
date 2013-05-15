@@ -1,4 +1,4 @@
-# $Id: 90sql_type_cast.t 15588 2013-03-25 17:37:27Z hmbrand $
+# $Id$
 # Test DBI::sql_type_cast
 use strict;
 #use warnings; this script generate warnings deliberately as part of the test

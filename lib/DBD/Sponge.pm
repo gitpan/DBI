@@ -8,7 +8,7 @@
     our $VERSION = sprintf("12.%06d", q$Revision: 10002 $ =~ /(\d+)/o);
 
 
-#   $Id: Sponge.pm 10002 2007-09-26 21:03:25Z timbo $
+#   $Id: Sponge.pm 10002 2007-09-26 21:03:25Z Tim $
 #
 #   Copyright (c) 1994-2003 Tim Bunce Ireland
 #

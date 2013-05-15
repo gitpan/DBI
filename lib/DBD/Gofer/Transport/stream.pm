@@ -1,6 +1,6 @@
 package DBD::Gofer::Transport::stream;
 
-#   $Id: stream.pm 14598 2010-12-21 22:53:25Z timbo $
+#   $Id: stream.pm 14598 2010-12-21 22:53:25Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

@@ -1,6 +1,6 @@
 # -*- perl -*-
 #
-# $Id: Makefile.PL 15594 2013-03-28 18:42:27Z timbo $
+# $Id$
 #
 #  Copyright (c) 1994-2010  Tim Bunce  Ireland
 #
@@ -60,7 +60,7 @@ my %opts = (
     },
     META_MERGE => {
 	resources => {
-	    repository  => 'https://svn.perl.org/modules/dbi/trunk/',
+	    repository  => 'https://github.com/perl5-dbi/dbi',
 	    MailingList => 'mailto:dbi-dev@perl.org',
 	    license     => 'http://dev.perl.org/licenses/',
 	    homepage    => 'http://dbi.perl.org/',
@@ -142,10 +142,6 @@ for ( $cfg_privlibexp, $cfg_archlibexp, $cfg_sitelibexp, $cfg_sitearchexp,
      $cfg_man3direxp ) {
      $_ = '' unless defined $_;
 }
-
-# If working from git-svn, the $Id: Makefile.PL 15594 2013-03-28 18:42:27Z timbo $'s in the mod's should be completed
-# before any other action is taken
-$is_developer && -d ".git" && -f "git-svn-vsn.pl" and system $^X, "git-svn-vsn.pl";
 
 my $conflictMsg = <<EOCM;
 ***

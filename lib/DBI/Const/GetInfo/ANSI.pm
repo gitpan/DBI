@@ -1,4 +1,4 @@
-# $Id: ANSI.pm 8696 2007-01-24 23:12:38Z timbo $
+# $Id: ANSI.pm 8696 2007-01-24 23:12:38Z Tim $
 #
 # Copyright (c) 2002  Tim Bunce  Ireland
 #

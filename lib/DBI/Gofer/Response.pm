@@ -1,6 +1,6 @@
 package DBI::Gofer::Response;
 
-#   $Id: Response.pm 11565 2008-07-22 20:17:33Z timbo $
+#   $Id: Response.pm 11565 2008-07-22 20:17:33Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #

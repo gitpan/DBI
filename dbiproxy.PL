@@ -7,7 +7,7 @@ my $script = <<'SCRIPT';
 
 use strict;
 
-my $VERSION = sprintf("1.%06d", q$Revision: 13336 $ =~ /(\d+)/o);
+my $VERSION = sprintf("1.%06d", q$Revision$ =~ /(\d+)/o);
 
 my $arg_test    = shift(@ARGV)		if $ARGV[0] eq '--test';
 $ENV{DBI_TRACE} = shift(@ARGV) || 2	if $ARGV[0] =~ s/^--dbitrace=?//;

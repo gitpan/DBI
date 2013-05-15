@@ -1,6 +1,6 @@
 package DBI::Gofer::Serializer::Base;
 
-#   $Id: Base.pm 9949 2007-09-18 09:38:15Z timbo $
+#   $Id: Base.pm 9949 2007-09-18 09:38:15Z Tim $
 #
 #   Copyright (c) 2007, Tim Bunce, Ireland
 #
