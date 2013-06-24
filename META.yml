@@ -16,7 +16,7 @@ conflicts:
   DBD::RAM: 0.072
   SQL::Statement: 1.33
 dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.62, CPAN::Meta::Converter version 2.120921'
+generated_by: 'ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.112621'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -40,4 +40,4 @@ resources:
   license: http://dev.perl.org/licenses/
   repository: https://github.com/perl5-dbi/dbi
   x_MailingList: mailto:dbi-dev@perl.org
-version: 1.627
+version: 1.628
