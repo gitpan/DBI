@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-$VERSION = "1.628"; # ==> ALSO update the version in the pod text below!
+$VERSION = "1.629"; # ==> ALSO update the version in the pod text below!
 }
 
 =head1 NAME
@@ -137,7 +137,7 @@ sure that your issue isn't related to the driver you're using.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to DBI version 1.628
+This is the DBI specification that corresponds to DBI version 1.629
 (see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that
@@ -235,8 +235,6 @@ BEGIN {
 	SQL_INTERVAL_HOUR_TO_MINUTE
 	SQL_INTERVAL_HOUR_TO_SECOND
 	SQL_INTERVAL_MINUTE_TO_SECOND
-	DBIstcf_DISCARD_STRING
-	DBIstcf_STRICT
    ) ],
    sql_cursor_types => [ qw(
 	 SQL_CURSOR_FORWARD_ONLY
@@ -248,6 +246,8 @@ BEGIN {
    utils     => [ qw(
 	neat neat_list $neat_maxlen dump_results looks_like_number
 	data_string_diff data_string_desc data_diff sql_type_cast
+	DBIstcf_DISCARD_STRING
+	DBIstcf_STRICT
    ) ],
    profile   => [ qw(
 	dbi_profile dbi_profile_merge dbi_profile_merge_nodes dbi_time
@@ -330,6 +330,7 @@ my $dbd_prefix_registry = {
   dbi_         => { class => 'DBI',                 },
   dbm_         => { class => 'DBD::DBM',            },
   df_          => { class => 'DBD::DF',             },
+  examplep_    => { class => 'DBD::ExampleP',       },
   f_           => { class => 'DBD::File',           },
   file_        => { class => 'DBD::TextFile',       },
   go_          => { class => 'DBD::Gofer',          },
@@ -448,8 +449,8 @@ my $keeperr = { O=>0x0004 };
 	selectcol_arrayref=>{U =>[2,0,'$statement [, \%attr [, @bind_params ] ]'], O=>0x2000 },
 	ping       	=> { U =>[1,1], O=>0x0404 },
 	disconnect 	=> { U =>[1,1], O=>0x0400|0x0800|0x10000, T=>0x200 },
-	quote      	=> { U =>[2,3, '$string [, $data_type ]' ], O=>0x0430 },
-	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ],    O=>0x0430 },
+	quote      	=> { U =>[2,3, '$string [, $data_type ]' ],   O=>0x0430, T=>2 },
+	quote_identifier=> { U =>[2,6, '$name [, ...] [, \%attr ]' ], O=>0x0430, T=>2 },
 	rows       	=> $keeperr,
 
 	tables          => { U =>[1,6,'$catalog, $schema, $table, $type [, \%attr ]' ], O=>0x2200 },
@@ -1238,7 +1239,7 @@ sub _new_drh {	# called by DBD::<drivername>::driver()
     # Provide default storage for State,Err and Errstr.
     # Note that these are shared by all child handles by default! XXX
     # State must be undef to get automatic faking in DBI::var::FETCH
-    my ($h_state_store, $h_err_store, $h_errstr_store) = (undef, 0, '');
+    my ($h_state_store, $h_err_store, $h_errstr_store) = (undef, undef, '');
     my $attr = {
 	# these attributes get copied down to child handles by default
 	'State'		=> \$h_state_store,  # Holder for DBI::state
@@ -1496,13 +1497,17 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	}
 
 	# If the caller has provided a callback then call it
-	if ($cb and $cb = $cb->{"connect_cached.new"}) {
+	if ($cb and (my $new_cb = $cb->{"connect_cached.new"})) {
 	    local $_ = "connect_cached.new";
-	    $cb->($dbh, $dsn, $user, $auth, $attr);
+	    $new_cb->($dbh, $dsn, $user, $auth, $attr);
 	}
 
 	$dbh = $drh->connect(@_);
 	$cache->{$key} = $dbh;	# replace prev entry, even if connect failed
+	if ($cb and (my $conn_cb = $cb->{"connect_cached.connected"})) {
+	    local $_ = "connect_cached.connected";
+	    $conn_cb->($dbh, $dsn, $user, $auth, $attr);
+	}
 	return $dbh;
     }
 
@@ -2600,8 +2605,8 @@ produced like this:
   }
 
 These constants are defined by SQL/CLI, ODBC or both.
-C<SQL_BIGINT> is (currently) omitted, because SQL/CLI and ODBC provide
-conflicting codes.
+C<SQL_BIGINT> has conflicting codes in SQL/CLI and ODBC,
+DBI uses the ODBC one.
 
 See the L</type_info>, L</type_info_all>, and L</bind_param> methods
 for possible uses.
@@ -2731,8 +2736,7 @@ variables if no C<$data_source> is specified.)
 The C<AutoCommit> and C<PrintError> attributes for each connection
 default to "on". (See L</AutoCommit> and L</PrintError> for more information.)
 However, it is strongly recommended that you explicitly define C<AutoCommit>
-rather than rely on the default. The C<PrintWarn> attribute defaults to
-on if $^W is true, i.e., perl is running with warnings enabled.
+rather than rely on the default. The C<PrintWarn> attribute defaults to true.
 
 The C<\%attr> parameter can be used to alter the default settings of
 C<PrintError>, C<RaiseError>, C<AutoCommit>, and other attributes. For example:
@@ -2749,7 +2753,7 @@ over the C<$username> and C<$password> parameters.
 You can also define connection attribute values within the C<$data_source>
 parameter. For example:
 
-  dbi:DriverName(PrintWarn=>1,PrintError=>0,Taint=>1):...
+  dbi:DriverName(PrintWarn=>0,PrintError=>0,Taint=>1):...
 
 Individual attributes values specified in this way take precedence over
 any conflicting values specified via the C<\%attr> parameter to C<connect>.
@@ -2806,6 +2810,21 @@ a database handle created via connect_cached() because it will affect
 other code that may be using the same handle. When connect_cached()
 returns a handle the attributes will be reset to their initial values.
 This can cause problems, especially with the C<AutoCommit> attribute.
+
+Also, to ensure that the attributes passed are always the same, avoid passing
+references inline. For example, the C<Callbacks> attribute is specified as a
+hash reference. Be sure to declare it external to the call to
+connect_cached(), such that the hash reference is not re-created on every
+call. A package-level lexical works well:
+
+  package MyDBH;
+  my $cb = {
+      'connect_cached.reused' => sub { delete $_[4]->{AutoCommit} },
+  };
+
+  sub dbh {
+      DBI->connect_cached( $dsn, $username, $auth, { Callbacks => $cb });
+  }
 
 Where multiple separate parts of a program are using connect_cached()
 to connect to the same database with the same (initial) attributes
@@ -3697,16 +3716,13 @@ The C<AutoInactiveDestroy> attribute was added in DBI 1.614.
 Type: boolean, inherited
 
 The C<PrintWarn> attribute controls the printing of warnings recorded
-by the driver.  When set to a true value the DBI will check method
+by the driver.  When set to a true value (the default) the DBI will check method
 calls to see if a warning condition has been set. If so, the DBI
 will effectively do a C<warn("$class $method warning: $DBI::errstr")>
 where C<$class> is the driver class and C<$method> is the name of
 the method which failed. E.g.,
 
   DBD::Oracle::db execute warning: ... warning text here ...
-
-By default, C<DBI-E<gt>connect> sets C<PrintWarn> "on" if $^W is true,
-i.e., perl is running with warnings enabled.
 
 If desired, the warnings can be caught and processed using a C<$SIG{__WARN__}>
 handler or modules like CGI::Carp and CGI::ErrorWrap.
@@ -3899,12 +3915,23 @@ Type: unsigned integer
 
 The C<ErrCount> attribute is incremented whenever the set_err()
 method records an error. It isn't incremented by warnings or
-information states. It is not reset by the DBI at any time.
+information states (unlike L</ErrChangeCount>). It is not reset by the DBI at any time.
 
 The C<ErrCount> attribute was added in DBI 1.41. Older drivers may
 not have been updated to use set_err() to record errors and so this
 attribute may not be incremented when using them.
 
+=head3 C<ErrChangeCount>
+
+Type: unsigned integer
+
+The C<ErrChangeCount> attribute is incremented whenever the set_err()
+method records a new error, warning, or informational state.
+It is not reset by the DBI at any time.
+
+The C<ErrChangeCount> attribute was added in DBI 1.629. Older drivers may
+not have been updated to use set_err() to record errors and so this
+attribute may not be incremented when using them.
 
 =head3 C<ShowErrorStatement>
 
@@ -4110,6 +4137,12 @@ Otherwise the attribute is simply advisory.
 A driver can set the C<ReadOnly> attribute itself to indicate that the data it
 is connected to cannot be changed for some reason.
 
+If the driver cannot ensure the C<ReadOnly> attribute is adhered to it
+will record a warning.  In this case reading the C<ReadOnly> attribute
+back after it is set true will return true even if the underlying
+driver cannot ensure this (so any application knows the application
+declared itself ReadOnly).
+
 Library modules and proxy drivers can use the attribute to influence
 their behavior.  For example, the DBD::Gofer driver considers the
 C<ReadOnly> attribute when making a decision about whether to retry an
@@ -4201,7 +4234,7 @@ example above, or use the special C<ChildCallbacks> key described below.
 B<Special Keys in Callbacks Attribute>
 
 In addition to DBI handle method names, the C<Callbacks> hash reference
-supports three additional keys.
+supports four additional keys.
 
 The first is the C<ChildCallbacks> key. When a statement handle is created from
 a database handle the C<ChildCallbacks> key of the database handle's
@@ -4224,11 +4257,12 @@ was called in your application, you could write:
       print "The execute method was called $exec_count times\n";
   }
 
-The other two special keys are C<connect_cached.new> and
-C<connect_cached.reused>. These keys define callbacks that are called when
-C<connect_cached()> is called, but allow different behaviors depending on
-whether a new handle is created or a handle is returned. The callback is
-invoked with these arguments: C<$dbh, $dsn, $user, $auth, $attr>.
+The other three special keys are C<connect_cached.new>,
+C<connect_cached.connected>, and C<connect_cached.reused>. These keys define
+callbacks that are called when C<connect_cached()> is called, but allow
+different behaviors depending on whether a new handle is created or a handle
+is returned. The callback is invoked with these arguments:
+C<$dbh, $dsn, $user, $auth, $attr>.
 
 For example, some applications uses C<connect_cached()> to connect with
 C<AutoCommit> enabled and then disable C<AutoCommit> temporarily for
@@ -4238,11 +4272,12 @@ C<AutoCommit> on, forcing a commit of the transaction. See the L</connect_cached
 documentation for one way to deal with that. Here we'll describe an alternative
 approach using a callback.
 
-Because the C<connect_cached.*> callbacks are invoked before connect_cached()
-has applied the connect attributes you can use a callback to edit the attributes
-that will be applied.  To prevent a cached handle from having its transactions
-committed before it's returned, you can eliminate the C<AutoCommit> attribute
-in a C<connect_cached.reused> callback, like so:
+Because the C<connect_cached.new> and C<connect_cached.reused> callbacks are
+invoked before C<connect_cached()> has applied the connect attributes, you can
+use them to edit the attributes that will be applied. To prevent a cached
+handle from having its transactions committed before it's returned, you can
+eliminate the C<AutoCommit> attribute in a C<connect_cached.reused> callback,
+like so:
 
   my $cb = {
       'connect_cached.reused' => sub { delete $_[4]->{AutoCommit} },
@@ -4262,15 +4297,22 @@ The upshot is that new database handles are created with C<AutoCommit>
 enabled, while cached database handles are left in whatever transaction state
 they happened to be in when retrieved from the cache.
 
-A more common application for callbacks is setting connection state only when a
-new connection is made (by connect() or connect_cached()). Adding a callback to
-the connected method makes this easy.
-This method is a no-op by default (unless you subclass the DBI and change it).
-The DBI calls it to indicate that a new connection has been made and the connection
-attributes have all been set.  You can
-give it a bit of added functionality by applying a callback to it. For
-example, to make sure that MySQL understands your application's ANSI-compliant
-SQL, set it up like so:
+Note that we've also used a lexical for the callbacks hash reference. This is
+because C<connect_cached()> returns a new database handle if any of the
+attributes passed to is have changed. If we used an inline hash reference,
+C<connect_cached()> would return a new database handle every time. Which would
+rather defeat the purpose.
+
+A more common application for callbacks is setting connection state only when
+a new connection is made (by connect() or connect_cached()). Adding a callback
+to the connected method (when using C<connect>) or via
+C<connect_cached.connected> (when useing connect_cached()>) makes this easy.
+The connected() method is a no-op by default (unless you subclass the DBI and
+change it). The DBI calls it to indicate that a new connection has been made
+and the connection attributes have all been set. You can give it a bit of
+added functionality by applying a callback to it. For example, to make sure
+that MySQL understands your application's ANSI-compliant SQL, set it up like
+so:
 
   my $dbh = DBI->connect($dsn, $username, $auth, {
       Callbacks => {
@@ -4282,6 +4324,23 @@ SQL, set it up like so:
           },
       }
   });
+
+If you're using C<connect_cached()>, use the C<connect_cached.connected>
+callback, instead. This is because C<connected()> is called for both new and
+reused database handles, but you want to execute a callback only the when a
+new database handle is returned. For example, to set the time zone on
+connection to a PostgreSQL database, try this:
+
+  my $cb = {
+      'connect_cached.connected' => sub {
+          shift->do('SET timezone = UTC');
+      }
+  };
+
+  sub dbh {
+      my $self = shift;
+      DBI->connect_cached( $dsn, $username, $auth, { Callbacks => $cb });
+  }
 
 One significant limitation with callbacks is that there can only be one per
 method per handle. This means it's easy for one use of callbacks to interfere
