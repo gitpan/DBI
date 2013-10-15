@@ -4,7 +4,7 @@
       "Tim Bunce (dbi-users@perl.org)"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.112621",
+   "generated_by" : "ExtUtils::MakeMaker version 6.6302, CPAN::Meta::Converter version 2.120630",
    "license" : [
       "perl_5"
    ],
@@ -28,7 +28,7 @@
       },
       "configure" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : 0
+            "ExtUtils::MakeMaker" : "0"
          }
       },
       "runtime" : {
@@ -43,9 +43,9 @@
          },
          "recommends" : {
             "Clone" : "0.34",
-            "DB_File" : 0,
-            "MLDBM" : 0,
-            "Net::Daemon" : 0,
+            "DB_File" : "0",
+            "MLDBM" : "0",
+            "Net::Daemon" : "0",
             "RPC::PlServer" : "0.2001",
             "SQL::Statement" : "1.402"
          },
