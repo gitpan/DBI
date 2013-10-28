@@ -40,4 +40,4 @@ resources:
   license: http://dev.perl.org/licenses/
   repository: https://github.com/perl5-dbi/dbi
   x_MailingList: mailto:dbi-dev@perl.org
-version: 1.629_50
+version: 1.630

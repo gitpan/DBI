@@ -54,7 +54,7 @@
          }
       }
    },
-   "release_status" : "testing",
+   "release_status" : "stable",
    "resources" : {
       "homepage" : "http://dbi.perl.org/",
       "license" : [
@@ -65,5 +65,5 @@
       },
       "x_MailingList" : "mailto:dbi-dev@perl.org"
    },
-   "version" : "1.629_50"
+   "version" : "1.630"
 }
