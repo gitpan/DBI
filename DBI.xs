@@ -635,7 +635,7 @@ neatsvpv(SV *sv, STRLEN maxlen) /* return a tidy ascii value, for debugging only
                 sv_catpvn(infosv, &mg->mg_type, 1);
             sv_catpvn(infosv, ")", 1);
         }
-        if (SvGMAGICAL(sv))
+        if (SvGMAGICAL(sv) && !PL_dirty)
             mg_get(sv);         /* trigger magic to FETCH the value     */
     }
 
@@ -3555,7 +3555,7 @@ XS(XS_DBI_dispatch)
 
         EXTEND(SP, items+1);
         PUSHMARK(SP);
-        PUSHs(h);                       /* push inner handle, then others params */
+        PUSHs(orig_h);                  /* push outer handle, then others params */
         for (i=1; i < items; ++i) {     /* start at 1 to skip handle */
             PUSHs( ST(i) );
         }
@@ -4618,7 +4618,9 @@ _handles(sv)
     (void)cv;
     EXTEND(SP, 2);
     PUSHs(oh);  /* returns outer handle then inner */
-    PUSHs(ih);
+    if (GIMME != G_SCALAR) {
+        PUSHs(ih);
+    }
 
 
 void

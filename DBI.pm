@@ -11,7 +11,7 @@ package DBI;
 require 5.008_001;
 
 BEGIN {
-our $XS_VERSION = our $VERSION = "1.630"; # ==> ALSO update the version in the pod text below!
+our $XS_VERSION = our $VERSION = "1.631"; # ==> ALSO update the version in the pod text below!
 $VERSION = eval $VERSION;
 }
 
@@ -138,7 +138,7 @@ sure that your issue isn't related to the driver you're using.
 
 =head2 NOTES
 
-This is the DBI specification that corresponds to DBI version 1.630
+This is the DBI specification that corresponds to DBI version 1.631
 (see L<DBI::Changes> for details).
 
 The DBI is evolving at a steady pace, so it's good to check that
@@ -1500,7 +1500,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	# If the caller has provided a callback then call it
 	if ($cb and (my $new_cb = $cb->{"connect_cached.new"})) {
 	    local $_ = "connect_cached.new";
-	    $new_cb->($dbh, $dsn, $user, $auth, $attr);
+	    $new_cb->($dbh, $dsn, $user, $auth, $attr); # $dbh is dead or undef
 	}
 
 	$dbh = $drh->connect(@_);
