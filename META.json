@@ -4,7 +4,7 @@
       "Tim Bunce (dbi-users@perl.org)"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "ExtUtils::MakeMaker version 6.76, CPAN::Meta::Converter version 2.132510",
+   "generated_by" : "ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.141520",
    "license" : [
       "perl_5"
    ],
@@ -55,6 +55,7 @@
       "repository" : {
          "url" : "https://github.com/perl5-dbi/dbi"
       },
+      "x_IRC" : "irc://irc.perl.org/#dbi",
       "x_MailingList" : "mailto:dbi-dev@perl.org"
    },
    "version" : "1.631",

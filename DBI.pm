@@ -113,6 +113,12 @@ personally. The I<dbi-users> mailing list has lots of experienced
 people who should be able to help you if you need it. If you do email
 Tim he is very likely to just forward it to the mailing list.
 
+=head3 IRC
+
+DBI IRC Channel: #dbi on irc.perl.org (L<irc://irc.perl.org/#dbi>)
+
+=for html <a href="http://chat.mibbit.com/#dbi@irc.perl.org">(click for instant chatroom login)</a>
+
 =head3 Online
 
 StackOverflow has a DBI tag L<http://stackoverflow.com/questions/tagged/dbi>
@@ -345,6 +351,7 @@ my $dbd_prefix_registry = {
   mvsftp_      => { class => 'DBD::MVS_FTPSQL',     },
   mysql_       => { class => 'DBD::mysql',          },
   mx_          => { class => 'DBD::Multiplex',      },
+  neo_         => { class => 'DBD::Neo4p',          },
   nullp_       => { class => 'DBD::NullP',          },
   odbc_        => { class => 'DBD::ODBC',           },
   ora_         => { class => 'DBD::Oracle',         },
@@ -404,6 +411,7 @@ my $keeperr = { O=>0x0004 };
 	'FIRSTKEY'	=> $keeperr,
 	'NEXTKEY'	=> $keeperr,
 	'STORE'		=> { O=>0x0418 | 0x4 },
+	'DELETE'	=> { O=>0x0404 },
 	can		=> { O=>0x0100 }, # special case, see dispatch
 	debug 	 	=> { U =>[1,2,'[$debug_level]'],	O=>0x0004 }, # old name for trace
 	dump_handle 	=> { U =>[1,3,'[$message [, $level]]'],	O=>0x0004 },
@@ -1888,7 +1896,7 @@ sub _new_sth {	# called by DBD::<drivername>::db::prepare)
 	my $fields = $sth->FETCH('NUM_OF_FIELDS') || 0;
 	if ($fields <= 0 && !$sth->{Active}) {
 	    return $sth->set_err($DBI::stderr, "Statement has no result columns to bind"
-		    ." (perhaps you need to successfully call execute first)");
+		    ." (perhaps you need to successfully call execute first, or again)");
 	}
 	# Backwards compatibility for old-style call with attribute hash
 	# ref as first arg. Skip arg if undef or a hash ref.
@@ -4936,7 +4944,7 @@ unknown or unimplemented information types. For example:
 See L</"Standards Reference Information"> for more detailed information
 about the information types and their meanings and possible return values.
 
-The DBI::Const::GetInfoType module exports a %GetInfoType hash that
+The L<DBI::Const::GetInfoType> module exports a %GetInfoType hash that
 can be used to map info type names to numbers. For example:
 
   $database_version = $dbh->get_info( $GetInfoType{SQL_DBMS_VER} );
@@ -7071,7 +7079,7 @@ For example:
   my $sth2 = $dbh->prepare( $sth1->{Statement} );
   my $ParamValues = $sth1->{ParamValues} || {};
   my $ParamTypes  = $sth1->{ParamTypes}  || {};
-  $sth2->bind_param($_, $ParamValues->{$_} $ParamTypes->{$_})
+  $sth2->bind_param($_, $ParamValues->{$_}, $ParamTypes->{$_})
     for keys %{ {%$ParamValues, %$ParamTypes} };
   $sth2->execute();
 
